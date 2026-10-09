@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtMultimedia import QAudioBufferOutput, QAudioOutput, QMediaMetaData, QMediaPlayer
+from PySide6.QtMultimedia import QAudioBufferOutput, QAudioOutput, QMediaDevices, QMediaMetaData, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -107,6 +107,12 @@ class MediaView(PreviewView):
         self._device: StreamDevice | None = None
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
+        # QAudioOutput keeps the device that was the default when it was created;
+        # follow the system's choice instead (AirPods connecting, Control Center).
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.audioOutputsChanged.connect(self.follow_default_output)
+        self._output_check = QTimer(self, interval=1500)  # while playing: switches in Control Center
+        self._output_check.timeout.connect(self.follow_default_output)
         self.video = QVideoWidget()
         self.video.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.player.setVideoOutput(self.video)
@@ -241,7 +247,14 @@ class MediaView(PreviewView):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
+            self.follow_default_output()
             self.player.play()
+
+    def follow_default_output(self) -> None:
+        """Play on the system's current default output device."""
+        default = QMediaDevices.defaultAudioOutput()
+        if not default.isNull() and default.id() != self.audio.device().id():
+            self.audio.setDevice(default)
 
     def toggle_mute(self) -> None:
         self.audio.setMuted(not self.audio.isMuted())
@@ -272,6 +285,11 @@ class MediaView(PreviewView):
     def _state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         playing = state == QMediaPlayer.PlaybackState.PlayingState
         self.play_button.setText("❚❚" if playing else "▶")
+        if playing:
+            self.follow_default_output()
+            self._output_check.start()
+        else:
+            self._output_check.stop()
         if not self._is_video:
             self.spectrum.set_active(playing)
 

@@ -180,3 +180,20 @@ def test_large_audio_on_a_server_gets_no_waveform(qtbot, themes: ThemeManager, m
     assert "large files" in view.waveform.note
     view.clear()
     loaded.close()
+
+
+def test_player_follows_the_default_output_device(qtbot, themes: ThemeManager, monkeypatch):
+    # QAudioOutput keeps the device that was the default when it was created:
+    # AirPods connected later still played on the built-in speakers.
+    from PySide6.QtMultimedia import QMediaDevices
+
+    outputs = QMediaDevices.audioOutputs()
+    if len(outputs) < 2:
+        pytest.skip("needs two audio output devices")
+    view = MediaView(themes)
+    qtbot.addWidget(view)
+    current = view.audio.device()
+    other = next(o for o in outputs if o.id() != current.id())
+    monkeypatch.setattr(QMediaDevices, "defaultAudioOutput", staticmethod(lambda: other))
+    view.follow_default_output()
+    assert view.audio.device().id() == other.id()
