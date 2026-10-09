@@ -10,9 +10,8 @@ from pathlib import Path
 
 from platformdirs import user_config_dir
 
-from orchard_commander import APP_NAME, COMMAND
+from orchard_commander import APP_NAME, COMMAND, themes
 
-DEFAULT_THEME = "monokai"
 DEFAULT_SHOW_HIDDEN = True
 
 # "Orchard Commander" on macOS/Windows; Linux config dirs conventionally avoid spaces.
@@ -34,7 +33,18 @@ def migrate_legacy_config() -> bool:
 
 @dataclass
 class Settings:
-    theme: str = ""  # empty: use DEFAULT_THEME
+    # Appearance; empty / None: the default in themes.Appearance.
+    color_scheme: str = ""
+    follow_system_appearance: bool | None = None
+    light_scheme: str = ""
+    dark_scheme: str = ""
+    font_family: str = ""
+    font_style: str = ""
+    font_size: int | None = None
+    line_spacing: float | None = None
+    frame_style: str = ""
+    menu_bar_visible: bool | None = None  # in-window menu bar always shown (otherwise F9 shows it)
+
     show_hidden: bool | None = None  # None: DEFAULT_SHOW_HIDDEN (only a toggle stores a choice)
     left_path: str = ""
     right_path: str = ""
@@ -44,6 +54,26 @@ class Settings:
     def hidden_visible(self) -> bool:
         return DEFAULT_SHOW_HIDDEN if self.show_hidden is None else self.show_hidden
 
+    def appearance(self) -> themes.Appearance:
+        """The chosen appearance, with defaults for whatever wasn't chosen."""
+        default = themes.Appearance()
+        lo, hi = themes.FONT_SIZE_RANGE
+        spacing_lo, spacing_hi = themes.LINE_SPACING_RANGE
+        return themes.Appearance(
+            color_scheme=self.color_scheme or default.color_scheme,
+            follow_system_appearance=bool(self.follow_system_appearance),
+            light_scheme=self.light_scheme or default.light_scheme,
+            dark_scheme=self.dark_scheme or default.dark_scheme,
+            font_family=self.font_family,
+            font_style=self.font_style,
+            font_size=default.font_size if self.font_size is None else max(lo, min(int(self.font_size), hi)),
+            line_spacing=(
+                default.line_spacing if self.line_spacing is None
+                else max(spacing_lo, min(float(self.line_spacing), spacing_hi))
+            ),
+            frame_style=self.frame_style if self.frame_style in themes.FRAME_STYLES else default.frame_style,
+        )
+
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
         path = path or CONFIG_FILE
@@ -51,6 +81,15 @@ class Settings:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return cls()
+        if not isinstance(data, dict):
+            return cls()
+        # Before appearance settings: "theme" was the color scheme, the font size an extra.
+        if "theme" in data:
+            data.setdefault("color_scheme", data.pop("theme"))
+        extra = data.get("extra")
+        if isinstance(extra, dict) and "font_size" in extra:
+            data["extra"] = {k: v for k, v in extra.items() if k != "font_size"}
+            data.setdefault("font_size", extra["font_size"])
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in data.items() if k in known})
 

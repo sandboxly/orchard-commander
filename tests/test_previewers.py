@@ -26,10 +26,10 @@ from orchard_commander.preview.api import (
     ViewContext,
 )
 from orchard_commander.preview.source import PreviewSource
-from orchard_commander.themes import get_theme
+from orchard_commander.themes import get_scheme
 from test_vfs import MemoryFS
 
-CTX = LoadContext(theme=get_theme("monokai"), show_hidden=False)
+CTX = LoadContext(colors=get_scheme("monokai"), show_hidden=False)
 
 
 class CountingFS(MemoryFS):
@@ -167,7 +167,7 @@ class TestPreviewerContract:
 def _themes():
     from orchard_commander.ui.style import ThemeManager
 
-    return ThemeManager("monokai")
+    return ThemeManager()
 
 
 # -- selection ---------------------------------------------------------------------------------
@@ -356,7 +356,7 @@ def test_big_online_only_file_is_not_downloaded(qapp):
         outcome = registry.preview(vfs.VPath(cloud, name), CTX)
         assert isinstance(outcome.error, NeedsDownload) and outcome.loaded is None
     assert cloud.bytes_read == 0  # not even the first bytes for sniffing
-    allowed = LoadContext(theme=CTX.theme, show_hidden=False, download_limit=None)
+    allowed = LoadContext(colors=CTX.colors, show_hidden=False, download_limit=None)
     outcome = registry.preview(vfs.VPath(cloud, "big.pdf"), allowed)  # the user asked for it
     assert outcome.previewer.id == "pdf"
     outcome.loaded.close()

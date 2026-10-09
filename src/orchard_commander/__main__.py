@@ -87,12 +87,14 @@ def self_test() -> int:
 
 
 def set_app_icon(app) -> None:
-    """Window/taskbar icon (Linux, Windows, and the Dock when not run as an app bundle)."""
+    """Window/taskbar icon; on macOS the running app's Dock icon, which must look
+    like the bundle's (the rounded square, not the bare folder)."""
     from importlib.resources import as_file, files
 
     from PySide6.QtGui import QIcon
 
-    resource = files("orchard_commander").joinpath("resources/icon.png")
+    name = "icon-macos.png" if sys.platform == "darwin" else "icon.png"
+    resource = files("orchard_commander").joinpath(f"resources/{name}")
     if resource.is_file():
         with as_file(resource) as path:
             app.setWindowIcon(QIcon(str(path)))
@@ -110,9 +112,9 @@ def main() -> None:
 
     from PySide6.QtWidgets import QApplication
 
-    from orchard_commander.config import DEFAULT_THEME, Settings, migrate_legacy_config
+    from orchard_commander.config import Settings, migrate_legacy_config
     from orchard_commander.ui.main_window import MainWindow
-    from orchard_commander.ui.style import DEFAULT_FONT_SIZE, ThemeManager
+    from orchard_commander.ui.style import ThemeManager
 
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
@@ -121,7 +123,7 @@ def main() -> None:
 
     migrate_legacy_config()
     settings = Settings.load()
-    themes = ThemeManager(settings.theme or DEFAULT_THEME, settings.extra.get("font_size", DEFAULT_FONT_SIZE))
+    themes = ThemeManager(settings.appearance())
     themes.apply()
     window = MainWindow(settings, themes, args.left, args.right)
     window.show()

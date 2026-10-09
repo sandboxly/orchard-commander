@@ -39,7 +39,7 @@ from PySide6.QtWidgets import QWidget
 
 if TYPE_CHECKING:
     from orchard_commander.preview.source import PreviewSource
-    from orchard_commander.themes import Theme
+    from orchard_commander.themes import ColorScheme
     from orchard_commander.ui.style import ThemeManager
 
 
@@ -119,7 +119,7 @@ AUTO_DOWNLOAD_LIMIT = 25 * 1024**2  # online-only cloud files up to this size ar
 
 @dataclass(frozen=True, slots=True)
 class LoadContext:
-    theme: Theme
+    colors: ColorScheme  # the color scheme in use
     show_hidden: bool
     is_cancelled: Callable[[], bool] = lambda: False
     download_limit: int | None = AUTO_DOWNLOAD_LIMIT  # for online-only files; None: always download

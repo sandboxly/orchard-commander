@@ -32,7 +32,7 @@ def wait_until(predicate, timeout: float = 5.0) -> None:
 
 @pytest.fixture
 def window(qtbot, tree: Path) -> MainWindow:
-    themes = ThemeManager("monokai")
+    themes = ThemeManager()
     themes.apply()
     # Hidden files off: tests navigate by key presses through a known listing.
     w = MainWindow(Settings(show_hidden=False), themes, tree / "src", tree / "dst")
@@ -146,7 +146,7 @@ def test_open_with_default_app(qtbot, window: MainWindow, tree: Path, monkeypatc
 
 
 def test_hidden_files_shown_by_default(qtbot, tree: Path):
-    themes = ThemeManager("monokai")
+    themes = ThemeManager()
     window = MainWindow(Settings(), themes, tree / "src", tree / "dst")
     qtbot.addWidget(window)
     settle(window)
@@ -157,15 +157,15 @@ def test_hidden_files_shown_by_default(qtbot, tree: Path):
     assert Settings.load().show_hidden is False  # an explicit choice is remembered
 
 
-def test_hidden_toggle_and_theme_persist(qtbot, window: MainWindow, monkeypatch):
+def test_hidden_toggle_and_color_scheme_persist(qtbot, window: MainWindow, monkeypatch):
     window.toggle_hidden()
     settle(window)
     assert ".hidden" in {e.name for e in window.left.panel.entries}
     monkeypatch.setattr(dialogs.Picker, "choose", lambda self: "nord")
-    window.choose_theme()
-    assert window.themes.theme.name == "nord"
+    window.choose_color_scheme()
+    assert window.themes.colors.name == "nord"
     saved = Settings.load()
-    assert saved.show_hidden and saved.theme == "nord"
+    assert saved.show_hidden and saved.color_scheme == "nord"
 
 
 def test_preview_follows_cursor_in_other_panel(qtbot, window: MainWindow, tree: Path):
@@ -932,3 +932,79 @@ def test_swap_and_same_directory(qtbot, window: MainWindow, tree: Path):
     assert left.location == vfs.local(tree / "dst") and right.location == vfs.local(tree / "src")
     ctrl(qtbot, window, Qt.Key.Key_E)  # the other panel shows the active panel's folder
     assert left.location == right.location == vfs.local(tree / "dst")
+
+
+def test_folder_changes_dont_cancel_navigation(qtbot, window: MainWindow, tree: Path):
+    # The watched folder changing while the next one is still being listed (e.g. a
+    # server) must not reload it over the navigation: with a busy folder (home),
+    # connecting to a server silently stayed local.
+    panel = window.left.panel
+    panel.load(vfs.local(tree / "dst"))
+    panel._directory_changed()
+    settle(window)
+    assert panel.location == vfs.local(tree / "dst")
+
+
+def test_bookmark_to_slow_folder_while_current_folder_keeps_changing(qtbot, window: MainWindow, tree: Path,
+                                                                      monkeypatch):
+    # The real situation: the panel shows a busy folder (home) whose watcher keeps
+    # firing, and the bookmark's folder takes a moment to list (a server).
+    from orchard_commander import bookmarks
+
+    slow = tree / "dst"
+    original = vfs.VPath.list_dir
+
+    def list_dir(self, **options):
+        if self.local_path() == slow:
+            time.sleep(0.8)
+        return original(self, **options)
+
+    monkeypatch.setattr(vfs.VPath, "list_dir", list_dir)
+    churn = QTimer(interval=50)
+    counter = iter(range(10**6))
+    churn.timeout.connect(lambda: (tree / "src" / f"tmp{next(counter)}").write_text("x"))
+    churn.start()
+    try:
+        wait(400)  # the watcher is firing now
+        window.open_bookmark(bookmarks.Bookmark("dst", {"kind": "local", "path": str(slow)}), window.left)
+        wait_until(lambda: window.left.panel.location == vfs.local(slow), timeout=5)
+    finally:
+        churn.stop()
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_enter_presses_the_highlighted_button_not_the_default(qtbot, window: MainWindow, key):
+    # Enter with Cancel highlighted used to press the default button: files were trashed.
+    from PySide6.QtWidgets import QPushButton
+
+    def answer(highlight: str) -> bool:
+        def act() -> None:
+            dialog = QApplication.activeModalWidget()
+            button = next(b for b in dialog.findChildren(QPushButton) if b.text() == highlight)
+            button.setFocus()
+            qtbot.keyClick(button, key)
+
+        QTimer.singleShot(50, act)
+        return dialogs.confirm(window, window.themes, "Move to trash", "Move 'a.txt' to the trash?", "Trash")
+
+    assert answer("Cancel") is False
+    assert answer("Trash") is True
+
+
+def test_cancelled_trash_keeps_the_file(qtbot, window: MainWindow, tree: Path):
+    from PySide6.QtWidgets import QPushButton
+
+    select(window, "a.txt")
+
+    def cancel_with_keyboard() -> None:
+        dialog = QApplication.activeModalWidget()
+        qtbot.keyClick(QApplication.focusWidget(), Qt.Key.Key_Tab)  # Trash → Cancel
+        assert isinstance(QApplication.focusWidget(), QPushButton) and QApplication.focusWidget().text() == "Cancel"
+        qtbot.keyClick(QApplication.focusWidget(), Qt.Key.Key_Return)
+        assert not dialog.isVisible()
+
+    QTimer.singleShot(50, cancel_with_keyboard)
+    window.trash()
+    settle(window)
+    wait(200)
+    assert (tree / "src" / "a.txt").exists()

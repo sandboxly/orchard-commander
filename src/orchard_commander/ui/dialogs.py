@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QFontMetrics, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -42,8 +42,25 @@ class Dialog(QDialog):
         self.frame.body.addWidget(body)
         self.content = QVBoxLayout(body)
         self.content.setContentsMargins(0, 0, 0, 0)
-        cw = self.fontMetrics().horizontalAdvance("M")
-        self.setMinimumWidth(cw * width_chars)
+        self.width_chars = width_chars
+        self._fit_width()
+        themes.changed.connect(self._fit_width)  # the font may change while open (settings)
+
+    def _fit_width(self) -> None:
+        cw = QFontMetrics(self.themes.font).horizontalAdvance("M")
+        self.setMinimumWidth(cw * self.width_chars)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        # Enter presses the highlighted button. Buttons aren't auto-default (Enter in
+        # a text field means OK), so QDialog would press the default button instead:
+        # "Trash" with Cancel highlighted.
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            focused = self.focusWidget()
+            if isinstance(focused, QPushButton):
+                if focused.isEnabled():
+                    focused.click()
+                return
+        super().keyPressEvent(event)
 
     def add_label(self, text: str, *, muted: bool = False) -> QLabel:
         label = QLabel(text)

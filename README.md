@@ -24,7 +24,7 @@ one side can preview at a time.
 | Markdown | Rendered |
 | Images (png, jpg, gif, webp, svg, tiff, heic on macOS, …) | Full resolution, scaled to fit; animated GIF/WebP play |
 | Video (mp4, mov, mkv, webm, avi, …) | Plays muted and loops — Space play/pause, ←/→ seek, M mute |
-| Audio (mp3, flac, wav, ogg, …) | Player controls |
+| Audio (mp3, flac, wav, ogg, …) | Title and artist, a live spectrum analyzer while playing, and the waveform of the whole file, which you can click or drag to seek — Space play/pause, ←/→ seek, M mute. On servers, files up to 100 MB get a waveform (it reads the whole file) |
 | PDF | Rendered pages, fitted to the pane — ←/→, PgUp/PgDn, Space or the scroll wheel turn pages; Home/End |
 | Directories and archives | Contents listing, like a folder |
 | Other binary | File info and hex dump |
@@ -130,7 +130,8 @@ Bookmarks are saved in `bookmarks.json` in the config directory.
 | F6 | Move / rename |
 | F7 | Make directory |
 | F8 / Delete / Ctrl+Backspace | Move to trash / recycle bin |
-| F9 | Choose color theme (live preview) |
+| F9 | Menu bar |
+| Ctrl+, | Settings |
 | F10 / Ctrl+Q | Quit |
 | Ctrl+P | Command palette — every command, searchable |
 | Ctrl+R | Reload |
@@ -147,13 +148,26 @@ Bookmarks are saved in `bookmarks.json` in the config directory.
 On macOS, Ctrl means ⌘, and the F-keys may need `fn`. Click a column header to
 sort by it; click again to reverse.
 
-## Themes
+## Appearance
 
-`monokai` (default), `dracula`, `nord`, `gruvbox`, `tokyo-night`, `commander`
-(classic Norton blue), `solarized-light` and `paper`. A theme is one `Theme(...)`
-entry in `src/orchard_commander/themes.py`. The theme, font size, hidden-file setting, last
-directories, panel modes and window geometry are saved in the platform config
-directory (`settings.json`).
+Settings (Options → Settings…, ⌘, on macOS, Ctrl+, elsewhere) apply as you
+change them. Appearance is made of:
+
+- **Color scheme**: `monokai` (default), `dracula`, `nord`, `gruvbox`,
+  `tokyo-night`, `commander` (classic Norton blue), `solarized-light` and
+  `paper`, or your own. Optionally one scheme for light and one for dark mode,
+  following the system. "Edit…" changes a scheme's colors with a live preview;
+  a built-in scheme is saved as a copy. Your schemes are TOML files in the config
+  directory's `color-schemes/` folder; colors a file leaves out come from a
+  built-in scheme.
+- **Font**: typeface (monospace fonts by default), style, size (also Ctrl+= /
+  Ctrl+- / Ctrl+0) and line spacing.
+- **Frames**: rounded, single line, double line or heavy.
+
+The menu bar (Left, Files, Commands, Options, Right, as in Norton Commander) is
+the native one on macOS. In the window it's hidden unless "Always show the menu
+bar" is on; F9 shows it. Settings, last directories, panel modes and window
+geometry are saved in the platform config directory (`settings.json`).
 
 ## Building the app
 
@@ -211,7 +225,8 @@ Docker and are skipped when Docker isn't available.
 | `preview/source.py` | `PreviewSource`: head / stream / local file through the generic file system interface |
 | `preview/builtin/` | Built-in previewers: listing, image, PDF, media, Markdown, text, hex |
 | `preview/content.py` | Qt-free helpers: text detection and decoding, hex dumps, listings |
-| `themes.py`, `config.py` | Theme definitions, persisted settings |
+| `themes.py`, `config.py` | Color schemes (built-in and user files), appearance, persisted settings |
+| `ui/settings_dialog.py` | Settings window, color scheme editor |
 | `ui/main_window.py` | Window, sides, commands and shortcuts, function-key bar |
 | `ui/panel.py` | File list model, row painting, key handling |
 | `ui/preview_pane.py` | Hosts previewer views, "View as" chips, background loading; no type-specific code |

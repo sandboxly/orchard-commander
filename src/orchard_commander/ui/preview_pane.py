@@ -193,7 +193,7 @@ class PreviewPane(BoxFrame):
         preferred = self._forced or self._choice.get(self._ext(path))
         self._forced = None
         ctx = LoadContext(
-            theme=self.themes.theme,
+            colors=self.themes.colors,
             show_hidden=self.show_hidden,
             is_cancelled=lambda: request != self._request,
             download_limit=None if path == self._download_ok else AUTO_DOWNLOAD_LIMIT,

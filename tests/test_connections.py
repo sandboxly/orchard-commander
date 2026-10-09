@@ -119,7 +119,7 @@ def test_legacy_config_directory_is_migrated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LEGACY_CONFIG_DIR", legacy)
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "Orchard Commander" / "settings.json")
     assert config.migrate_legacy_config()
-    assert config.Settings.load().theme == "nord"
+    assert config.Settings.load().color_scheme == "nord"  # was "theme"
     assert (tmp_path / "Orchard Commander" / "known_hosts").read_text() == "host key"
     assert legacy.exists()  # kept as a backup
     assert not config.migrate_legacy_config()  # only once

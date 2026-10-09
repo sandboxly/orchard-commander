@@ -1,17 +1,24 @@
-"""Color themes.
+"""The look of the app: color schemes, fonts and frame styles.
 
-A theme is a flat set of named colors. The UI derives its whole look (Qt style
-sheet, panel borders, file colors, syntax highlighting) from it, so adding a
-theme means adding one `Theme(...)` below.
+A theme is the whole appearance (`Appearance`): a color scheme (or one for
+light and one for dark system mode), a font, line spacing and a frame style.
+Color schemes are named, shareable data: the built-ins below plus TOML files in
+the config directory's `color-schemes/` folder, which the scheme editor writes.
+The UI derives its whole look (Qt style sheet, panel borders, file colors,
+syntax highlighting) from a scheme's colors.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import re
+import tomllib
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
-class Theme:
+class ColorScheme:
     name: str
     dark: bool
     background: str  # window background, around the panels
@@ -38,10 +45,36 @@ class Theme:
     pygments_style: str
 
 
-THEMES: dict[str, Theme] = {
+# Every color of a scheme: (field, label, group), in the order the scheme editor shows them.
+COLOR_ROLES: list[tuple[str, str, str]] = [
+    ("background", "Window background", "General"),
+    ("surface", "Panel background", "General"),
+    ("foreground", "Text", "General"),
+    ("muted", "Secondary text", "General"),
+    ("accent", "Headers and titles", "General"),
+    ("border", "Border", "General"),
+    ("border_active", "Active border", "General"),
+    ("cursor_bg", "Cursor", "Cursor"),
+    ("cursor_fg", "Cursor text", "Cursor"),
+    ("cursor_inactive_bg", "Cursor, inactive panel", "Cursor"),
+    ("dir", "Directories", "Files"),
+    ("exec", "Executables", "Files"),
+    ("link", "Symbolic links", "Files"),
+    ("hidden", "Hidden files", "Files"),
+    ("marked", "Marked files", "Files"),
+    ("error", "Errors", "Messages"),
+    ("warning", "Warnings", "Messages"),
+    ("success", "Success", "Messages"),
+    ("footer_bg", "Key bar background", "Key bar"),
+    ("footer_fg", "Key bar text", "Key bar"),
+    ("footer_key", "Key bar keys", "Key bar"),
+]
+
+
+BUILTIN_SCHEMES: dict[str, ColorScheme] = {
     t.name: t
     for t in [
-        Theme(
+        ColorScheme(
             name="monokai",
             dark=True,
             background="#1e1f1c",
@@ -67,7 +100,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#fd971f",
             pygments_style="monokai",
         ),
-        Theme(
+        ColorScheme(
             name="dracula",
             dark=True,
             background="#21222c",
@@ -93,7 +126,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#ff79c6",
             pygments_style="dracula",
         ),
-        Theme(
+        ColorScheme(
             name="nord",
             dark=True,
             background="#242933",
@@ -119,7 +152,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#88c0d0",
             pygments_style="nord",
         ),
-        Theme(
+        ColorScheme(
             name="gruvbox",
             dark=True,
             background="#1d2021",
@@ -145,7 +178,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#fabd2f",
             pygments_style="gruvbox-dark",
         ),
-        Theme(
+        ColorScheme(
             name="tokyo-night",
             dark=True,
             background="#16161e",
@@ -171,7 +204,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#bb9af7",
             pygments_style="one-dark",
         ),
-        Theme(
+        ColorScheme(
             name="commander",
             dark=True,
             background="#000060",
@@ -197,7 +230,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#ffffff",
             pygments_style="native",
         ),
-        Theme(
+        ColorScheme(
             name="solarized-light",
             dark=False,
             background="#eee8d5",
@@ -223,7 +256,7 @@ THEMES: dict[str, Theme] = {
             footer_key="#cb4b16",
             pygments_style="solarized-light",
         ),
-        Theme(
+        ColorScheme(
             name="paper",
             dark=False,
             background="#e8e8e3",
@@ -253,7 +286,154 @@ THEMES: dict[str, Theme] = {
 }
 
 
-def get_theme(name: str) -> Theme:
-    from orchard_commander.config import DEFAULT_THEME
+DEFAULT_SCHEME = "monokai"
+DEFAULT_LIGHT_SCHEME = "solarized-light"
 
-    return THEMES.get(name) or THEMES[DEFAULT_THEME]
+
+def is_builtin(name: str) -> bool:
+    return name in BUILTIN_SCHEMES
+
+
+# -- user color schemes ------------------------------------------------------
+
+_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def is_color(value: object) -> bool:
+    """A "#rrggbb" color, as schemes store them."""
+    return isinstance(value, str) and _COLOR.fullmatch(value) is not None
+
+
+def user_scheme_dir() -> Path:
+    from orchard_commander import config
+
+    return config.CONFIG_FILE.parent / "color-schemes"
+
+
+def scheme_from_dict(data: dict, fallback_name: str = "") -> ColorScheme:
+    """A scheme from parsed TOML. Missing or invalid colors come from a built-in
+    scheme of the same brightness, so files stay valid when roles are added."""
+    dark = data.get("dark", True) is not False
+    base = BUILTIN_SCHEMES[DEFAULT_SCHEME if dark else DEFAULT_LIGHT_SCHEME]
+    colors = {
+        role: value.lower()
+        for role, _, _ in COLOR_ROLES
+        if is_color(value := data.get(role))
+    }
+    style = data.get("pygments_style")
+    return replace(
+        base,
+        name=str(data.get("name") or fallback_name).strip(),
+        dark=dark,
+        pygments_style=style if isinstance(style, str) and style else base.pygments_style,
+        **colors,
+    )
+
+
+def scheme_to_toml(scheme: ColorScheme) -> str:
+    def text(value: str) -> str:
+        return json.dumps(value, ensure_ascii=False)  # a valid TOML basic string
+
+    lines = [
+        f"# {scheme.name}: an Orchard Commander color scheme",
+        f"name = {text(scheme.name)}",
+        f"dark = {'true' if scheme.dark else 'false'}",
+        f"pygments_style = {text(scheme.pygments_style)}  # syntax highlighting in text previews",
+        "",
+    ]
+    width = max(len(role) for role, _, _ in COLOR_ROLES)
+    lines += [f"{role:<{width}} = {text(getattr(scheme, role))}  # {label}" for role, label, _ in COLOR_ROLES]
+    return "\n".join(lines) + "\n"
+
+
+def _user_schemes() -> dict[str, tuple[ColorScheme, Path]]:
+    found: dict[str, tuple[ColorScheme, Path]] = {}
+    directory = user_scheme_dir()
+    if not directory.is_dir():
+        return found
+    for path in sorted(directory.glob("*.toml")):
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            continue
+        scheme = scheme_from_dict(data, path.stem)
+        if scheme.name and not is_builtin(scheme.name) and scheme.name not in found:
+            found[scheme.name] = (scheme, path)
+    return found
+
+
+def all_schemes() -> dict[str, ColorScheme]:
+    """Built-in schemes, then the user's, by name. Read from disk on every call:
+    another running instance may have saved one."""
+    return {**BUILTIN_SCHEMES, **{name: s for name, (s, _) in _user_schemes().items()}}
+
+
+def get_scheme(name: str) -> ColorScheme:
+    return all_schemes().get(name) or BUILTIN_SCHEMES[DEFAULT_SCHEME]
+
+
+def save_user_scheme(scheme: ColorScheme, replaces: str | None = None) -> Path:
+    """Write `scheme` to the user's scheme folder. `replaces` is the user scheme
+    being edited (it may be renamed). Raises ValueError for a taken name."""
+    name = scheme.name.strip()
+    if not name:
+        raise ValueError("A color scheme needs a name")
+    if is_builtin(name):
+        raise ValueError(f"'{name}' is a built-in color scheme")
+    existing = _user_schemes()
+    if name in existing and name != replaces:
+        raise ValueError(f"A color scheme named '{name}' already exists")
+    if replaces in existing and replaces != name:
+        existing[replaces][1].unlink(missing_ok=True)
+    if name in existing:
+        path = existing[name][1]
+    else:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.casefold()).strip("-") or "scheme"
+        path = user_scheme_dir() / f"{slug}.toml"
+        n = 2
+        while path.exists():
+            path = path.with_name(f"{slug}-{n}.toml")
+            n += 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(scheme_to_toml(replace(scheme, name=name)), encoding="utf-8")
+    return path
+
+
+def delete_user_scheme(name: str) -> None:
+    entry = _user_schemes().get(name)
+    if entry is not None:
+        entry[1].unlink(missing_ok=True)
+
+
+# -- the whole appearance ----------------------------------------------------
+
+FRAME_STYLES = {"rounded": "Rounded", "single": "Single line", "double": "Double line", "heavy": "Heavy"}
+DEFAULT_FRAME_STYLE = "rounded"
+DEFAULT_FONT_SIZE = 13
+FONT_SIZE_RANGE = (7, 40)
+DEFAULT_LINE_SPACING = 1.0
+LINE_SPACING_RANGE = (0.8, 2.0)
+
+
+@dataclass(frozen=True, slots=True)
+class Appearance:
+    """What the user chose; `Settings.appearance()` fills in the defaults."""
+
+    color_scheme: str = DEFAULT_SCHEME
+    follow_system_appearance: bool = False  # use light_scheme / dark_scheme by the OS mode
+    light_scheme: str = DEFAULT_LIGHT_SCHEME
+    dark_scheme: str = DEFAULT_SCHEME
+    font_family: str = ""  # empty: the first installed of a list of good monospace fonts
+    font_style: str = ""  # e.g. "Light", "Medium"; empty: regular
+    font_size: int = DEFAULT_FONT_SIZE
+    line_spacing: float = DEFAULT_LINE_SPACING  # file list row height, as a multiple of the font's
+    frame_style: str = DEFAULT_FRAME_STYLE
+
+    def scheme_setting(self, system_dark: bool) -> str:
+        """The name of the setting that holds the scheme in use."""
+        if not self.follow_system_appearance:
+            return "color_scheme"
+        return "dark_scheme" if system_dark else "light_scheme"
+
+    def scheme_name(self, system_dark: bool) -> str:
+        return getattr(self, self.scheme_setting(system_dark))

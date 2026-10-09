@@ -17,7 +17,7 @@ and let users find, install and update them from inside Orchard Commander.
 | Previewers | `preview/api.py`: `Previewer`, `PreviewView` | built-ins + `orchard_commander.previewers` entry point |
 | File systems | `vfs.FileSystem`; connection types via `FileSystemProvider` | built-ins + `orchard_commander.filesystems` entry point |
 | Archive formats | `archives.Archive` base class | not pluggable yet |
-| Themes | `themes.Theme` (data only) | not pluggable yet |
+| Color schemes | `themes.ColorScheme` (data only; user TOML files in `color-schemes/`) | not pluggable yet |
 | Commands | `MainWindow` command list | not pluggable yet |
 
 Previewers and file systems are already decoupled: previewers get bytes,

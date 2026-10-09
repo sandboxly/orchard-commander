@@ -46,7 +46,7 @@ class TextPreviewer(Previewer):
 
     def load(self, src: PreviewSource, ctx: LoadContext) -> Loaded:
         text, info = _read(src)
-        return Loaded(TextData(text.text, html=_highlight(src.name, text.text, ctx.theme.pygments_style)), info)
+        return Loaded(TextData(text.text, html=_highlight(src.name, text.text, ctx.colors.pygments_style)), info)
 
     def create_view(self, ctx: ViewContext) -> PreviewView:
         return TextView(ctx)

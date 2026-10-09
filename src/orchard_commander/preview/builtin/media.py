@@ -9,7 +9,7 @@ from typing import BinaryIO
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QAudioBufferOutput, QAudioOutput, QMediaMetaData, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -34,8 +34,14 @@ from orchard_commander.preview.api import (
     Score,
     ViewContext,
 )
+from orchard_commander.preview.builtin.spectrum import SpectrumAnalyzer, SpectrumWidget
+from orchard_commander.preview.builtin.waveform import WaveformAnalyzer, WaveformWidget, format_time
 from orchard_commander.preview.source import PreviewSource
 from orchard_commander.ui.media_stream import StreamDevice
+from orchard_commander.ui.style import ThemeManager
+
+# A waveform reads the whole file; from servers, only up to this size.
+REMOTE_WAVEFORM_LIMIT = 100 * 1024**2
 
 
 @dataclass(slots=True)
@@ -45,6 +51,7 @@ class MediaData:
     size: int
     path: Path | None = None  # a local file, or
     stream: BinaryIO | None = None  # an open seekable stream from another file system
+    waveform_stream: BinaryIO | None = None  # audio from a stream: a second one for the waveform
 
 
 class MediaPreviewer(Previewer):
@@ -65,13 +72,21 @@ class MediaPreviewer(Previewer):
         stream = src.open_stream()  # no direct path: stream rather than fetch it all
         if _seekable(stream):
             data = MediaData(video, src.name, src.size, stream=stream)
-            return Loaded(data, f"{fs.human_size(src.size)} · {kind} · streaming", close=stream.close)
+            if not video and src.size <= REMOTE_WAVEFORM_LIMIT:
+                data.waveform_stream = src.open_stream()
+
+            def close() -> None:
+                for s in (stream, data.waveform_stream):
+                    if s is not None:
+                        s.close()
+
+            return Loaded(data, f"{fs.human_size(src.size)} · {kind} · streaming", close=close)
         stream.close()  # e.g. inside a compressed archive: needs a local copy
         path = src.local_file()
         return Loaded(MediaData(video, src.name, src.size, path=path), f"{fs.human_size(src.size)} · {kind}")
 
     def create_view(self, ctx: ViewContext) -> PreviewView:
-        return MediaView()
+        return MediaView(ctx.themes)
 
 
 def _seekable(stream: BinaryIO) -> bool:
@@ -81,17 +96,10 @@ def _seekable(stream: BinaryIO) -> bool:
         return False
 
 
-def _fmt_time(ms: int) -> str:
-    s = max(ms, 0) // 1000
-    h, rem = divmod(s, 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
-
-
 class MediaView(PreviewView):
     """Video/audio player: Space play/pause, ←/→ seek 5 s, M mute."""
 
-    def __init__(self) -> None:
+    def __init__(self, themes: ThemeManager) -> None:
         super().__init__()
         self.setObjectName("previewPage")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -105,15 +113,39 @@ class MediaView(PreviewView):
         # The video surface is a native child window that grabs focus when it
         # appears; give focus straight back so the file list keeps the cursor.
         QApplication.instance().focusChanged.connect(self._reject_video_focus)  # type: ignore[union-attr]
-        self.audio_label = QLabel("♪")
-        self.audio_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.audio_label.setObjectName("muted")
-        f = self.audio_label.font()
-        f.setPointSize(f.pointSize() * 5)
-        self.audio_label.setFont(f)
+        self._name = ""
+        self._is_video = False
+        # Audio: title and artist, a live spectrum of what's playing, and below it
+        # the whole file's waveform, which is also the seek bar.
+        self.spectrum_analyzer = SpectrumAnalyzer(self)
+        self.spectrum = SpectrumWidget(themes, self.spectrum_analyzer)
+        self.buffer_output = QAudioBufferOutput(self)
+        self.player.setAudioBufferOutput(self.buffer_output)
+        self.buffer_output.audioBufferReceived.connect(self._audio_played)
+        self.analyzer = WaveformAnalyzer(self)
+        self.waveform = WaveformWidget(themes, self.analyzer)
+        self.waveform.seek_requested.connect(self.player.setPosition)
+        self.title_label = QLabel()
+        self.title_label.setObjectName("dialogTitle")
+        self.artist_label = QLabel()
+        self.artist_label.setObjectName("muted")
+        audio_screen = QWidget()
+        audio_screen.setObjectName("previewPage")
+        audio_layout = QVBoxLayout(audio_screen)
+        for label in (self.title_label, self.artist_label):
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setTextFormat(Qt.TextFormat.PlainText)
+        line = self.fontMetrics().height()
+        audio_layout.addWidget(self.title_label)
+        audio_layout.addWidget(self.artist_label)
+        audio_layout.addSpacing(line // 2)
+        audio_layout.addWidget(self.spectrum, 1)
+        audio_layout.addSpacing(line // 2)
+        self.waveform.setFixedHeight(round(line * 4.5))
+        audio_layout.addWidget(self.waveform)
         self.screen_stack = QStackedWidget()
         self.screen_stack.addWidget(self.video)
-        self.screen_stack.addWidget(self.audio_label)
+        self.screen_stack.addWidget(audio_screen)
 
         self.play_button = self._button("▶", self.toggle_play)
         self.mute_button = self._button("🔇", self.toggle_mute)
@@ -138,6 +170,8 @@ class MediaView(PreviewView):
 
         self.player.positionChanged.connect(self._position_changed)
         self.player.durationChanged.connect(lambda d: self.slider.setRange(0, d))
+        self.player.durationChanged.connect(self.waveform.set_duration)
+        self.player.metaDataChanged.connect(self._metadata_changed)
         self.player.playbackStateChanged.connect(self._state_changed)
         self.player.hasVideoChanged.connect(lambda v: self.screen_stack.setCurrentIndex(0 if v else 1))
         self.player.errorOccurred.connect(lambda _e, msg: msg and self.message.emit(f"Cannot play this file:\n{msg}"))
@@ -147,6 +181,24 @@ class MediaView(PreviewView):
         self.audio.setMuted(True)
         self._update_mute()
         self.player.setLoops(QMediaPlayer.Loops.Infinite if data.video else QMediaPlayer.Loops.Once)
+        self._name = data.name
+        self._is_video = data.video
+        self.spectrum.reset()
+        self.spectrum_analyzer.reset()
+        self.slider.setVisible(data.video)  # audio seeks on the waveform
+        self.screen_stack.setCurrentIndex(0 if data.video else 1)
+        self.waveform.set_duration(0)
+        self.waveform.set_position(0)
+        self._metadata_changed()
+        if not data.video:
+            if data.path is not None:
+                self.analyzer.start(path=data.path)
+                self.waveform.set_note("")
+            elif data.waveform_stream is not None:
+                self.analyzer.start(stream=data.waveform_stream, size=data.size)
+                self.waveform.set_note("")
+            else:
+                self.waveform.set_note("No waveform for large files on servers")
         if data.stream is not None:
             self._device = StreamDevice(data.stream, data.size)
             # The URL only tells the player the format; data comes from the device.
@@ -178,6 +230,9 @@ class MediaView(PreviewView):
     def stop(self) -> None:
         self.player.stop()
         self.player.setSource(QUrl())
+        self.analyzer.stop()
+        self.spectrum.reset()
+        self.spectrum_analyzer.reset()
         if self._device is not None:
             self._device.close()
             self._device = None
@@ -201,10 +256,28 @@ class MediaView(PreviewView):
     def _position_changed(self, pos: int) -> None:
         if not self.slider.isSliderDown():
             self.slider.setValue(pos)
-        self.time_label.setText(f"{_fmt_time(pos)} / {_fmt_time(self.player.duration())}")
+        self.waveform.set_position(pos)
+        self.time_label.setText(f"{format_time(pos)} / {format_time(self.player.duration())}")
+
+    def _metadata_changed(self) -> None:
+        meta = self.player.metaData()
+        title = meta.stringValue(QMediaMetaData.Key.Title) or self._name
+        artist = meta.stringValue(QMediaMetaData.Key.ContributingArtist) or meta.stringValue(
+            QMediaMetaData.Key.AlbumArtist
+        )
+        album = meta.stringValue(QMediaMetaData.Key.AlbumTitle)
+        self.title_label.setText(title)
+        self.artist_label.setText(" · ".join(x for x in (artist, album) if x))
 
     def _state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
-        self.play_button.setText("❚❚" if state == QMediaPlayer.PlaybackState.PlayingState else "▶")
+        playing = state == QMediaPlayer.PlaybackState.PlayingState
+        self.play_button.setText("❚❚" if playing else "▶")
+        if not self._is_video:
+            self.spectrum.set_active(playing)
+
+    def _audio_played(self, buffer) -> None:
+        if not self._is_video:
+            self.spectrum_analyzer.feed(buffer)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         match event.key():

@@ -130,7 +130,7 @@ class RowDelegate(QStyledItemDelegate):
         self.view = view
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: Index) -> None:
-        t = self.view.themes.theme
+        t = self.view.themes.colors
         model = self.view.file_model
         entry: fs.Entry | None = index.data(EntryRole)
         marked = entry is not None and entry.name in model.marked
@@ -214,7 +214,7 @@ class FileTable(QTableView):
     def _restyle(self) -> None:
         fm = self.fontMetrics()
         cw = fm.horizontalAdvance("M")
-        self.verticalHeader().setDefaultSectionSize(fm.height() + 2)
+        self.verticalHeader().setDefaultSectionSize(self.themes.row_height() + 2)
         self.verticalHeader().setMinimumSectionSize(fm.height())
         self.horizontalHeader().setFixedHeight(fm.height() + 2)
         self.horizontalHeader().resizeSection(COL_SIZE, cw * 11)
@@ -324,7 +324,7 @@ class FilePanel(BoxFrame):
         self._watcher = QFileSystemWatcher(self)
         self._watcher.directoryChanged.connect(lambda _: self._reload_timer.start())
         self._reload_timer = QTimer(self, singleShot=True, interval=250)
-        self._reload_timer.timeout.connect(self.reload)
+        self._reload_timer.timeout.connect(self._directory_changed)
 
         # Listing runs in the background; `_request` discards stale results.
         self._request = 0
@@ -420,6 +420,12 @@ class FilePanel(BoxFrame):
         self._update_subtitle()
         reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else exc
         self.message.emit(f"Cannot open {location.display}: {reason}", "error")
+
+    def _directory_changed(self) -> None:
+        # Never let a refresh of the folder being left supersede a listing still on
+        # its way (e.g. from a server): with a busy folder, it would never arrive.
+        if self._completed == self._request:
+            self.reload()
 
     def reload(self) -> None:
         """Re-read the current directory, keeping cursor and marks."""

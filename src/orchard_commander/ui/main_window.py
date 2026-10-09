@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QPoint, Qt, QTimer, Signal
@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
+    QMenuBar,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -25,13 +27,14 @@ from PySide6.QtWidgets import (
 from orchard_commander import APP_NAME, archives, bookmarks, connections, fs, locations, vfs
 from orchard_commander.fsproviders import AuthenticationRequired, ConnectContext, ConnectionCancelled
 from orchard_commander.config import Settings
-from orchard_commander.themes import THEMES
+from orchard_commander.themes import FONT_SIZE_RANGE, Appearance, all_schemes
 from orchard_commander.ui import bookmarks_ui, dialogs, tasks
 from orchard_commander.ui.connect_dialogs import ConnectionManager, ask_password, confirm_question
 from orchard_commander.ui.operations import FileOperation
 from orchard_commander.ui.panel import FilePanel
 from orchard_commander.ui.preview_pane import PreviewPane
-from orchard_commander.ui.style import DEFAULT_FONT_SIZE, ThemeManager
+from orchard_commander.ui.settings_dialog import SettingsDialog
+from orchard_commander.ui.style import ThemeManager, system_is_dark
 
 IS_MACOS = sys.platform == "darwin"
 FILES, PREVIEW = "files", "preview"
@@ -126,7 +129,7 @@ class FKey(QLabel):
         self._restyle()
 
     def _restyle(self) -> None:
-        t = self.themes.theme
+        t = self.themes.colors
         self.setText(f'<span style="color:{t.footer_key}; font-weight:bold">{self.key}</span>&nbsp;{self.label}')
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -166,6 +169,7 @@ class Command:
     slot: Callable[[], None]
     shortcuts: list[str] = field(default_factory=list)
     fkey: tuple[str, str] | None = None  # (key label, bar label)
+    role: QAction.MenuRole = QAction.MenuRole.NoRole  # macOS: Settings and Quit go to the app menu
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +208,7 @@ class MainWindow(QMainWindow):
         self.commands = self._build_commands()
         layout.addWidget(self._build_footer())
         self.setCentralWidget(central)
+        self.menu_strip = self._build_menu_bars(layout)
         self.toast = Toast(central)
 
         for side in (self.left, self.right):
@@ -239,8 +244,13 @@ class MainWindow(QMainWindow):
             Command("Make directory", "Create a directory", self.mkdir, ["F7"], ("F7", "MkDir")),
             Command("Move to trash", "Move marked files to the trash", self.trash,
                     ["F8", "Delete", f"{mod}+Backspace"], ("F8", "Trash")),
-            Command("Choose theme", "Change the color theme", self.choose_theme, ["F9"], ("F9", "Theme")),
-            Command("Quit", f"Quit {APP_NAME}", self.close, ["F10", f"{mod}+Q"], ("F10", "Quit")),
+            Command("Menu", "Open the menu bar", self.show_menu, ["F9"], ("F9", "Menu")),
+            Command("Quit", f"Quit {APP_NAME}", self.close, ["F10", f"{mod}+Q"], ("F10", "Quit"),
+                    QAction.MenuRole.QuitRole),
+            Command("Settings…", "Appearance and other settings", self.open_settings, [f"{mod}+,"],
+                    role=QAction.MenuRole.PreferencesRole),
+            Command("Choose color scheme…", "Switch the color scheme, previewing as you move",
+                    self.choose_color_scheme),
             Command("Command palette", "Search all commands", self.command_palette, [f"{mod}+P", f"{mod}+Shift+P"]),
             Command("Reload panels", "Re-read both directories", self.reload, [f"{mod}+R"]),
             Command("Toggle hidden files", "Show or hide hidden files", self.toggle_hidden, hidden_keys),
@@ -270,13 +280,88 @@ class MainWindow(QMainWindow):
             Command("Zoom out", "Smaller font", lambda: self.zoom(-1), [f"{mod}+-"]),
             Command("Reset zoom", "Default font size", lambda: self.zoom(0), [f"{mod}+0"]),
         ]
+        self.actions_by_title: dict[str, QAction] = {}
         for cmd in commands:
             action = QAction(cmd.title, self)
             action.setShortcuts([QKeySequence(k) for k in cmd.shortcuts])
             action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            action.setMenuRole(cmd.role)
             action.triggered.connect(cmd.slot)
             self.addAction(action)
+            self.actions_by_title[cmd.title] = action
         return commands
+
+    # -- menu bar --------------------------------------------------------------
+
+    def _build_menu_bars(self, layout: QVBoxLayout) -> QMenuBar:
+        """Norton / FAR style menus: Left, Files, Commands, Options, Right.
+
+        Where there is a global menu bar (macOS, KDE with a global menu) the
+        menus go there, and a second, in-window copy is the "strip". Elsewhere
+        the window's own menu bar is the strip. The strip is hidden unless the
+        user wants it always shown; F9 shows it and opens a menu, Norton-style.
+        """
+        bar = self.menuBar()
+        self._fill_menu_bar(bar)
+        if bar.isNativeMenuBar():
+            strip = QMenuBar()
+            strip.setNativeMenuBar(False)
+            self._fill_menu_bar(strip)
+            layout.insertWidget(0, strip)
+        else:
+            strip = bar
+        for menu in strip.findChildren(QMenu):
+            if menu.parent() is strip:
+                menu.aboutToHide.connect(self._menu_closed)
+        strip.setVisible(bool(self.settings.menu_bar_visible))
+        return strip
+
+    def _fill_menu_bar(self, bar: QMenuBar) -> None:
+        def add(menu: QMenu, *titles: str | None) -> None:
+            for title in titles:
+                if title is None:
+                    menu.addSeparator()
+                else:
+                    menu.addAction(self.actions_by_title[title])
+
+        def side_menu(side: Side, title: str, location: str, transfer: str) -> None:
+            menu = bar.addMenu(title)
+            files = menu.addAction("Files", lambda: self.set_mode(side, FILES))
+            preview = menu.addAction("Preview", lambda: self.set_mode(side, PREVIEW))
+            for action in (files, preview):
+                action.setCheckable(True)
+            menu.aboutToShow.connect(lambda: (files.setChecked(side.mode == FILES),
+                                              preview.setChecked(side.mode == PREVIEW)))
+            menu.addSeparator()
+            add(menu, location, transfer)
+
+        side_menu(self.left, "&Left", "Left drive / location", "Transfer to left panel")
+        add(bar.addMenu("&Files"), "Copy", "Move / rename", "Make directory", "Move to trash", None, "Quit")
+        add(bar.addMenu("&Commands"),
+            "Command palette", None, "Toggle preview", "Next preview view", None,
+            "Go to path", "Bookmarks", "Go to bookmark", "Add current folder to bookmarks", "Organize bookmarks",
+            None, "Connect to server", "Disconnect", None, "Swap panels", "Same directory", "Reload panels")
+        add(bar.addMenu("&Options"),
+            "Settings…", "Choose color scheme…", None, "Toggle hidden files", None,
+            "Zoom in", "Zoom out", "Reset zoom")
+        side_menu(self.right, "&Right", "Right drive / location", "Transfer to right panel")
+
+    def show_menu(self) -> None:
+        """F9: show the in-window menu bar and open the active side's menu."""
+        strip = self.menu_strip
+        strip.show()
+        index = 0 if self._active is self.left else -1
+        QTimer.singleShot(0, lambda: strip.setActiveAction(strip.actions()[index]))
+
+    def _menu_closed(self) -> None:
+        def hide_unless_open() -> None:
+            if self.settings.menu_bar_visible or QApplication.activePopupWidget() is not None:
+                return
+            self.menu_strip.hide()
+            if QApplication.activeModalWidget() is None:
+                self._active.focus_main()
+
+        QTimer.singleShot(0, hide_unless_open)  # moving to the next menu closes this one first
 
     def _build_footer(self) -> QWidget:
         footer = QWidget()
@@ -638,18 +723,33 @@ class MainWindow(QMainWindow):
         tasks.run_in_background(lambda: self.sessions.disconnect(server), lambda _: self.notify("Disconnected"),
                                 lambda exc: None, owner=self)
 
-    def choose_theme(self) -> None:
-        original = self.themes.theme.name
-        items = [(name, "dark" if t.dark else "light", name) for name, t in THEMES.items()]
+    # -- settings --------------------------------------------------------------
+
+    def open_settings(self) -> None:
+        SettingsDialog(self, self.themes, self.settings, self.apply_settings).exec()
+
+    def apply_settings(self, **changes: object) -> None:
+        """Save setting changes and bring the app up to date."""
+        self.settings.update(**changes)
+        if changes.keys() & {f.name for f in fields(Appearance)}:
+            self.themes.set_appearance(self.settings.appearance())
+        if "menu_bar_visible" in changes:
+            self.menu_strip.setVisible(bool(self.settings.menu_bar_visible))
+
+    def choose_color_scheme(self) -> None:
+        """Pick a scheme for the current mode (light or dark, when following the system)."""
+        schemes = all_schemes()
+        slot = self.themes.appearance.scheme_setting(system_is_dark())
+        current = getattr(self.themes.appearance, slot)
+        items = [(name, "dark" if s.dark else "light", name) for name, s in schemes.items()]
         picker = dialogs.Picker(
-            self, self.themes, "Theme", items, current=original, on_highlight=lambda n: self.themes.set_theme(str(n))
+            self, self.themes, "Color scheme", items, current=current,
+            on_highlight=lambda n: self.themes.preview_colors(schemes[str(n)]),
         )
         chosen = picker.choose()
-        if chosen is None:
-            self.themes.set_theme(original)
-        else:
-            self.themes.set_theme(str(chosen))
-            self.settings.update(theme=str(chosen))
+        self.themes.preview_colors(None)
+        if chosen is not None:
+            self.apply_settings(**{slot: str(chosen)})
 
     def command_palette(self) -> None:
         items = []
@@ -661,9 +761,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, slot)
 
     def zoom(self, delta: int) -> None:
-        size = DEFAULT_FONT_SIZE if delta == 0 else self.themes.font_size + delta
-        self.themes.set_font_size(size)
-        self.settings.update(extra={**self.settings.extra, "font_size": self.themes.font_size})
+        lo, hi = FONT_SIZE_RANGE
+        self.apply_settings(font_size=None if delta == 0 else max(lo, min(self.themes.font_size + delta, hi)))
 
     def _refuse(self, location: vfs.VPath, what: str, *, ok: bool) -> bool:
         """Tell the user (and return True) if `location`'s file system can't do `what`."""

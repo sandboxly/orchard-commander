@@ -82,20 +82,31 @@ class BoxFrame(QFrame):
     # -- painting ----------------------------------------------------------
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        t = self.themes.theme
+        t = self.themes.colors
         cw, ch = self._cell()
+        style = self.themes.frame_style
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, style == "rounded")  # straight lines: crisp
         p.setFont(self.themes.font)
         fm = QFontMetricsF(self.themes.font)
 
         p.fillRect(self.rect(), QColor(t.background))
-        box = QRectF(cw / 2, ch / 2, self.width() - cw, self.height() - ch)
+        box = QRectF(round(cw / 2), round(ch / 2), self.width() - 2 * round(cw / 2), self.height() - 2 * round(ch / 2))
         color = QColor(t.border_active if self._active else t.border)
-        pen = QPen(color, 2.0 if (self.heavy or self._active) else 1.0)
-        p.setPen(pen)
+        strong = self.heavy or self._active
         p.setBrush(QColor(t.surface))
-        p.drawRoundedRect(box, cw * 0.7, cw * 0.7)
+        if style == "double":
+            p.setPen(QPen(color, 2.0 if strong else 1.0))
+            p.drawRect(box)
+            gap = max(3, round(cw * 0.3))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRect(box.adjusted(gap, gap, -gap, -gap))
+        elif style in ("single", "heavy"):
+            p.setPen(QPen(color, (1.0 if style == "single" else 2.0) + (1.0 if strong else 0.0)))
+            p.drawRect(box)
+        else:
+            p.setPen(QPen(color, 2.0 if strong else 1.0))
+            p.drawRoundedRect(box, cw * 0.7, cw * 0.7)
 
         room = self.width() - 6 * cw
         if self._title and room > cw:
