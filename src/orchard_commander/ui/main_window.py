@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from orchard_commander import APP_NAME, archives, bookmarks, connections, fs, locations, vfs
+from orchard_commander import APP_NAME, archives, bookmarks, connections, fs, fsproviders, locations, vfs
 from orchard_commander.fsproviders import AuthenticationRequired, ConnectContext, ConnectionCancelled
 from orchard_commander.config import Settings
 from orchard_commander.themes import FONT_SIZE_RANGE, Appearance, all_schemes
@@ -267,7 +267,7 @@ class MainWindow(QMainWindow):
             Command("Go to bookmark", "Search bookmarks as you type", self.go_to_bookmark, [f"{mod}+Shift+D"]),
             Command("Add current folder to bookmarks", "Bookmark the active panel's folder", self.add_bookmark),
             Command("Organize bookmarks", "Reorder, group, edit and delete bookmarks", self.organize_bookmarks),
-            Command("Go to path", "Type a directory or sftp:// / smb:// address", self.goto_path,
+            Command("Go to path", "Type a directory or a server address", self.goto_path,
                     [f"{mod}+G", f"{mod}+Shift+G"]),
             Command("Connect to server", "Saved SFTP and SMB connections", self.connection_manager, [f"{mod}+K"]),
             Command("Disconnect", "Close the connection of the active panel's server", self.disconnect,
@@ -506,7 +506,8 @@ class MainWindow(QMainWindow):
     def goto_path(self) -> None:
         panel = self.active_panel
         value = dialogs.ask_text(
-            self, self.themes, "Go to", "Directory, or sftp:// / smb:// address:", panel.location.display, "Go"
+            self, self.themes, "Go to", f"Directory, or server address ({fsproviders.address_examples()}):",
+            panel.location.display, "Go",
         )
         if not value:
             return

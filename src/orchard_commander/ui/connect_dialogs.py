@@ -146,7 +146,8 @@ class ConnectionManager(Dialog):
 
     def __init__(self, parent: QWidget, themes: ThemeManager) -> None:
         super().__init__(parent, themes, "Connect to server", width_chars=72)
-        self.add_label("Saved connections — or use Go to (Ctrl+G) with an sftp:// or smb:// address.", muted=True)
+        self.add_label(f"Saved connections — or use Go to (Ctrl+G) with an address: {fsproviders.address_examples()}",
+                       muted=True)
         self.list = QListWidget()
         self.content.addWidget(self.list)
         fm = self.fontMetrics()

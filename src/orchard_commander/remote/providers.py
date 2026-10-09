@@ -1,4 +1,4 @@
-"""The built-in connection types: SFTP and SMB."""
+"""The built-in connection types: SFTP, SMB and WebDAV."""
 
 from __future__ import annotations
 
@@ -128,3 +128,79 @@ class SMBProvider(FileSystemProvider):
 
     def start_path(self, params: Params, filesystem: vfs.FileSystem) -> str:
         return "/" + str(params.get("path") or "").strip("/")
+
+
+class WebDAVProvider(FileSystemProvider):
+    """WebDAV over HTTPS: webdavs://[user@]host[:port]/server/path/start/folder"""
+
+    scheme = "webdavs"
+    title = "WebDAV (HTTPS)"
+    secure = True
+    default_port = 443
+    fields = (
+        Field("host", "Server", required=True, placeholder="e.g. cloud.example.com"),
+        Field("port", "Port", kind="int", placeholder="default 443"),
+        Field("root", "Server path", placeholder="e.g. /remote.php/dav/files/USER for Nextcloud"),
+        Field("username", "User"),
+        Field("path", "Start folder", placeholder="below the server path"),
+    )
+    secret_hint = "empty: ask if the server wants one"
+
+    def parse_url(self, url: str) -> dict[str, str | int]:
+        params, segments = split_server_url(url, self.scheme)
+        if segments:  # a typed address: its whole path is the root
+            params["root"] = "/" + "/".join(segments)
+        return params
+
+    def format_url(self, params: Params) -> str:
+        root = str(params.get("root") or "").strip("/")
+        path = str(params.get("path") or "").strip("/")
+        full = "/".join(p for p in (root, path) if p)
+        return join_server_url(self.scheme, params, self.default_port, f"/{quote(full)}" if full else "")
+
+    def validate(self, params: Params) -> str | None:
+        if "://" in str(params.get("host", "")) or "/" in str(params.get("host", "")):
+            return "Enter just the server name; the rest of the address goes into Server path."
+        return super().validate(params)
+
+    def connect(self, params: Params, secret: str | None, ctx: ConnectContext) -> vfs.FileSystem:
+        from orchard_commander.remote import webdav
+
+        def confirm_certificate(q: webdav.CertificateQuestion) -> bool:
+            shown = q.host if q.port == 443 else f"{q.host}:{q.port}"
+            return ctx.confirm(
+                "Untrusted certificate",
+                f"The certificate of {shown} isn't trusted by this computer ({q.problem}). "
+                f"Servers on a home network often use such self-made certificates.\n\n"
+                f"Certificate fingerprint:\n  {q.fingerprint}\n\n"
+                f"If you know the server's fingerprint, check that it matches. Trusting it remembers this "
+                f"certificate; {APP_NAME} will refuse to connect if it ever changes.",
+                "Trust and connect",
+            )
+
+        return webdav.connect(
+            str(params["host"]),
+            secure=self.secure,
+            port=_port(params, self.default_port),
+            root=str(params.get("root") or "/"),
+            username=str(params.get("username") or "") or None,
+            password=secret,
+            trusted_certificates=ctx.data_dir / "trusted_certificates.json",
+            confirm_certificate=confirm_certificate,
+        )
+
+    def start_path(self, params: Params, filesystem: vfs.FileSystem) -> str:
+        return "/" + str(params.get("path") or "").strip("/")
+
+
+class PlainWebDAVProvider(WebDAVProvider):
+    """WebDAV over unencrypted HTTP (only sensible on a trusted local network)."""
+
+    scheme = "webdav"
+    title = "WebDAV (HTTP, unencrypted)"
+    secure = False
+    default_port = 80
+    fields = tuple(
+        Field(f.key, f.label, f.kind, f.required, "default 80", f.default) if f.key == "port" else f
+        for f in WebDAVProvider.fields
+    )

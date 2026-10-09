@@ -159,3 +159,84 @@ def start_samba_container(max_credits: int | None = None) -> tuple[SMBServer, ca
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
     return SMBServer("127.0.0.1", port, "SHARE", Path("/shares/share")), stop
+
+
+@dataclass
+class WebDAVServer:
+    host: str
+    port: int
+    root: str  # the URL path the share is mounted at
+    cert_fingerprint: str | None  # "SHA256:…" of the self-signed certificate (HTTPS only)
+    stop: callable
+
+
+def start_webdav_server(folder: Path, *, digest: bool = False, tls: bool = False,
+                        cert_dir: Path | None = None) -> WebDAVServer:
+    """WsgiDAV on cheroot, serving `folder` at /dav (a server path, like Nextcloud's).
+
+    With `tls`, HTTPS with a fresh self-signed certificate (written to `cert_dir`).
+    Modification times can be set (PROPPATCH of DAV:getlastmodified).
+    """
+    import logging
+
+    from cheroot import wsgi
+    from wsgidav.wsgidav_app import WsgiDAVApp
+
+    logging.getLogger("wsgidav").setLevel(logging.ERROR)
+    config = {
+        "provider_mapping": {"/dav": str(folder)},
+        "http_authenticator": {"accept_basic": not digest, "accept_digest": digest, "default_to_digest": digest},
+        "simple_dc": {"user_mapping": {"*": {USER: {"password": PASSWORD}}}},
+        "mutable_live_props": ["{DAV:}getlastmodified"],
+        "verbose": 0,
+        "logging": {"enable": False, "enable_loggers": []},
+        "property_manager": True,
+        "lock_storage": True,
+    }
+    server = wsgi.Server(("127.0.0.1", 0), WsgiDAVApp(config), numthreads=8)
+    fingerprint = None
+    if tls:
+        from cheroot.ssl.builtin import BuiltinSSLAdapter
+
+        cert, key, fingerprint = _self_signed_certificate(cert_dir or folder.parent)
+        server.ssl_adapter = BuiltinSSLAdapter(str(cert), str(key))
+    server.prepare()
+    port = server.bind_addr[1]
+    thread = threading.Thread(target=server.serve, daemon=True)
+    thread.start()
+
+    def stop() -> None:
+        server.stop()
+        thread.join(5)
+
+    return WebDAVServer("127.0.0.1", port, "/dav", fingerprint, stop)
+
+
+def _self_signed_certificate(directory: Path) -> tuple[Path, Path, str]:
+    import datetime as dt
+    import hashlib
+    import ipaddress
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = dt.datetime.now(dt.UTC)
+    cert = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+        .serial_number(x509.random_serial_number()).not_valid_before(now - dt.timedelta(minutes=5))
+        .not_valid_after(now + dt.timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost"),
+                                                    x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), False)
+        .sign(key, hashes.SHA256())
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    cert_path, key_path = directory / "cert.pem", directory / "key.pem"
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                           serialization.NoEncryption()))
+    digest = hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest().upper()
+    return cert_path, key_path, "SHA256:" + ":".join(digest[i : i + 2] for i in range(0, len(digest), 2))

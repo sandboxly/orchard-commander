@@ -60,13 +60,16 @@ whichever is installed. `bsdtar` ships with macOS and (as `tar.exe`) with
 Windows 10+, and handles RAR5 and non-solid RAR4; solid RAR4 archives need
 `unrar` or 7-Zip.
 
-## Servers (SFTP and SMB)
+## Servers (SFTP, SMB and WebDAV)
 
 Press **Ctrl+K** (⌘K on macOS) to manage saved connections, or type an
 address into **Go to** (Ctrl+G):
 
 - `sftp://user@host[:port]/absolute/path` or `sftp://user@host/~/in/home`
 - `smb://user@server[:port]/share/folder` (Windows shares, Samba, NAS boxes)
+- `webdavs://user@host[:port]/server/path` (HTTPS) or `webdav://…` (plain HTTP):
+  Nextcloud, ownCloud, NAS boxes, Apache/nginx WebDAV shares. For Nextcloud
+  the server path is `/remote.php/dav/files/USER`.
 
 Saved connections also appear in the drive picker (Alt+F1 / Alt+F2). A
 server panel works like any other: browse, preview, copy/move in both
@@ -83,6 +86,13 @@ Ctrl+Shift+K disconnects the active panel's server.
   connection.
 - **SMB** speaks SMB 2/3 with NTLM/Kerberos (via `smbprotocol`), so it needs no
   OS mounts. Connections name the share; share discovery isn't supported.
+- **WebDAV** uses Basic or Digest authentication (for Nextcloud, an app
+  password is a good idea). Certificates are checked against the operating
+  system's trust store. A certificate the system doesn't trust (e.g. a NAS
+  with a self-made one) is shown with its SHA-256 fingerprint and can be
+  trusted once; a changed certificate then blocks the connection, as with SSH
+  host keys. Files are read with range requests, so media and archives stream
+  from the server; uploads are sent when complete.
 - **Passwords** are stored only if you tick "Remember", and then in the OS
   credential store (macOS Keychain, Windows Credential Manager, Secret
   Service on Linux) — never in Orchard Commander's files.
@@ -101,7 +111,7 @@ panel's path, opens the bookmark menu at the panel:
 - A bookmark can also remember the **other panel's folder** and open both at
   once (Total Commander's “target” path).
 - Bookmarks can point anywhere a panel can go: local folders, folders inside
-  archives, and folders on SFTP/SMB servers (reconnecting with the saved
+  archives, and folders on servers (reconnecting with the saved
   connection and its keychain password).
 - **+** adds the current folder (choose a title, a folder of bookmarks, and
   whether to include the other panel), **−** removes it if it's bookmarked,
@@ -139,7 +149,7 @@ Bookmarks are saved in `bookmarks.json` in the config directory.
 | Ctrl+U | Swap the left and right folders |
 | Ctrl+E | Show the active folder in the other panel too (TC's "Target = Source") |
 | Ctrl+← / Ctrl+→ | Left / right panel: open the folder (or archive) under the cursor there — or, pressed in that panel itself, match the other panel (TC's cm_TransferLeft / cm_TransferRight) |
-| Ctrl+G | Go to path or sftp:// / smb:// address |
+| Ctrl+G | Go to path or server address (sftp://, smb://, webdavs://, …) |
 | Ctrl+D / Ctrl+Shift+D | Bookmark menu (also: click a panel's path) / search bookmarks |
 | Ctrl+K / Ctrl+Shift+K | Connect to a server / disconnect |
 | Alt+F1 / Alt+F2 | Choose drive / volume for left / right panel |
@@ -183,7 +193,7 @@ and Windows; build on each platform for that platform. Check a build with
 which loads everything the app imports on demand.
 
 On macOS the app bundle matters beyond convenience: macOS only grants *Local
-Network* access (needed for SMB/SFTP servers on your LAN) to programs with a
+Network* access (needed for servers on your LAN) to programs with a
 proper identity, and asks for it using the `NSLocalNetworkUsageDescription`
 set in `packaging/orchard-commander.spec`. `uv run orchard-commander` runs on a bare Python binary,
 which macOS may silently block from the local network ("No route to host").
@@ -205,8 +215,9 @@ Regenerate the app icons (macOS `.icns`, Windows `.ico`, window icon) from
 uv run pytest
 ```
 
-The SFTP tests run a real SSH server (asyncssh) and the SMB tests impacket's
-SMB2 server, both on localhost. Full SMB read/write tests run against Samba in
+The SFTP tests run a real SSH server (asyncssh), the SMB tests impacket's
+SMB2 server and the WebDAV tests WsgiDAV (Basic, Digest, and HTTPS with a
+self-signed certificate), all on localhost. Full SMB read/write tests run against Samba in
 Docker and are skipped when Docker isn't available.
 
 | Module | Role |
@@ -215,8 +226,8 @@ Docker and are skipped when Docker isn't available.
 | `fs.py` | Native local-disk operations: listing, copy, move, trash, open (used by `LocalFS`) |
 | `archives.py` | Archive format readers (zip/tar/7z/rar/gz/bz2/xz) and the extraction cache (used by `ArchiveFS`) |
 | `fsproviders.py` | Connection types: `FileSystemProvider` interface, registry, entry-point discovery |
-| `remote/sftp.py`, `remote/smb.py` | SFTP (paramiko) and SMB (smbprotocol) file systems |
-| `remote/providers.py` | The built-in SFTP and SMB connection types |
+| `remote/sftp.py`, `remote/smb.py`, `remote/webdav.py` | SFTP (paramiko), SMB (smbprotocol) and WebDAV (standard library HTTP) file systems |
+| `remote/providers.py` | The built-in SFTP, SMB and WebDAV connection types |
 | `connections.py` | Provider-agnostic connections, saved connections, keychain passwords, live sessions |
 | `bookmarks.py`, `locations.py` | Bookmark tree and storage; serializable location specs (local, server, archive) |
 | `testing.py` | Contract checks for file system implementations (also for add-on authors) |

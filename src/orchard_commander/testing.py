@@ -134,9 +134,10 @@ def check_writing(root: vfs.VPath) -> None:
         f.write(b"short")
     assert target.stat().size == 5
 
-    filesystem.set_mtime(target.path, 1_600_000_000.0)  # best effort: 0 means "not supported"
+    before = target.stat().mtime
+    filesystem.set_mtime(target.path, 1_600_000_000.0)  # best effort: not every server can
     mtime = target.stat().mtime
-    assert mtime == 0 or abs(mtime - 1_600_000_000.0) < 2, f"set_mtime: {mtime}"
+    assert mtime in (0, before) or abs(mtime - 1_600_000_000.0) < 2, f"set_mtime: {mtime}"
 
     if filesystem.can_rename:
         renamed = root.child("new", "renamed.bin")

@@ -31,7 +31,8 @@ def self_test() -> int:
     failures = []
     for name in [
         "PySide6.QtWidgets", "PySide6.QtMultimedia", "PySide6.QtMultimediaWidgets", "PySide6.QtSvg",
-        "orchard_commander.ui.main_window", "orchard_commander.remote.sftp", "orchard_commander.remote.smb", "py7zr", "rarfile", "keyring",
+        "orchard_commander.ui.main_window", "orchard_commander.remote.sftp", "orchard_commander.remote.smb",
+        "orchard_commander.remote.webdav", "truststore", "py7zr", "rarfile", "keyring",
     ]:
         try:
             importlib.import_module(name)
@@ -45,6 +46,14 @@ def self_test() -> int:
         get_style_by_name("monokai")
     except Exception as exc:
         failures.append(f"pygments: {exc}")
+    try:  # HTTPS (WebDAV) checks certificates with the system's trust store
+        import ssl
+
+        import truststore
+
+        truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception as exc:
+        failures.append(f"truststore: {exc}")
     try:  # PDFium is a native library: check it loads (code signing, bundling)
         import pypdfium2 as pdfium
 

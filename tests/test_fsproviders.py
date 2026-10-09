@@ -93,14 +93,14 @@ def ctx(answer: bool = True, asked: list | None = None) -> ConnectContext:
 
 
 def test_builtins_registered(clean_registry):
-    assert [p.scheme for p in clean_registry.providers()] == ["sftp", "smb"]
+    assert [p.scheme for p in clean_registry.providers()] == ["sftp", "smb", "webdavs", "webdav"]
     assert clean_registry.scheme_of("SMB://nas/x") == "smb"
     assert clean_registry.scheme_of("ftp://x") is None and clean_registry.scheme_of("/local") is None
 
 
 def test_entry_point_addon_is_discovered(with_mem_addon, caplog):
     schemes = [p.scheme for p in with_mem_addon.providers()]
-    assert schemes == ["sftp", "smb", "mem"]  # broken and unavailable add-ons skipped
+    assert schemes == ["sftp", "smb", "webdavs", "webdav", "mem"]  # broken and unavailable add-ons skipped
     assert "could not load file system provider broken" in caplog.text
     assert connections.is_url("mem://bucket/projects")
 
@@ -152,8 +152,8 @@ def test_saved_connections_old_format_migrated(clean_registry):
 
 
 def test_connection_of_uninstalled_addon_is_kept(clean_registry):
-    connections.save(Connection("webdav", {"host": "dav.example.com"}, name="Old add-on"))
+    connections.save(Connection("ftp", {"host": "ftp.example.com"}, name="Old add-on"))
     [conn] = connections.load_saved()
-    assert conn.label == "Old add-on" and conn.url == "webdav://"
+    assert conn.label == "Old add-on" and conn.url == "ftp://"
     with pytest.raises(ValueError, match="add-on not installed"):
         connections.Sessions().connect(conn, None, ctx())

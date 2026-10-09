@@ -70,3 +70,21 @@ def test_smb(samba):
         check_filesystem(vfs.VPath(remote, "/"))
     finally:
         remote.close()
+
+
+@pytest.mark.parametrize("variant", ["basic", "digest", "https"])
+def test_webdav(tmp_path: Path, variant: str):
+    from orchard_commander.remote import webdav
+    from servers import start_webdav_server
+
+    (tmp_path / "server").mkdir()
+    server = start_webdav_server(tmp_path / "server", digest=variant == "digest", tls=variant == "https",
+                                 cert_dir=tmp_path / "cert")
+    remote = webdav.connect(server.host, port=server.port, secure=variant == "https", root=server.root,
+                            username=USER, password=PASSWORD, trusted_certificates=tmp_path / "trusted.json",
+                            confirm_certificate=lambda q: True)
+    try:
+        check_filesystem(vfs.VPath(remote, "/"))
+    finally:
+        remote.close()
+        server.stop()

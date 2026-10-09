@@ -1,4 +1,4 @@
-"""Network file systems (SFTP, SMB) behind the `vfs.FileSystem` interface."""
+"""Network file systems (SFTP, SMB, WebDAV) behind the `vfs.FileSystem` interface."""
 
 from __future__ import annotations
 
