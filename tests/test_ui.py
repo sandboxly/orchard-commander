@@ -1090,7 +1090,9 @@ def run_search(window: MainWindow, side, **options):
     query = search.Query(roots=(here,), **options)
     results = window.start_search(query, side)
     wait_until(lambda: not results.running)
-    wait_until(lambda: len(side.panel.entries) == len(results.hits))
+    # This search's results, not the previous one's still listed in the panel.
+    wait_until(lambda: side.panel.location.fs is results and not side.panel.loading
+               and len(side.panel.entries) == len(results.hits))
     settle(window)
     return results
 
@@ -1231,6 +1233,7 @@ def test_multi_rename_with_counter_and_undo(qtbot, window: MainWindow, tree: Pat
     wait_until(lambda: (src / "file_01.txt").exists() and (src / "file_02.bin").exists())
     assert not (src / "a.txt").exists()
 
+    wait_until(lambda: window._last_rename is not None)  # recorded once the batch has finished
     monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
     window.undo_rename()
     wait_until(lambda: (src / "a.txt").exists())
