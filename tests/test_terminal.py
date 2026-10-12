@@ -158,17 +158,17 @@ def test_one_shell_per_side(qtbot, term_window, tree: Path):
     w.toggle_terminal()
     assert w.terminal.isVisible() and w.terminal.view.hasFocus()
     left = started(w, "left")
-    run(left, "pwd; echo LEFT-SESSION")
-    wait_until(lambda: "LEFT-SESSION" in screen_text(left))
+    run(left, "pwd; echo LEFT-$((1+1))")  # wait for the output, not the echoed command line
+    wait_until(lambda: "LEFT-2" in screen_text(left))
     assert str((tree / "src").resolve()) in screen_text(left).replace("\n", "")  # the left panel's folder
 
     w.right.panel.setFocus()  # switching the active side swaps the session shown
     settle(w)
     right = started(w, "right")
     assert w.terminal.view.session is right and right is not left
-    run(right, "echo RIGHT-SESSION")
-    wait_until(lambda: "RIGHT-SESSION" in screen_text(right))
-    assert "RIGHT-SESSION" not in screen_text(left) and left.alive  # the other keeps running
+    run(right, "echo RIGHT-$((1+1))")
+    wait_until(lambda: "RIGHT-2" in screen_text(right))
+    assert "RIGHT-" not in screen_text(left) and left.alive  # the other keeps running
     w.left.panel.setFocus()
     settle(w)
     assert w.terminal.view.session is left
