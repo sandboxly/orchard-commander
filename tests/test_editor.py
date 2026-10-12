@@ -223,6 +223,7 @@ def test_edit_a_file_over_sftp(qtbot, window, tmp_path: Path):
 
 def test_title_shortens_the_home_folder(qtbot, window, tree: Path, monkeypatch):
     monkeypatch.setenv("HOME", str(tree))
+    monkeypatch.setenv("USERPROFILE", str(tree))  # Path.home() on Windows
     window.open_editor(vfs.local(tree / "src" / "a.txt"))
     editor = editor_for(window, "a.txt")
     assert editor.frame._title.endswith(os.path.join("~", "src", "a.txt"))
