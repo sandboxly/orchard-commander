@@ -36,9 +36,9 @@
 
 <main id="main">
   <section class="hero wrap">
-    <p class="kicker">Version 1.0 · free and open source</p>
+    <p class="kicker">Version 1.1 · free and open source</p>
     <h1>A two-panel file manager <span>for macOS, Windows and Linux</span></h1>
-    <p class="lede">Orchard Commander shows two folders side by side. F5 copies the selected files from one panel to the other, F6 moves them, F7 creates a folder and F8 moves files to the trash. If you have used Norton Commander or Total Commander, you already know how it works.</p>
+    <p class="lede">Orchard Commander shows two folders side by side. F5 copies the selected files from one panel to the other, F6 moves them, F7 creates a folder and F8 moves files to the trash. F4 opens a file in the text editor. If you have used Norton Commander or Total Commander, you already know how it works.</p>
     <div class="cta">
       <a class="btn btn-primary" href="#download" data-hero-dl><i class="ph ph-download-simple" aria-hidden="true"></i><span>Download</span></a>
       <span class="mute"><a href="#download">Other systems and packages</a></span>
@@ -75,7 +75,7 @@
           </div>
         </div>
         <div class="fbar" aria-hidden="true">
-          <span><b>F3</b>Preview</span><span><b>F5</b>Copy</span><span><b>F6</b>Move</span><span><b>F7</b>MkDir</span><span><b>F8</b>Trash</span><span><b>F9</b>Menu</span><span><b>F10</b>Quit</span>
+          <span><b>F3</b>Preview</span><span><b>F4</b>Edit</span><span><b>F5</b>Copy</span><span><b>F6</b>Move</span><span><b>F7</b>MkDir</span><span><b>F8</b>Trash</span><span><b>F9</b>Menu</span><span><b>F10</b>Quit</span>
           <span class="right"><span><b>⌘K</b>Connect</span><span><b>⌘P</b>Commands</span></span>
         </div>
       </div>
@@ -93,6 +93,19 @@
       <button class="frame shot" type="button" data-name="code.webp" aria-label="Enlarge screenshot: code preview">
         <span class="chip">Preview</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
         <img src="screenshots/code.webp" alt="A Python file previewed with syntax highlighting" loading="lazy">
+      </button>
+    </article>
+
+    <article class="feature">
+      <div>
+        <p class="kicker"><i class="ph ph-pencil-simple-line" aria-hidden="true"></i>Editor</p>
+        <h2>Edit text files with F4</h2>
+        <p>F4 opens the file under the cursor in an editor window with syntax highlighting in the app's color scheme. It works on your disk and on servers: a file in an SFTP panel is read over SFTP and saved back there. <kbd>⇧F4</kbd> creates a new file in the current folder.</p>
+        <ul class="marks"><li>Find and replace, go to line, unlimited undo</li><li>Keeps the file's encoding and line endings, including CRLF</li><li>Saves to a temporary file first, so a crash can't leave half a file</li></ul>
+      </div>
+      <button class="frame shot" type="button" data-name="editor.webp" aria-label="Enlarge screenshot: text editor">
+        <span class="chip">Editor</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+        <img src="screenshots/editor.webp" alt="The text editor showing a Python file with syntax highlighting and the search bar" loading="lazy">
       </button>
     </article>
 
@@ -195,7 +208,7 @@
 
   <section id="download" class="download" aria-labelledby="dl-title">
     <div class="wrap">
-      <p class="kicker">Version 1.0.0</p>
+      <p class="kicker">Version 1.1.1</p>
       <h2 id="dl-title">Download</h2>
       <div class="dl-grid">
         <div class="frame dl" data-os="macos" data-label="macOS">

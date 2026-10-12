@@ -64,4 +64,4 @@ and **Other panel** is an optional folder for the other panel. Click the
 folder currently shown in that panel.
 
 Bookmarks are stored in the file `bookmarks.json` in the settings folder
-(see [Settings](11-settings.md#where-settings-are-stored)).
+(see [Settings](12-settings.md#where-settings-are-stored)).

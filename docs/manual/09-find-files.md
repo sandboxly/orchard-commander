@@ -88,7 +88,7 @@ The results act on the real files:
 - Preview a hit with **F3**, or open it with **Enter**.
 - Press **Enter** on a folder hit to open that folder.
 - Copy (**F5**), move (**F6**), delete (**F8**) or rename
-  ([Multi-rename](09-multi-rename.md)) marked hits.
+  ([Multi-rename](10-multi-rename.md)) marked hits.
 
 Hits that you move or delete disappear from the results. Hits you rename stay
 in the list under their new names.

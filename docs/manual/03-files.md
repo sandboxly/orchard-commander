@@ -56,7 +56,7 @@ To rename a single file or folder:
 A name without a path keeps the file in the same folder.
 
 To rename many files at once with a pattern, use
-[Multi-rename](09-multi-rename.md).
+[Multi-rename](10-multi-rename.md).
 
 ## When a file already exists
 
