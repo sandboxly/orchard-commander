@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 import zipfile
 from pathlib import Path
@@ -99,7 +100,8 @@ def test_f4_edits_and_saves(qtbot, window, tree: Path):
     editor.save()
     wait_until(lambda: not editor.modified)
     assert path.read_bytes() == b"alpha\r\nbeta\r\ngamma\r\n"  # line endings kept
-    assert stat.S_IMODE(path.stat().st_mode) == 0o640  # permissions kept
+    if os.name != "nt":  # Windows has no POSIX permissions
+        assert stat.S_IMODE(path.stat().st_mode) == 0o640  # permissions kept
     assert not list(path.parent.glob(".a.txt.*"))  # no temporary files left
 
 
@@ -223,4 +225,4 @@ def test_title_shortens_the_home_folder(qtbot, window, tree: Path, monkeypatch):
     monkeypatch.setenv("HOME", str(tree))
     window.open_editor(vfs.local(tree / "src" / "a.txt"))
     editor = editor_for(window, "a.txt")
-    assert editor.frame._title.endswith("~/src/a.txt")
+    assert editor.frame._title.endswith(os.path.join("~", "src", "a.txt"))
