@@ -1,4 +1,4 @@
-"""Connection types for file systems: SFTP, SMB, WebDAV, and whatever add-ons provide.
+"""Connection types for file systems: SFTP, SMB, WebDAV, S3, and whatever add-ons provide.
 
 A `FileSystemProvider` describes one kind of connection: its address scheme
 (`sftp://`), the fields of its connection dialog, how to parse and format
@@ -163,9 +163,16 @@ _initialized = False
 
 
 def _builtin_providers() -> list[type[FileSystemProvider]]:
-    from orchard_commander.remote.providers import PlainWebDAVProvider, SFTPProvider, SMBProvider, WebDAVProvider
+    from orchard_commander.remote.providers import (
+        PlainS3Provider,
+        PlainWebDAVProvider,
+        S3Provider,
+        SFTPProvider,
+        SMBProvider,
+        WebDAVProvider,
+    )
 
-    return [SFTPProvider, SMBProvider, WebDAVProvider, PlainWebDAVProvider]
+    return [SFTPProvider, SMBProvider, WebDAVProvider, PlainWebDAVProvider, S3Provider, PlainS3Provider]
 
 
 def register(provider: FileSystemProvider | type[FileSystemProvider], *, replace: bool = False) -> None:

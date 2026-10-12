@@ -75,6 +75,7 @@ class ConnectionEditor(Dialog):
         bottom_form.addRow(self._password_label, self.password)
         bottom_form.addRow(QLabel(""), self.remember)
         self.content.addWidget(bottom)
+        self._forms = (top_form, self._fields_form, bottom_form)
 
         self.error = self.add_label("", muted=True)
         self.add_buttons(("Save", self._save), ("Cancel", self.reject))
@@ -107,9 +108,22 @@ class ConnectionEditor(Dialog):
             self._inputs[f.key] = edit
         self._password_label.setText(self.provider.secret_label)
         self.password.setPlaceholderText(self.provider.secret_hint)
+        self._align_labels()
         if self._inputs:
             next(iter(self._inputs.values())).setFocus()
         self.adjustSize()
+
+    def _align_labels(self) -> None:
+        """One label column across the three forms (type, the provider's fields, secret)."""
+        labels = []
+        for form in self._forms:
+            for row in range(form.rowCount()):
+                item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+                if item is not None and item.widget() is not None:
+                    labels.append(item.widget())
+        width = max((label.sizeHint().width() for label in labels), default=0)
+        for label in labels:
+            label.setMinimumWidth(width)
 
     def _params(self) -> dict[str, str | int]:
         params: dict[str, str | int] = {}

@@ -60,7 +60,7 @@ whichever is installed. `bsdtar` ships with macOS and (as `tar.exe`) with
 Windows 10+, and handles RAR5 and non-solid RAR4; solid RAR4 archives need
 `unrar` or 7-Zip.
 
-## Servers (SFTP, SMB and WebDAV)
+## Servers (SFTP, SMB, WebDAV and S3)
 
 Press **Ctrl+K** (⌘K on macOS) to manage saved connections, or type an
 address into **Go to** (Ctrl+G):
@@ -70,6 +70,11 @@ address into **Go to** (Ctrl+G):
 - `webdavs://user@host[:port]/server/path` (HTTPS) or `webdav://…` (plain HTTP):
   Nextcloud, ownCloud, NAS boxes, Apache/nginx WebDAV shares. For Nextcloud
   the server path is `/remote.php/dav/files/USER`.
+- `s3://access-key@server[:port]/bucket/folder` (HTTPS) or `s3+http://…`
+  (plain HTTP): Amazon S3 (server `s3.amazonaws.com`, or just
+  `s3://bucket/folder` as the AWS CLI writes it) and S3-compatible storage —
+  MinIO, Cloudflare R2, Backblaze B2, Wasabi, Hetzner, DigitalOcean Spaces,
+  Ceph, Garage. Add `?region=…` where the server needs one it can't tell.
 
 Saved connections also appear in the drive picker (Alt+F1 / Alt+F2). A
 server panel works like any other: browse, preview, copy/move in both
@@ -93,6 +98,17 @@ Ctrl+Shift+K disconnects the active panel's server.
   trusted once; a changed certificate then blocks the connection, as with SSH
   host keys. Files are read with range requests, so media and archives stream
   from the server; uploads are sent when complete.
+- **S3** signs requests with the access key ID and secret key (AWS Signature
+  Version 4); without a key, public buckets can be read. The top level lists
+  the buckets (F7 creates one, F8 deletes one with everything in it), below
+  them folders are key prefixes, as in the AWS console. A folder that loses its
+  last file stays (as an empty `folder/` marker object, which is also what F7
+  creates). On Amazon, each bucket's region is found out automatically. Files
+  stream with range requests; uploads go up in parts while they're written,
+  so large files need no temporary copy and a cancelled copy leaves nothing
+  behind. Renames and moves within a server are server-side copies plus a
+  delete (S3 can't rename), and keep the upload date: S3 has no settable
+  modification times. Certificates are handled as for WebDAV.
 - **Passwords** are stored only if you tick "Remember", and then in the OS
   credential store (macOS Keychain, Windows Credential Manager, Secret
   Service on Linux) — never in Orchard Commander's files.
@@ -216,8 +232,9 @@ uv run pytest
 ```
 
 The SFTP tests run a real SSH server (asyncssh), the SMB tests impacket's
-SMB2 server and the WebDAV tests WsgiDAV (Basic, Digest, and HTTPS with a
-self-signed certificate), all on localhost. Full SMB read/write tests run against Samba in
+SMB2 server, the WebDAV tests WsgiDAV (Basic, Digest, and HTTPS with a
+self-signed certificate) and the S3 tests moto (request signatures are checked
+against botocore and AWS's documented examples), all on localhost. Full SMB read/write tests run against Samba in
 Docker and are skipped when Docker isn't available.
 
 | Module | Role |
@@ -226,8 +243,9 @@ Docker and are skipped when Docker isn't available.
 | `fs.py` | Native local-disk operations: listing, copy, move, trash, open (used by `LocalFS`) |
 | `archives.py` | Archive format readers (zip/tar/7z/rar/gz/bz2/xz) and the extraction cache (used by `ArchiveFS`) |
 | `fsproviders.py` | Connection types: `FileSystemProvider` interface, registry, entry-point discovery |
-| `remote/sftp.py`, `remote/smb.py`, `remote/webdav.py` | SFTP (paramiko), SMB (smbprotocol) and WebDAV (standard library HTTP) file systems |
-| `remote/providers.py` | The built-in SFTP, SMB and WebDAV connection types |
+| `remote/sftp.py`, `remote/smb.py`, `remote/webdav.py`, `remote/s3.py` | SFTP (paramiko), SMB (smbprotocol), WebDAV and S3 (standard library HTTP) file systems |
+| `remote/httpclient.py` | HTTP(S) shared by WebDAV and S3: per-thread keep-alive connections, system trust store, pinned certificates, ranged reads |
+| `remote/providers.py` | The built-in SFTP, SMB, WebDAV and S3 connection types |
 | `connections.py` | Provider-agnostic connections, saved connections, keychain passwords, live sessions |
 | `bookmarks.py`, `locations.py` | Bookmark tree and storage; serializable location specs (local, server, archive) |
 | `testing.py` | Contract checks for file system implementations (also for add-on authors) |

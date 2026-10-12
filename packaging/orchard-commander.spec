@@ -45,6 +45,7 @@ hidden = [
 
 # Test-only and unused heavy packages that hooks might otherwise pull in.
 excluded = ["impacket", "asyncssh", "pytest", "pytestqt", "tkinter", "PIL",  # PIL: dev-only (icon script)
+            "moto", "boto3", "botocore", "wsgidav", "cheroot",  # test servers
             "PySide6.QtWebEngineCore",
             "PySide6.Qt3DCore", "PySide6.QtQuick3D", "PySide6.QtCharts", "PySide6.QtDataVisualization"]
 

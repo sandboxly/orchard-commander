@@ -32,7 +32,7 @@ def self_test() -> int:
     for name in [
         "PySide6.QtWidgets", "PySide6.QtMultimedia", "PySide6.QtMultimediaWidgets", "PySide6.QtSvg",
         "orchard_commander.ui.main_window", "orchard_commander.remote.sftp", "orchard_commander.remote.smb",
-        "orchard_commander.remote.webdav", "truststore", "py7zr", "rarfile", "keyring",
+        "orchard_commander.remote.webdav", "orchard_commander.remote.s3", "truststore", "py7zr", "rarfile", "keyring",
     ]:
         try:
             importlib.import_module(name)

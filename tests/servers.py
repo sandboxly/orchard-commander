@@ -240,3 +240,29 @@ def _self_signed_certificate(directory: Path) -> tuple[Path, Path, str]:
                                            serialization.NoEncryption()))
     digest = hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest().upper()
     return cert_path, key_path, "SHA256:" + ":".join(digest[i : i + 2] for i in range(0, len(digest), 2))
+
+
+@dataclass
+class S3Server:
+    host: str
+    port: int
+    stop: callable
+
+
+def start_s3_server() -> S3Server:
+    """moto's S3 on localhost (in-process; state is reset on start). It doesn't
+    check signatures: `test_s3` compares ours with botocore's and AWS's examples."""
+    import http.client
+    import logging
+
+    from moto.server import ThreadedMotoServer
+
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0, verbose=False)
+    server.start()
+    host, port = server.get_host_and_port()
+    conn = http.client.HTTPConnection(host, port, timeout=10)
+    conn.request("POST", "/moto-api/reset")
+    conn.getresponse().read()
+    conn.close()
+    return S3Server(host, port, server.stop)

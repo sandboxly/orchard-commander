@@ -93,14 +93,14 @@ def ctx(answer: bool = True, asked: list | None = None) -> ConnectContext:
 
 
 def test_builtins_registered(clean_registry):
-    assert [p.scheme for p in clean_registry.providers()] == ["sftp", "smb", "webdavs", "webdav"]
+    assert [p.scheme for p in clean_registry.providers()] == ["sftp", "smb", "webdavs", "webdav", "s3", "s3+http"]
     assert clean_registry.scheme_of("SMB://nas/x") == "smb"
     assert clean_registry.scheme_of("ftp://x") is None and clean_registry.scheme_of("/local") is None
 
 
 def test_entry_point_addon_is_discovered(with_mem_addon, caplog):
     schemes = [p.scheme for p in with_mem_addon.providers()]
-    assert schemes == ["sftp", "smb", "webdavs", "webdav", "mem"]  # broken and unavailable add-ons skipped
+    assert schemes == ["sftp", "smb", "webdavs", "webdav", "s3", "s3+http", "mem"]  # broken and unavailable add-ons skipped
     assert "could not load file system provider broken" in caplog.text
     assert connections.is_url("mem://bucket/projects")
 

@@ -88,3 +88,18 @@ def test_webdav(tmp_path: Path, variant: str):
     finally:
         remote.close()
         server.stop()
+
+
+def test_s3(tmp_path: Path):
+    from orchard_commander.remote import s3
+    from servers import start_s3_server
+
+    server = start_s3_server()
+    remote = s3.connect(server.host, port=server.port, secure=False, access_key="AKIDEXAMPLE", secret_key="secret",
+                        trusted_certificates=tmp_path / "trusted.json", confirm_certificate=lambda q: True)
+    try:
+        remote.mkdir("/contract")
+        check_filesystem(vfs.VPath(remote, "/contract"))
+    finally:
+        remote.close()
+        server.stop()
