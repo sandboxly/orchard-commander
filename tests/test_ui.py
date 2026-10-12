@@ -464,6 +464,8 @@ def test_sftp_browse_preview_copy_delete(qtbot, window: MainWindow, sftp_server,
     target = tree / "dst" / "hello.txt"
     # Wait for the content, not just the file: it exists as soon as the copy starts writing.
     wait_until(lambda: target.exists() and target.read_text() == "remote hello")
+    # The copy may still be finishing (timestamps): one file operation runs at a time.
+    wait_until(lambda: window._operation is None or not window._operation.isRunning())
 
     # No trash on servers: F8 deletes permanently after confirmation.
     confirmations = []
