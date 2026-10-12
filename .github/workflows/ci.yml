@@ -102,10 +102,13 @@ jobs:
           $missing = $want | Where-Object { $have -notcontains $_ }
           Write-Host "bundle: $($want.Count) files, installed: $($have.Count), missing: $($missing.Count)"
           $missing | Select-Object -First 25 | ForEach-Object { Write-Host "  missing $_" }
-          & $exe --self-test
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          Start-Process "$env:LOCALAPPDATA\Programs\Orchard Commander\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
-          Start-Sleep 3
+          # A GUI program: PowerShell wouldn't wait for it with "&".
+          $run = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru -RedirectStandardOutput selftest.txt
+          Get-Content selftest.txt
+          if ($run.ExitCode) { throw "self-test of the installed app failed ($($run.ExitCode))" }
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          # The uninstaller continues from a copy of itself in TEMP: wait for it to finish.
+          foreach ($i in 1..30) { if (-not (Test-Path $exe)) { break }; Start-Sleep 1 }
           if (Test-Path $exe) { throw "uninstall left $exe behind" }
 
       - name: Linux packages (tar.gz, deb, rpm, AppImage)
