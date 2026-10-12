@@ -295,7 +295,7 @@ def main() -> int:
     from orchard_commander.ui.main_window import PREVIEW, MainWindow
     from orchard_commander.ui.style import ThemeManager
 
-    def window(left: Path, right: Path, scheme: str = "monokai", size: tuple[int, int] = (WIDTH, HEIGHT)
+    def window(left: Path, right: Path, scheme: str = "gruvbox", size: tuple[int, int] = (WIDTH, HEIGHT)
                ) -> MainWindow:
         settings = Settings(color_scheme=scheme, font_family=FONT, show_hidden=False,
                             terminal_shell="/bin/zsh -f")
@@ -333,12 +333,12 @@ def main() -> int:
     shot(w, "photos")
     w.close()
 
-    # 2. Code with syntax highlighting (a light scheme)
-    w = window(home / "Projects" / "harbor-ferries" / "src", home / "Projects", "solarized-light")
+    # 2. Code with syntax highlighting
+    w = window(home / "Projects" / "harbor-ferries" / "src", home / "Projects")
     w.set_mode(w.right, PREVIEW)
     select(w, w.left, "app.py")
     wait(1500)
-    shot(w, "code-light")
+    shot(w, "code")
     w.close()
 
     # 3. Find files: results as a folder, a hit previewed
@@ -402,7 +402,7 @@ def main() -> int:
     w.close()
 
     # 8. The terminal, linked to the panel
-    w = window(home / "Projects" / "harbor-ferries", home / "Downloads", "tokyo-night")
+    w = window(home / "Projects" / "harbor-ferries", home / "Downloads")
     w.toggle_terminal()
     wait_until(lambda: "left" in w.terminal.sessions)
     session = w.terminal.sessions["left"]

@@ -3,303 +3,248 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Orchard Commander — a two-panel file manager for macOS, Windows and Linux</title>
-<meta name="description" content="A keyboard-driven two-panel file manager in the spirit of Norton and Total Commander, with previews, archives, servers, find files, multi-rename and a built-in terminal. Free and open source.">
+<title>Orchard Commander — a keyboard-first two-panel file manager</title>
+<meta name="description" content="A keyboard-first two-panel file manager for macOS, Windows and Linux, with previews, archives and servers as folders, search, batch renaming and a built-in terminal.">
+<meta name="theme-color" content="#1d2021">
 <meta property="og:title" content="Orchard Commander">
 <meta property="og:description" content="The two-panel file manager, with previews, archives, servers, search, multi-rename and a terminal. macOS, Windows, Linux.">
 <meta property="og:image" content="https://sandboxly.github.io/orchard-commander/screenshots/photos.webp">
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
-<link rel="stylesheet" href="nocturne.css">
 <link rel="stylesheet" href="style.css">
+<script src="main.js" defer></script>
 </head>
 <body>
-<div class="page">
+<a class="skip" href="#main">Skip to content</a>
 
-<header class="topbar">
-  <nav class="topnav">
-    <a class="brand" href="./"><img src="icon.png" alt="" width="26" height="26"><span>Orchard Commander</span></a>
-    <a class="navlink" href="#features">Features</a>
-    <a class="navlink" href="manual/">Manual</a>
-    <a class="navlink" href="https://github.com/sandboxly/orchard-commander"><i class="ph ph-github-logo"></i>GitHub</a>
-    <a class="btn btn-primary" href="#download">Download</a>
-  </nav>
-  <div class="fade-rule"></div>
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="icon.png" alt="">Orchard Commander</a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="manual/">Manual</a>
+      <a href="https://github.com/sandboxly/orchard-commander"><i class="ph ph-github-logo" aria-hidden="true"></i><span class="gh-label">GitHub</span></a>
+      <a href="#download">Download</a>
+    </nav>
+  </div>
 </header>
 
-<section class="hero">
-  <div class="hero-text">
-    <span class="tag tag-accent mono">v1.0.0 · free &amp; open source</span>
-    <h1>Two panels.<br><span class="dim">Every file within reach.</span></h1>
-    <p class="lede">Orchard Commander is a keyboard-first file manager in the tradition of Norton and Total Commander —
-      rebuilt with previews for almost anything, archives and servers as folders, powerful search, batch renaming and a
-      terminal that follows you around.</p>
+<main id="main">
+  <section class="hero wrap">
+    <p class="kicker">v1.0.0 · free &amp; open source</p>
+    <h1>Two panels. <span>Every file within reach.</span></h1>
+    <p class="lede">Orchard Commander is a keyboard-first file manager in the tradition of Norton and Total Commander — rebuilt with previews for almost anything, archives and servers as folders, powerful search, batch renaming and a terminal that follows you around.</p>
     <div class="cta">
-      <a class="btn btn-primary btn-large" id="download-main" href="#download"><i class="ph ph-download-simple"></i><span>Download</span></a>
-      <span class="platforms" id="download-alt">for macOS, Windows and Linux</span>
+      <a class="btn btn-primary" href="#download" data-hero-dl><i class="ph ph-download-simple" aria-hidden="true"></i><span>Download</span></a>
+      <span class="mute">for macOS, Windows and Linux · <a href="#download">all downloads</a></span>
     </div>
-  </div>
 
-  <figure class="app-window hero-window">
-    <div class="glow" aria-hidden="true"></div>
-    <div class="app-frame">
-      <div class="app-title"><span></span><span></span><span></span><b>Orchard Commander</b></div>
-      <div class="panes hero-panes">
-        <div class="pane">
-          <div class="pane-path">~/Pictures/Sweden</div>
-          <div class="pane-head"><span>Name</span><span>Size</span><span>Date</span></div>
-          <div class="pane-rows" id="hero-rows" role="listbox" tabindex="0" aria-label="Photos — use the arrow keys"></div>
-          <div class="pane-foot">4 photos · 15.2 MB</div>
+    <div class="stage">
+      <div class="app" data-filelist role="group" aria-label="Interactive demo: click a file or use the arrow keys">
+        <div class="app-panes">
+          <div class="pane focus">
+            <div class="tabs" aria-hidden="true"><span class="tab on">Files</span><span class="tab">Preview</span></div>
+            <div class="frame active">
+              <span class="chip">~/Pictures/Sweden</span>
+              <div class="cols hdr" aria-hidden="true"><span>Name ▲</span><span>Size</span><span>Modified</span></div>
+              <ul class="files live" role="listbox" tabindex="0" aria-label="Files in ~/Pictures/Sweden">
+                <li id="h0" role="option" class="cols dir" data-name=".." aria-selected="false"><span>..</span><span>&lt;UP&gt;</span><span></span></li>
+                <li id="h1" role="option" class="cols dir" data-name="Midsommar" data-items="38" aria-selected="false"><span>Midsommar</span><span>&lt;DIR&gt;</span><span>2026-06-20 18:40</span></li>
+                <li id="h2" role="option" class="cols dir" data-name="Gotland" data-items="112" aria-selected="false"><span>Gotland</span><span>&lt;DIR&gt;</span><span>2026-07-02 09:15</span></li>
+                <li id="h3" role="option" class="cols" data-name="forest-ravine.jpeg" data-src="photos/forest-ravine.webp" data-meta="2048×1536 · JPEG · 3.9 M" data-alt="A wooden stairway descending through pine forest to a lake between cliffs" aria-selected="false"><span>forest-ravine.jpeg</span><span>3.9 M</span><span>2026-09-14 16:02</span></li>
+                <li id="h4" role="option" class="cols" data-name="gamla-stan.jpeg" data-src="photos/gamla-stan.webp" data-meta="2048×1536 · JPEG · 4.6 M" data-alt="Colourful gabled houses on Stortorget in Gamla Stan, Stockholm" aria-selected="true"><span>gamla-stan.jpeg</span><span>4.6 M</span><span>2026-08-22 11:37</span></li>
+                <li id="h5" role="option" class="cols" data-name="red-cottage.jpeg" data-src="photos/red-cottage.webp" data-meta="1024×768 · JPEG · 2.1 M" data-alt="A red wooden cottage under oak trees at sunset" aria-selected="false"><span>red-cottage.jpeg</span><span>2.1 M</span><span>2026-08-03 20:48</span></li>
+                <li id="h6" role="option" class="cols" data-name="west-coast.png" data-src="photos/west-coast.webp" data-meta="1024×768 · PNG · 4.6 M" data-alt="Smooth granite rocks along the Swedish west coast" aria-selected="false"><span>west-coast.png</span><span>4.6 M</span><span>2026-07-19 13:05</span></li>
+              </ul>
+              <span class="chip chip-end">4 photos, 15.2 M · 412 G free</span>
+            </div>
+          </div>
+          <div class="pane">
+            <div class="tabs" aria-hidden="true"><span class="tab">Files</span><span class="tab on">Preview</span></div>
+            <div class="frame">
+              <span class="chip" data-preview-title>gamla-stan.jpeg</span>
+              <div class="viewas" aria-hidden="true">View as<span class="on">Image</span><span>Hex</span></div>
+              <div class="preview" data-preview aria-live="polite"><img src="photos/gamla-stan.webp" alt="Colourful gabled houses on Stortorget in Gamla Stan, Stockholm"></div>
+              <span class="chip chip-end" data-preview-meta>2048×1536 · JPEG · 4.6 M</span>
+            </div>
+          </div>
         </div>
-        <div class="pane preview">
-          <div class="pane-path quiet"><span>Preview</span><span id="hero-name"></span></div>
-          <div class="preview-body"><img id="hero-img" alt=""></div>
-          <div class="pane-foot" id="hero-meta"></div>
+        <div class="fbar" aria-hidden="true">
+          <span><b>F3</b>Preview</span><span><b>F5</b>Copy</span><span><b>F6</b>Move</span><span><b>F7</b>MkDir</span><span><b>F8</b>Trash</span><span><b>F9</b>Menu</span><span><b>F10</b>Quit</span>
+          <span class="right"><span><b>⌘K</b>Connect</span><span><b>⌘P</b>Commands</span></span>
         </div>
       </div>
     </div>
-  </figure>
+  </section>
 
-  <div class="keybar mono" aria-label="Keys">
-    <span><kbd>F3</kbd>Preview</span><span><kbd>F5</kbd>Copy</span><span><kbd>F6</kbd>Move</span>
-    <span><kbd>F7</kbd>MkDir</span><span><kbd>F8</kbd>Trash</span><span><kbd>⌘F</kbd>Find</span>
-    <span><kbd>⌘M</kbd>Rename</span><span><kbd>⌘J</kbd>Terminal</span>
-  </div>
-</section>
-
-<main id="features" class="features">
-
-  <article class="feature">
-    <div class="feature-text">
-      <div class="kicker"><i class="ph ph-eye"></i>Preview</div>
-      <h2>See what's inside before you open it</h2>
-      <p>Switch either side to Preview and it shows whatever the cursor is on in the other panel: syntax-highlighted
-        code, rendered Markdown, images, PDFs page by page, audio with a live spectrum and waveform, and video. Files on
-        servers stream instead of downloading first.</p>
-      <ul class="marks">
-        <li>Code and text in your color scheme</li>
-        <li>PDF paging with the keyboard or the wheel</li>
-        <li>Hex view for everything else</li>
-      </ul>
-    </div>
-    <img class="shot" src="screenshots/code-light.webp" alt="A Python file previewed with syntax highlighting in a light color scheme" loading="lazy" width="2880" height="1720">
-  </article>
-
-  <article class="feature">
-    <div class="feature-text">
-      <div class="kicker"><i class="ph ph-magnifying-glass"></i>Find files</div>
-      <h2>Search results you can work with</h2>
-      <p>Search by name with wildcards or regular expressions, by contents, size and date — across folders, servers and
-        inside archives. The hits appear as a folder while the search runs, so you can preview them, mark them all and
-        move them somewhere else in one go.</p>
-      <ul class="marks">
-        <li><code>*.py;*.md</code>, <code>report</code>, <code>*.zip|*old*</code></li>
-        <li>Files containing — or not containing — a phrase</li>
-        <li>Results stay available with ⇧⌘F</li>
-      </ul>
-    </div>
-    <img class="shot" src="screenshots/find-files.webp" alt="Search results for files containing TODO, shown as a folder with a preview of one hit" loading="lazy" width="2880" height="1720">
-  </article>
-
-  <article class="feature">
-    <div class="feature-text">
-      <div class="kicker"><i class="ph ph-textbox"></i>Multi-rename</div>
-      <h2>Rename a hundred files as easily as one</h2>
-      <p>Build new names from placeholders — parts of the old name, counters, dates, parent folders — and from file
-        metadata such as music tags, photo dates and video resolution. Every new name is checked before anything
-        happens, and the whole batch can be undone.</p>
-      <ul class="marks">
-        <li><code>[=track] [=artist] - [=title]</code></li>
-        <li>Search and replace with regular expressions</li>
-        <li>Safe swaps and case-only changes</li>
-      </ul>
-    </div>
-    <img class="shot" src="screenshots/multi-rename.webp" alt="The multi-rename dialog renaming six music files from their tags" loading="lazy" width="3840" height="2000">
-  </article>
-
-  <article class="feature">
-    <div class="feature-text">
-      <div class="kicker"><i class="ph ph-terminal-window"></i>Terminal</div>
-      <h2>A shell that goes where you go</h2>
-      <p>Open a terminal below the panels with ⌘J. Each side has its own shell, and it stays in step with its panel:
-        <code>cd</code> in the terminal and the panel follows; browse in the panel and the shell follows. Full-screen
-        tools like vim, htop and tmux work, mouse included.</p>
-      <ul class="marks">
-        <li>Your own shell: zsh, bash, fish or PowerShell</li>
-        <li>Prompt themes with Nerd Font icons</li>
-        <li>Panels refresh after every command</li>
-      </ul>
-    </div>
-    <img class="shot" src="screenshots/terminal.webp" alt="The terminal panel below both file panels, showing grep output" loading="lazy" width="2880" height="1720">
-  </article>
-
-  <article class="feature">
-    <div class="feature-text">
-      <div class="kicker"><i class="ph ph-file-zip"></i>Archives &amp; servers</div>
-      <h2>Zip files and servers are just folders</h2>
-      <p>Press Enter on a zip, tar, 7z or rar archive to browse it like a folder — nested archives included — and copy
-        out what you need. Connect to SFTP, SMB, WebDAV and S3 and work there with the same keys as on your own disk.
-        Passwords stay in your system's keychain.</p>
-      <ul class="marks">
-        <li>SFTP · SMB · WebDAV · S3</li>
-        <li>Bookmarks for local and remote folders</li>
-        <li>Copy between any two locations</li>
-      </ul>
-    </div>
-    <div class="app-frame panes zip-panes">
-      <div class="pane">
-        <div class="pane-path rtl">sweden-2026.zip/west-coast</div>
-        <div class="pane-rows compact" id="zip-rows" role="listbox" tabindex="0" aria-label="Archive contents — use the arrow keys"></div>
+  <div id="features" class="features wrap">
+    <article class="feature">
+      <div>
+        <p class="kicker"><i class="ph ph-eye" aria-hidden="true"></i>Preview</p>
+        <h2>See what's inside before you open it</h2>
+        <p>Switch either side to Preview and it shows whatever the cursor is on in the other panel: syntax-highlighted code, rendered Markdown, images, PDFs page by page, audio with a live spectrum and waveform, and video. Files on servers stream instead of downloading first.</p>
+        <ul class="marks"><li>Code and text in your color scheme</li><li>PDF paging with the keyboard or the wheel</li><li>Hex view for everything else</li></ul>
       </div>
-      <div class="pane preview zip-preview">
-        <img id="zip-img" alt="">
-        <span id="zip-meta"></span>
+      <button class="frame shot" type="button" data-name="code.webp" aria-label="Enlarge screenshot: code preview">
+        <span class="chip">Preview</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+        <img src="screenshots/code.webp" alt="A Python file previewed with syntax highlighting" loading="lazy">
+      </button>
+    </article>
+
+    <article class="feature">
+      <div>
+        <p class="kicker"><i class="ph ph-magnifying-glass" aria-hidden="true"></i>Find files</p>
+        <h2>Search results you can work with</h2>
+        <p>Search by name with wildcards or regular expressions, by contents, size and date — across folders, servers and inside archives. The hits appear as a folder while the search runs, so you can preview them, mark them all and move them somewhere else in one go.</p>
+        <ul class="marks"><li><code>*.py;*.md</code>, <code>report</code>, <code>*.zip|*old*</code></li><li>Files containing — or not containing — a phrase</li><li>Results stay available with <kbd>⇧⌘F</kbd></li></ul>
       </div>
+      <button class="frame shot" type="button" data-name="find-files.webp" aria-label="Enlarge screenshot: search results">
+        <span class="chip">Find files</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+        <img src="screenshots/find-files.webp" alt="Search results for files containing TODO, shown as a folder with a preview of one hit" loading="lazy">
+      </button>
+    </article>
+
+    <article class="feature">
+      <div>
+        <p class="kicker"><i class="ph ph-textbox" aria-hidden="true"></i>Multi-rename</p>
+        <h2>Rename a hundred files as easily as one</h2>
+        <p>Build new names from placeholders — parts of the old name, counters, dates, parent folders — and from file metadata such as music tags, photo dates and video resolution. Every new name is checked before anything happens, and the whole batch can be undone.</p>
+        <ul class="marks"><li><code>[=track] [=artist] - [=title]</code></li><li>Search and replace with regular expressions</li><li>Safe swaps and case-only changes</li></ul>
+      </div>
+      <button class="frame shot" type="button" data-name="multi-rename.webp" aria-label="Enlarge screenshot: multi-rename dialog">
+        <span class="chip">Multi-rename</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+        <img src="screenshots/multi-rename.webp" alt="The multi-rename dialog renaming six music files from their tags" loading="lazy">
+      </button>
+    </article>
+
+    <article class="feature">
+      <div>
+        <p class="kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i>Terminal</p>
+        <h2>A shell that goes where you go</h2>
+        <p>Open a terminal below the panels with <kbd>⌘J</kbd>. Each side has its own shell, and it stays in step with its panel: <code>cd</code> in the terminal and the panel follows; browse in the panel and the shell follows. Full-screen tools like vim, htop and tmux work, mouse included.</p>
+        <ul class="marks"><li>Your own shell: zsh, bash, fish or PowerShell</li><li>Prompt themes with Nerd Font icons</li><li>Panels refresh after every command</li></ul>
+      </div>
+      <button class="frame shot" type="button" data-name="terminal.webp" aria-label="Enlarge screenshot: terminal">
+        <span class="chip">Terminal</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+        <img src="screenshots/terminal.webp" alt="The terminal panel below both file panels, showing grep output" loading="lazy">
+      </button>
+    </article>
+
+    <article class="feature">
+      <div>
+        <p class="kicker"><i class="ph ph-file-zip" aria-hidden="true"></i>Archives &amp; servers</p>
+        <h2>Zip files and servers are just folders</h2>
+        <p>Press Enter on a zip, tar, 7z or rar archive to browse it like a folder — nested archives included — and copy out what you need. Connect to SFTP, SMB, WebDAV and S3 and work there with the same keys as on your own disk. Passwords stay in your system's keychain.</p>
+        <ul class="marks"><li>SFTP · SMB · WebDAV · S3</li><li>Bookmarks for local and remote folders</li><li>Copy between any two locations</li></ul>
+      </div>
+      <div class="app small" data-filelist role="group" aria-label="Interactive demo: browsing inside a zip archive">
+        <div class="app-panes">
+          <div class="pane">
+            <div class="frame active">
+              <span class="chip">sweden-2026.zip/west-coast</span>
+              <ul class="files live" role="listbox" tabindex="0" aria-label="Files in sweden-2026.zip/west-coast">
+                <li id="z0" role="option" class="cols dir" data-name=".." aria-selected="false"><span>..</span><span>&lt;UP&gt;</span><span></span></li>
+                <li id="z1" role="option" class="cols" data-name="forest-ravine.jpeg" data-src="photos/forest-ravine.webp" data-meta="2048×1536 · JPEG · 3.9 M" data-alt="A wooden stairway descending through pine forest to a lake between cliffs" aria-selected="false"><span>forest-ravine.jpeg</span><span>3.9 M</span><span>2026-09-14 16:02</span></li>
+                <li id="z2" role="option" class="cols" data-name="gamla-stan.jpeg" data-src="photos/gamla-stan.webp" data-meta="2048×1536 · JPEG · 4.6 M" data-alt="Colourful gabled houses on Stortorget in Gamla Stan, Stockholm" aria-selected="false"><span>gamla-stan.jpeg</span><span>4.6 M</span><span>2026-08-22 11:37</span></li>
+                <li id="z3" role="option" class="cols" data-name="red-cottage.jpeg" data-src="photos/red-cottage.webp" data-meta="1024×768 · JPEG · 2.1 M" data-alt="A red wooden cottage under oak trees at sunset" aria-selected="false"><span>red-cottage.jpeg</span><span>2.1 M</span><span>2026-08-03 20:48</span></li>
+                <li id="z4" role="option" class="cols" data-name="west-coast.png" data-src="photos/west-coast.webp" data-meta="1024×768 · PNG · 4.6 M" data-alt="Smooth granite rocks along the Swedish west coast" aria-selected="true"><span>west-coast.png</span><span>4.6 M</span><span>2026-07-19 13:05</span></li>
+              </ul>
+              <span class="chip chip-end">zip · 15.2 M</span>
+            </div>
+          </div>
+          <div class="pane">
+            <div class="frame">
+              <span class="chip" data-preview-title>west-coast.png</span>
+              <div class="preview" data-preview aria-live="polite"><img src="photos/west-coast.webp" alt="Smooth granite rocks along the Swedish west coast"></div>
+              <span class="chip chip-end" data-preview-meta>1024×768 · PNG · 4.6 M</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <div class="gallery">
+      <figure>
+        <button class="frame shot" type="button" data-name="audio.webp" aria-label="Enlarge screenshot: audio preview">
+          <span class="chip">audio.webp</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+          <img src="screenshots/audio.webp" alt="Playing an MP3 with a live spectrum and the waveform of the whole track" loading="lazy">
+        </button>
+        <figcaption>Audio with a live spectrum and the whole track's waveform</figcaption>
+      </figure>
+      <figure>
+        <button class="frame shot" type="button" data-name="pdf.webp" aria-label="Enlarge screenshot: PDF preview">
+          <span class="chip">pdf.webp</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+          <img src="screenshots/pdf.webp" alt="A PDF report previewed next to the Documents folder" loading="lazy">
+        </button>
+        <figcaption>PDFs, page by page</figcaption>
+      </figure>
     </div>
-  </article>
 
-  <div class="gallery">
-    <figure>
-      <img class="shot" src="screenshots/audio.webp" alt="Playing an MP3 with a live spectrum and the waveform of the whole track" loading="lazy" width="2880" height="1720">
-      <figcaption>Audio with a live spectrum and the whole track's waveform</figcaption>
-    </figure>
-    <figure>
-      <img class="shot" src="screenshots/pdf.webp" alt="A PDF report previewed next to the Documents folder" loading="lazy" width="2880" height="1720">
-      <figcaption>PDFs, page by page</figcaption>
-    </figure>
+    <div class="facts">
+      <div class="frame fact"><span class="chip">Keyboard first</span><i class="ph ph-keyboard" aria-hidden="true"></i><p>F-keys, marks with <kbd>Space</kbd> and <kbd>+</kbd>, a command palette on <kbd>⌘P</kbd>. The mouse works too.</p></div>
+      <div class="frame fact"><span class="chip">Looks like a terminal</span><i class="ph ph-brackets-square" aria-hidden="true"></i><p>A monospace grid, box frames and eight color schemes — or your own. Follows light and dark mode if you like.</p></div>
+      <div class="frame fact"><span class="chip">Cross-platform</span><i class="ph ph-devices" aria-hidden="true"></i><p>The same app and the same keys on macOS, Windows and Linux.</p></div>
+      <div class="frame fact"><span class="chip">Open source</span><i class="ph ph-git-branch" aria-hidden="true"></i><p>MIT licensed, with add-on interfaces for previewers, connection types and rename fields.</p></div>
+    </div>
   </div>
 
-  <div class="facts">
-    <div><i class="ph ph-keyboard"></i><h3>Keyboard first</h3><p>F-keys, marks with Space and +, a command palette on ⌘P. The mouse works too.</p></div>
-    <div><i class="ph ph-brackets-square"></i><h3>Looks like a terminal</h3><p>A monospace grid, box frames and eight color schemes — or your own. Follows light and dark mode if you like.</p></div>
-    <div><i class="ph ph-devices"></i><h3>Cross-platform</h3><p>The same app and the same keys on macOS, Windows and Linux.</p></div>
-    <div><i class="ph ph-git-branch"></i><h3>Open source</h3><p>MIT licensed, with add-on interfaces for previewers, connection types and rename fields.</p></div>
-  </div>
+  <section id="download" class="download" aria-labelledby="dl-title">
+    <div class="wrap">
+      <p class="kicker">Version 1.0.0</p>
+      <h2 id="dl-title">Download Orchard Commander</h2>
+      <div class="dl-grid">
+        <div class="frame dl" data-os="macos" data-label="macOS">
+          <span class="chip">macOS</span><span class="badge">Your system</span>
+          <i class="ph ph-apple-logo" aria-hidden="true"></i>
+          <p class="req">Apple silicon · macOS 14 or later</p>
+          <div class="actions">
+            <a class="btn" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg"><span>Signed and notarized disk image</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
+            <span class="file">Orchard-Commander-macOS.dmg</span>
+            <div class="cmd"><code id="brew">brew install --cask sandboxly/tap/orchard-commander</code><button type="button" data-copy="brew" aria-label="Copy command"><i class="ph ph-copy" aria-hidden="true"></i></button></div>
+          </div>
+        </div>
+        <div class="frame dl" data-os="windows" data-label="Windows">
+          <span class="chip">Windows</span><span class="badge">Your system</span>
+          <i class="ph ph-windows-logo" aria-hidden="true"></i>
+          <p class="req">Windows 10 and 11 · 64-bit</p>
+          <div class="actions">
+            <a class="btn" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe"><span>Installer</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
+            <span class="file">Orchard-Commander-Setup.exe</span>
+            <div class="alts"><span>Also:</span><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip">Portable .zip</a></div>
+          </div>
+        </div>
+        <div class="frame dl" data-os="linux" data-label="Linux">
+          <span class="chip">Linux</span><span class="badge">Your system</span>
+          <i class="ph ph-linux-logo" aria-hidden="true"></i>
+          <p class="req">x86-64 · Ubuntu 22.04, Fedora 36, Debian 12 or newer</p>
+          <div class="actions">
+            <a class="btn" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage"><span>AppImage</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
+            <span class="file">Orchard-Commander-Linux-x86_64.AppImage</span>
+            <div class="alts"><span>Also:</span><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb">.deb</a><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm">.rpm</a><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz">.tar.gz</a></div>
+          </div>
+        </div>
+      </div>
+      <p class="dl-note">All releases and release notes are on <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. New to Orchard Commander? Start with the <a href="manual/">getting started guide</a>.</p>
+    </div>
+  </section>
 </main>
 
-<section id="download" class="download">
-  <div class="download-inner">
-    <h2>Download Orchard Commander 1.0.0</h2>
-    <div class="cards">
-      <div class="dl-card" data-os="macos">
-        <i class="ph ph-apple-logo os-icon"></i>
-        <span class="os">macOS</span>
-        <span class="req">Apple silicon · macOS 14 Sonoma or later</span>
-        <a class="dl-main" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg"><i class="ph ph-download-simple"></i>Signed and notarized disk image</a>
-        <span class="or">or with Homebrew</span>
-        <code class="cmd">brew install --cask sandboxly/tap/orchard-commander</code>
-      </div>
-      <div class="dl-card" data-os="windows">
-        <i class="ph ph-windows-logo os-icon"></i>
-        <span class="os">Windows</span>
-        <span class="req">Windows 10 and 11, 64-bit</span>
-        <a class="dl-main" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe"><i class="ph ph-download-simple"></i>Installer</a>
-        <span class="or">or without installing</span>
-        <a class="dl-alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip"><span class="mono">.zip</span>Portable</a>
-      </div>
-      <div class="dl-card" data-os="linux">
-        <i class="ph ph-linux-logo os-icon"></i>
-        <span class="os">Linux</span>
-        <span class="req">x86-64 · Ubuntu 22.04, Fedora 36, Debian 12 or newer</span>
-        <a class="dl-main" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage"><i class="ph ph-download-simple"></i>AppImage for any distribution</a>
-        <span class="or">or as a package</span>
-        <a class="dl-alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb"><span class="mono">.deb</span>Debian, Ubuntu</a>
-        <a class="dl-alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm"><span class="mono">.rpm</span>Fedora, openSUSE</a>
-        <a class="dl-alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz"><span class="mono">.tar.gz</span>Plain archive</a>
-      </div>
-    </div>
-    <p class="small-print">All releases and release notes are on <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>.
-      New to Orchard Commander? Start with the <a href="manual/01-getting-started.html">getting started guide</a>.</p>
+<footer class="site-foot">
+  <div class="wrap">
+    <span><img src="icon.png" alt="" width="18" height="18">Orchard Commander · MIT License</span>
+    <a href="manual/">Manual</a>
+    <a href="https://github.com/sandboxly/orchard-commander">Source code</a>
+    <a href="https://github.com/sandboxly/orchard-commander/issues">Report a problem</a>
   </div>
-</section>
-
-<footer class="footer">
-  <span class="footer-brand"><img src="icon.png" alt="" width="20" height="20">Orchard Commander · MIT License</span>
-  <a href="manual/">Manual</a>
-  <a href="https://github.com/sandboxly/orchard-commander">Source code</a>
-  <a href="https://github.com/sandboxly/orchard-commander/issues">Report a problem</a>
 </footer>
-</div>
 
-<div class="lightbox" id="lightbox" hidden><img alt=""></div>
-
-<script>
-(function () {
-  var photos = [
-    { name: "forest-ravine.jpeg", src: "photos/forest-ravine.webp", size: "3.9 MB", date: "2026-09-14", meta: "2048 × 1536 · JPEG · iPhone 13 Pro", alt: "A wooden stairway descending through pine forest to a lake between cliffs" },
-    { name: "gamla-stan.jpeg", src: "photos/gamla-stan.webp", size: "4.6 MB", date: "2026-08-22", meta: "2048 × 1536 · JPEG · iPhone 13 Pro", alt: "Colorful gabled houses on Stortorget in Gamla Stan, Stockholm" },
-    { name: "red-cottage.jpeg", src: "photos/red-cottage.webp", size: "2.1 MB", date: "2026-08-03", meta: "1024 × 768 · JPEG · iPhone 13 Pro", alt: "A red wooden cottage under oak trees at sunset" },
-    { name: "west-coast.png", src: "photos/west-coast.webp", size: "4.6 MB", date: "2026-07-19", meta: "1024 × 768 · PNG", alt: "Smooth granite rocks along the Swedish west coast" }
-  ];
-
-  // A file list that previews the photo under its cursor, like the app does.
-  function filePane(rowsId, folders, selected, show, withDate) {
-    var list = document.getElementById(rowsId), current = selected;
-    function render() {
-      list.innerHTML = "";
-      var items = folders.map(function (f) { return { item: f, index: -1 }; })
-        .concat(photos.map(function (p, i) { return { item: p, index: i }; }));
-      items.forEach(function (entry) {
-        var item = entry.item, photo = entry.index >= 0, active = entry.index === current;
-        var row = document.createElement("div");
-        row.className = "row" + (photo ? "" : " folder") + (active ? " active" : "");
-        row.setAttribute("role", "option");
-        row.setAttribute("aria-selected", active ? "true" : "false");
-        row.innerHTML = '<span class="name"><i class="ph ' + (photo ? "ph-image" : "ph-folder") + '"></i><span>' +
-          item.name + "</span></span><span>" + item.size + "</span>" + (withDate ? "<span>" + (item.date || "") + "</span>" : "");
-        if (photo) row.addEventListener("click", function () { select(entry.index); });
-        list.appendChild(row);
-      });
-      show(photos[current]);
-    }
-    function select(index) { current = Math.max(0, Math.min(photos.length - 1, index)); render(); }
-    list.addEventListener("keydown", function (e) {
-      if (e.key === "ArrowDown") { select(current + 1); e.preventDefault(); }
-      if (e.key === "ArrowUp") { select(current - 1); e.preventDefault(); }
-    });
-    render();
-  }
-
-  filePane("hero-rows", [
-    { name: "..", size: "UP", date: "" }, { name: "Midsommar", size: "DIR", date: "2026-06-20" },
-    { name: "Gotland", size: "DIR", date: "2026-07-02" }
-  ], 1, function (p) {
-    var img = document.getElementById("hero-img");
-    img.src = p.src; img.alt = p.alt;
-    document.getElementById("hero-name").textContent = p.name;
-    document.getElementById("hero-meta").textContent = p.meta;
-  }, true);
-
-  filePane("zip-rows", [{ name: "..", size: "UP" }], 2, function (p) {
-    var img = document.getElementById("zip-img");
-    img.src = p.src; img.alt = p.alt;
-    document.getElementById("zip-meta").textContent = p.meta;
-  }, false);
-
-  // Offer the download for the visitor's system first.
-  var platform = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
-  var os = platform.indexOf("win") >= 0 ? "windows" : (platform.indexOf("linux") >= 0 || platform.indexOf("x11") >= 0) ? "linux" : platform.indexOf("mac") >= 0 ? "macos" : null;
-  var names = { macos: "macOS", windows: "Windows", linux: "Linux" };
-  var card = os && document.querySelector('.dl-card[data-os="' + os + '"]');
-  if (card) {
-    card.classList.add("yours");
-    var main = document.getElementById("download-main");
-    main.href = card.querySelector(".dl-main").href;
-    main.querySelector("span").textContent = "Download for " + names[os];
-    document.getElementById("download-alt").innerHTML = 'or get it for <a href="#download">another system</a>';
-  }
-
-  // Screenshots open full size.
-  var box = document.getElementById("lightbox"), big = box.querySelector("img");
-  document.querySelectorAll("img.shot").forEach(function (shot) {
-    shot.addEventListener("click", function () { big.src = shot.src; big.alt = shot.alt; box.hidden = false; });
-  });
-  box.addEventListener("click", function () { box.hidden = true; });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") box.hidden = true; });
-})();
-</script>
+<dialog id="lightbox" class="lightbox" aria-label="Screenshot">
+  <span class="chip"></span>
+  <button class="close" type="button" aria-label="Close">Esc ✕</button>
+  <img alt="">
+</dialog>
 </body>
 </html>
