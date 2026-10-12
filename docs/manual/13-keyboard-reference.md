@@ -54,10 +54,11 @@ In the **File exists** dialog: **O** Overwrite, **A** Overwrite all,
 | --- | --- | --- |
 | Save | ⌘S | Ctrl+S |
 | Close the editor window | ⌘W or Esc | Ctrl+W or Esc |
+| Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y |
 | Find | ⌘F | Ctrl+F |
 | Find and replace | ⌥⌘F | Ctrl+Alt+F |
 | Next / previous match | ⌘G / ⇧⌘G | F3 / Shift+F3 |
-| Go to line | ⌘L | Ctrl+L |
+| Go to line | ⌘L or ⌥⌘L | Ctrl+L or Ctrl+Alt+L |
 
 ## Preview
 

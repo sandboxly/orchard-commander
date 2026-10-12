@@ -41,6 +41,9 @@ colors follow the color scheme you chose in Settings.
 
 When you press **Enter**, the new line keeps the indentation of the previous one.
 
+On macOS, the editor has its own **File** and **Edit** menus in the menu bar
+while its window is in front. They list every editor command with its shortcut.
+
 ## Saving and closing
 
 | Action | macOS | Windows / Linux |
@@ -80,7 +83,7 @@ in a Windows-1252 file, the editor offers to save the file as UTF-8 instead.
 | Find and replace | ⌥⌘F | Ctrl+Alt+F |
 | Next match | ⌘G, F3 or Enter in the search field | F3 or Enter in the search field |
 | Previous match | ⇧⌘G | Shift+F3 |
-| Go to line | ⌘L | Ctrl+L |
+| Go to line | ⌘L or ⌥⌘L | Ctrl+L or Ctrl+Alt+L |
 
 The search bar appears below the text. Searches ignore case unless you select
 **Match case**. When the search reaches the end of the file, it continues at the
