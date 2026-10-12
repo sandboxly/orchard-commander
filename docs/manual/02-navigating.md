@@ -17,7 +17,7 @@ On Mac keyboards without Home and End keys, press **fn+←** and **fn+→**.
 - To go to the parent folder, press **Backspace**, or open the `..` entry at
   the top of the list. The cursor is placed on the folder you came from.
 
-Archives open like folders; see [Archives](05-archives.md).
+Archives open like folders; see [Archives](06-archives.md).
 
 Pressing **Enter** on a file opens it with its default application. See
 [Opening files](03-files.md#opening-files).
@@ -30,7 +30,7 @@ Pressing **Enter** on a file opens it with its default application. See
 3. Press **Enter**.
 
 The active panel opens the folder. Server addresses are described in
-[Servers](06-servers.md).
+[Servers](07-servers.md).
 
 ## Choosing a drive or location
 

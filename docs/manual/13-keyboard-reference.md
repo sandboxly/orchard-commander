@@ -36,6 +36,8 @@ keyboards, the function keys may require **fn**.
 
 | Action | macOS | Windows / Linux |
 | --- | --- | --- |
+| Edit the file under the cursor | F4 | F4 |
+| Create a text file and edit it | ⇧F4 | Shift+F4 |
 | Copy | F5 | F5 |
 | Move or rename | F6 | F6 |
 | Make directory | F7 | F7 |
@@ -45,6 +47,17 @@ keyboards, the function keys may require **fn**.
 
 In the **File exists** dialog: **O** Overwrite, **A** Overwrite all,
 **S** Skip, **K** Skip all.
+
+## Editor
+
+| Action | macOS | Windows / Linux |
+| --- | --- | --- |
+| Save | ⌘S | Ctrl+S |
+| Close the editor window | ⌘W or Esc | Ctrl+W or Esc |
+| Find | ⌘F | Ctrl+F |
+| Find and replace | ⌥⌘F | Ctrl+Alt+F |
+| Next / previous match | ⌘G / ⇧⌘G | F3 / Shift+F3 |
+| Go to line | ⌘L | Ctrl+L |
 
 ## Preview
 

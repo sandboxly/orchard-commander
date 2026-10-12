@@ -43,7 +43,7 @@ also indicate that someone is intercepting the connection. Check with the
 server's administrator before you continue.
 
 For SFTP, the trusted keys are stored in the file `known_hosts` in the
-settings folder (see [Settings](11-settings.md#where-settings-are-stored)).
+settings folder (see [Settings](12-settings.md#where-settings-are-stored)).
 To accept a new key, remove the server's line from that file and connect
 again.
 
@@ -71,7 +71,7 @@ Files marked ☁ are online-only and must be downloaded first.
 ### Files from a RAR archive can't be extracted or previewed
 
 Install `unrar` or 7-Zip. On Linux, `libarchive-tools` (bsdtar) also works
-for most archives. See [RAR archives](05-archives.md#rar-archives).
+for most archives. See [RAR archives](06-archives.md#rar-archives).
 
 ### A file I deleted in another program still appears
 

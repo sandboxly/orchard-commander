@@ -116,7 +116,7 @@ kbd { display: inline-block; font-size: 0.8em; line-height: 1.5; padding: 0 6px;
 .feature h2 { font-size: clamp(24px, 3vw, 32px); margin: 14px 0 16px; }
 .feature p { color: var(--text); }
 .marks { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 8px; font: 400 14px/1.5 var(--mono); }
-.marks li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.marks li { display: flex; gap: 10px; align-items: baseline; }
 .marks li::before { content: "›"; color: var(--accent); font-weight: 700; }
 .shot { display: block; width: 100%; padding: 14px 10px 10px; cursor: zoom-in; font: inherit; color: inherit; text-align: left; }
 .shot:hover { border-color: color-mix(in srgb, var(--border-active) 60%, var(--border)); }

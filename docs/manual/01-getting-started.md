@@ -104,7 +104,7 @@ On macOS, the menus are in the macOS menu bar at the top of the screen. On
 all systems you can also show them inside the window: press **F9**, which
 opens the menu of the side you are working in. To keep the menu bar visible
 in the window, turn on **Always show the menu bar** in Settings (see
-[Settings](11-settings.md)).
+[Settings](12-settings.md)).
 
 ## The active panel
 
@@ -136,4 +136,4 @@ bottom of the window. They don't require any action.
 
 - [Navigating](02-navigating.md) explains how to move around.
 - [Working with files](03-files.md) covers copying, moving and deleting.
-- [Keyboard reference](12-keyboard-reference.md) lists all shortcuts.
+- [Keyboard reference](13-keyboard-reference.md) lists all shortcuts.

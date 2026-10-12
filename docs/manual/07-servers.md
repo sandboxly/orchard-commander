@@ -155,4 +155,4 @@ in the active panel. Panels showing that server switch to your home folder.
 The first time Orchard Commander connects to a server on your local network,
 macOS asks whether to allow it to find and connect to devices on your local
 network. Click **Allow**. If you clicked **Don't Allow**, see
-[Troubleshooting](13-troubleshooting.md#a-server-on-my-network-cant-be-reached-macos).
+[Troubleshooting](14-troubleshooting.md#a-server-on-my-network-cant-be-reached-macos).
