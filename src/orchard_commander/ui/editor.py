@@ -14,13 +14,13 @@ from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
+    QAction,
     QColor,
     QFont,
     QKeySequence,
     QPainter,
     QPaintEvent,
     QResizeEvent,
-    QShortcut,
     QSyntaxHighlighter,
     QTextCharFormat,
     QTextCursor,
@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenuBar,
     QPlainTextEdit,
     QPushButton,
     QTextEdit,
@@ -290,20 +291,58 @@ class EditorWindow(QWidget):
     # -- keys ----------------------------------------------------------------------
 
     def _shortcuts(self) -> None:
-        def key(sequence, slot: Callable[[], None]) -> None:
-            shortcut = QShortcut(QKeySequence(sequence), self)
-            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-            shortcut.activated.connect(slot)
+        """The editor's commands, as window shortcuts and, where menus are global
+        (macOS), as the window's own menu bar, which also keeps the main window's
+        menu from taking keys like ⌘Z or ⌘F while the editor is in front."""
+        edit = self.editor
+        S = QKeySequence.StandardKey
+        actions: dict[str, QAction] = {}
 
-        key(QKeySequence.StandardKey.Save, self.save)
-        key(QKeySequence.StandardKey.Close, self.close)
-        key(QKeySequence.StandardKey.Find, self.show_find)
-        key(QKeySequence.StandardKey.FindNext, lambda: self.find_next(backward=False))
-        key(QKeySequence.StandardKey.FindPrevious, lambda: self.find_next(backward=True))
-        key("Ctrl+Alt+F", self.show_replace)
-        key("Ctrl+L", self.go_to_line)
-        key("Escape", self._escape)
-        key("F3", lambda: self.find_next(backward=False))
+        def act(title: str, slot: Callable[[], None], *keys) -> QAction:
+            action = QAction(title, self)
+            sequences: list[QKeySequence] = []
+            for k in keys:  # every platform binding of a standard key, without duplicates
+                for seq in QKeySequence.keyBindings(k) if isinstance(k, QKeySequence.StandardKey) else [QKeySequence(k)]:
+                    if seq not in sequences:
+                        sequences.append(seq)
+            action.setShortcuts(sequences)
+            action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            action.triggered.connect(slot)
+            self.addAction(action)
+            actions[title] = action
+            return action
+
+        act("Save", self.save, S.Save)
+        act("Close", self.close, S.Close)
+        undo = act("Undo", edit.undo, S.Undo)
+        redo = act("Redo", edit.redo, S.Redo)
+        undo.setEnabled(False)
+        redo.setEnabled(False)
+        edit.undoAvailable.connect(undo.setEnabled)
+        edit.redoAvailable.connect(redo.setEnabled)
+        act("Cut", edit.cut, S.Cut)
+        act("Copy", edit.copy, S.Copy)
+        act("Paste", edit.paste, S.Paste)
+        act("Select all", edit.selectAll, S.SelectAll)
+        act("Find", self.show_find, S.Find)
+        act("Find next", lambda: self.find_next(backward=False), S.FindNext, "F3")
+        act("Find previous", lambda: self.find_next(backward=True), S.FindPrevious, "Shift+F3")
+        act("Replace", self.show_replace, "Ctrl+Alt+F")
+        act("Go to line", self.go_to_line, "Ctrl+L", "Ctrl+Alt+L")
+        act("Escape", self._escape, "Escape")
+        self.actions_by_title = actions
+
+        bar = QMenuBar(self)
+        if not bar.isNativeMenuBar():  # an in-window bar would break the terminal look
+            bar.deleteLater()
+            return
+        file_menu = bar.addMenu("&File")
+        for title in ("Save", None, "Close"):
+            file_menu.addSeparator() if title is None else file_menu.addAction(actions[title])
+        edit_menu = bar.addMenu("&Edit")
+        for title in ("Undo", "Redo", None, "Cut", "Copy", "Paste", "Select all", None,
+                      "Find", "Find next", "Find previous", "Replace", None, "Go to line"):
+            edit_menu.addSeparator() if title is None else edit_menu.addAction(actions[title])
 
     def _escape(self) -> None:
         if self.find_bar.isVisible():

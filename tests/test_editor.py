@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 
 from orchard_commander import textfile, vfs
 from orchard_commander.ui import dialogs
@@ -227,3 +228,26 @@ def test_title_shortens_the_home_folder(qtbot, window, tree: Path, monkeypatch):
     window.open_editor(vfs.local(tree / "src" / "a.txt"))
     editor = editor_for(window, "a.txt")
     assert editor.frame._title.endswith(os.path.join("~", "src", "a.txt"))
+
+
+def test_undo_redo_and_go_to_line(qtbot, window, tree: Path, monkeypatch):
+    window.open_editor(vfs.local(tree / "src" / "a.txt"))
+    editor = editor_for(window, "a.txt")
+    original = editor.editor.toPlainText()
+    actions = editor.actions_by_title
+    assert not actions["Undo"].isEnabled()  # loading the file is not an edit
+    qtbot.keyClicks(editor.editor, "new ")
+    assert actions["Undo"].isEnabled()
+    qtbot.keyClick(editor.editor, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)  # ⌘Z on macOS
+    assert editor.editor.toPlainText() == original and not editor.modified
+    actions["Redo"].trigger()
+    assert editor.editor.toPlainText() == "new " + original
+
+    lines = "\n".join(f"line {n}" for n in range(1, 51))
+    editor.editor.setPlainText(lines)
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a, **k: "42")
+    assert QKeySequence("Ctrl+Alt+L") in actions["Go to line"].shortcuts()  # ⌥⌘L on macOS
+    assert QKeySequence("Ctrl+L") in actions["Go to line"].shortcuts()
+    qtbot.keyClick(editor.editor, Qt.Key.Key_L,
+                   Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier)
+    assert editor.editor.textCursor().block().text() == "line 42"
