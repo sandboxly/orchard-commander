@@ -25,15 +25,15 @@ one side can preview at a time.
 | Images (png, jpg, gif, webp, svg, tiff, heic on macOS, …) | Full resolution, scaled to fit; animated GIF/WebP play. Right-click: Open (default app) or Copy (the full-size image) |
 | Video (mp4, mov, mkv, webm, avi, …) | Space play/pause, ←/→ seek, M mute, A autoplay |
 | Audio (mp3, flac, wav, ogg, …) | Title and artist, a live spectrum analyzer while playing, and the waveform of the whole file, which you can click or drag to seek — Space play/pause, ←/→ seek, M mute, A autoplay. On servers, files up to 100 MB get a waveform (it reads the whole file) |
+| PDF | Rendered pages, fitted to the pane — ←/→, PgUp/PgDn, Space or the scroll wheel turn pages; Home/End |
+| Directories and archives | Contents listing, like a folder |
+| Other binary | File info and hex dump |
 
 When an audio or video file ends, the next one in the panel is selected and
 plays (Settings → Preview; switched off, videos loop instead). The player
 remembers whether it was muted — it starts muted until you unmute it once —
 and its **[x] Autoplay** toggle (key A, or Settings → Preview): on, files
 start playing as soon as they're selected; off, Space starts them.
-| PDF | Rendered pages, fitted to the pane — ←/→, PgUp/PgDn, Space or the scroll wheel turn pages; Home/End |
-| Directories and archives | Contents listing, like a folder |
-| Other binary | File info and hex dump |
 
 Video and audio decoding uses Qt Multimedia's bundled FFmpeg backend, so the
 same formats work on every OS.
