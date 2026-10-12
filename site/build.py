@@ -27,24 +27,32 @@ PAGE = """<!doctype html>
 <link rel="icon" href="../icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="../nocturne.css">
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header class="nav">
-  <a class="brand" href="../"><img src="../icon.png" alt="" width="28" height="28"> Orchard Commander</a>
-  <nav>
-    <a href="../#features">Features</a>
-    <a href="./">Manual</a>
-    <a href="https://github.com/sandboxly/orchard-commander">GitHub</a>
-    <a class="button small" href="../#download">Download</a>
+<div class="page">
+<header class="topbar">
+  <nav class="topnav">
+    <a class="brand" href="../"><img src="../icon.png" alt="" width="26" height="26"><span>Orchard Commander</span></a>
+    <a class="navlink" href="../#features">Features</a>
+    <a class="navlink" href="./">Manual</a>
+    <a class="navlink" href="https://github.com/sandboxly/orchard-commander"><i class="ph ph-github-logo"></i>GitHub</a>
+    <a class="btn btn-primary" href="../#download">Download</a>
   </nav>
+  <div class="fade-rule"></div>
 </header>
 <div class="manual">
   <aside><h4>User guide</h4><ol>{toc}</ol></aside>
   <main class="doc">{body}{pager}</main>
 </div>
-<footer><p>Orchard Commander · MIT License · <a href="https://github.com/sandboxly/orchard-commander/tree/main/docs/manual">Edit this manual on GitHub</a></p></footer>
+<footer class="footer">
+  <span class="footer-brand"><img src="../icon.png" alt="" width="20" height="20">Orchard Commander · MIT License</span>
+  <a href="https://github.com/sandboxly/orchard-commander/tree/main/docs/manual">Edit this manual on GitHub</a>
+</footer>
+</div>
 </body>
 </html>
 """
