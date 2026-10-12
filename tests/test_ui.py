@@ -1098,6 +1098,9 @@ def run_search(window: MainWindow, side, **options):
 def test_search_results_are_a_folder(qtbot, window: MainWindow, searchable: Path):
     panel = window.left.panel
     results = run_search(window, window.left, names="*.txt")
+    p = results.progress
+    assert len(results.hits) == 3, (f"hits={len(results.hits)} folders={p.folders} files={p.files} "
+                                    f"errors={p.errors} root={results.query.roots}")
     assert sorted(e.name.replace(os.sep, "/") for e in panel.entries) == ["a.txt", "docs/one.txt", "sub/c.txt"]
     assert panel._display_path().startswith("Search: *.txt in")
     assert "3 hits" in panel._subtitle

@@ -437,13 +437,27 @@ class RarArchive(Archive):
 RAR_TOOL_HINT = "Install unrar or 7-Zip to extract this RAR archive"
 
 
+_rar_support: dict[str, bool] = {}
+
+
+def _seven_zip_reads_rar(exe: str) -> bool:
+    """Some 7-Zip builds leave out RAR (p7zip, Homebrew's sevenzip): ask its format list, once."""
+    if exe not in _rar_support:
+        try:
+            out = subprocess.run([exe, "i"], capture_output=True, text=True, timeout=10).stdout
+            _rar_support[exe] = any(line.split()[1:2] == ["Rar5"] or " Rar5 " in line for line in out.splitlines())
+        except (OSError, subprocess.SubprocessError):
+            _rar_support[exe] = False
+    return _rar_support[exe]
+
+
 def rar_command(archive: Path, member: str) -> list[str]:
     """A command that writes `member` to stdout, using the best available tool."""
     member = member.replace("\\", "/")
     if exe := shutil.which("unrar"):
         return [exe, "p", "-inul", "-y", "--", str(archive), member]
-    for name in ("7z", "7zz", "7za"):
-        if exe := shutil.which(name):
+    for name in ("7zz", "7z", "7za"):
+        if (exe := shutil.which(name)) and _seven_zip_reads_rar(exe):
             return [exe, "x", "-so", "-bd", "-y", "--", str(archive), member]
     # bsdtar ships with macOS, and with Windows 10+ as tar.exe.
     exe = shutil.which("bsdtar") or (shutil.which("tar") if sys.platform == "win32" else None)
