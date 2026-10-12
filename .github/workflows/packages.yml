@@ -52,6 +52,7 @@ jobs:
             $out = winget validate --manifest $dir | Out-String
             Write-Host $out
             if ($out -notmatch "Manifest validation succeeded") { throw "winget validate failed" }
+            exit 0  # don't pass winget's warning exit code on
           } else {
             Write-Host "::notice::winget is not available on this runner; the manifests were not validated"
           }
