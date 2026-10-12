@@ -21,6 +21,8 @@ With Homebrew:
 brew install --cask sandboxly/tap/orchard-commander
 ```
 
+To update later, run `brew upgrade --cask orchard-commander`.
+
 With the disk image:
 
 1. Open `Orchard-Commander-macOS.dmg`.
@@ -32,6 +34,23 @@ With the disk image:
 The app is signed and notarized, so macOS opens it without a warning.
 
 ### Windows
+
+With winget, which is part of Windows 10 and 11:
+
+```sh
+winget install Sandboxly.OrchardCommander
+```
+
+With Chocolatey (in an administrator terminal):
+
+```sh
+choco install orchard-commander
+```
+
+To update later, run `winget upgrade Sandboxly.OrchardCommander` or
+`choco upgrade orchard-commander`.
+
+With the installer:
 
 1. Run `Orchard-Commander-Setup.exe`.
 2. Choose whether to install for yourself only or for all users of the
