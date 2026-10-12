@@ -7,7 +7,7 @@ others as "View as" choices.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -42,6 +42,9 @@ SLOW_LOAD_MS = 300  # show a loading indicator if a preview from a server takes 
 
 class PreviewPane(BoxFrame):
     """Shows whatever `show_path()` is given, loading in the background."""
+
+    notice = Signal(str, str)  # passing notifications from views (text, severity)
+
 
     def __init__(self, themes: ThemeManager) -> None:
         super().__init__(themes)
@@ -241,6 +244,7 @@ class PreviewPane(BoxFrame):
         if view is None:
             view = previewer.create_view(ViewContext(self.themes))
             view.message.connect(self._view_message)
+            view.notice.connect(self.notice)
             self._views[previewer.id] = view
             self.stack.addWidget(view)
         return view

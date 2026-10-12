@@ -22,7 +22,7 @@ one side can preview at a time.
 | --- | --- |
 | Source code / text | Syntax-highlighted (Pygments), first 1 MB |
 | Markdown | Rendered |
-| Images (png, jpg, gif, webp, svg, tiff, heic on macOS, …) | Full resolution, scaled to fit; animated GIF/WebP play |
+| Images (png, jpg, gif, webp, svg, tiff, heic on macOS, …) | Full resolution, scaled to fit; animated GIF/WebP play. Right-click: Open (default app) or Copy (the full-size image) |
 | Video (mp4, mov, mkv, webm, avi, …) | Plays muted and loops — Space play/pause, ←/→ seek, M mute |
 | Audio (mp3, flac, wav, ogg, …) | Title and artist, a live spectrum analyzer while playing, and the waveform of the whole file, which you can click or drag to seek — Space play/pause, ←/→ seek, M mute. On servers, files up to 100 MB get a waveform (it reads the whole file) |
 | PDF | Rendered pages, fitted to the pane — ←/→, PgUp/PgDn, Space or the scroll wheel turn pages; Home/End |

@@ -197,6 +197,41 @@ def test_image_preview(qtbot, window: MainWindow, tree: Path):
     assert "64×32" in pane._subtitle
 
 
+def test_image_context_menu_opens_and_copies(qtbot, window: MainWindow, tree: Path, monkeypatch):
+    from PySide6.QtGui import QColor, QGuiApplication, QImage
+
+    from orchard_commander.preview.builtin import image as image_previewer
+
+    big = QImage(5000, 300, QImage.Format.Format_RGB32)  # wider than previews decode
+    big.fill(QColor("blue"))
+    big.save(str(tree / "src" / "wide.png"))
+    window.left.panel.reload()
+    settle(window)
+    window.set_mode(window.right, PREVIEW)
+    select(window, "wide.png")
+    pane = window.right.preview
+    wait_until(lambda: pane.current_id == "image")
+    view = pane.current_view
+    assert view.data.image.width() < 5000  # the preview is scaled down
+
+    menu = view.context_menu()
+    actions = {a.text(): a for a in menu.actions()}
+    assert list(actions) == ["Open", "Copy"] and all(a.isEnabled() for a in actions.values())
+
+    opened = []
+    monkeypatch.setattr(image_previewer.fs, "open_with_default_app", opened.append)
+    actions["Open"].trigger()
+    assert opened == [tree / "src" / "wide.png"]
+
+    actions["Copy"].trigger()
+    copied = QGuiApplication.clipboard().image()
+    assert (copied.width(), copied.height()) == (5000, 300)  # full size, not the preview's
+    assert window.toast.isVisible() and "Copied wide.png" in window.toast.text()
+
+    view.clear()
+    assert not any(a.isEnabled() for a in view.context_menu().actions())
+
+
 def test_only_one_side_previews(qtbot, window: MainWindow):
     window.set_mode(window.right, PREVIEW)
     window.set_mode(window.left, PREVIEW)

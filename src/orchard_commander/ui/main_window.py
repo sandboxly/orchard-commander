@@ -215,6 +215,7 @@ class MainWindow(QMainWindow):
             other = self._other(side)
             side.mode_requested.connect(self.set_mode)
             side.panel.message.connect(self.notify)
+            side.preview.notice.connect(self.notify)
             side.panel.title_clicked.connect(lambda pos, s=side: self.bookmark_menu(s, pos))
             side.panel.location_changed.connect(lambda loc, s=side: self._location_changed(s, loc))
             side.panel.cursor_changed.connect(lambda target, o=other: self._cursor_changed(o, target))

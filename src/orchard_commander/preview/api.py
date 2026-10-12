@@ -134,6 +134,7 @@ class PreviewView(QWidget):
     """A previewer's widget. One instance per previewer, reused across files."""
 
     message = Signal(str)  # ask the pane to show a message instead (e.g. playback failed)
+    notice = Signal(str, str)  # a passing notification (text, "info" | "warning" | "error"), e.g. "Copied"
 
     @abstractmethod
     def show_data(self, data: Any) -> None:

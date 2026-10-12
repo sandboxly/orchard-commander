@@ -1,4 +1,5 @@
-"""Images in every format Qt can decode; animated GIF/WebP play."""
+"""Images in every format Qt can decode; animated GIF/WebP play. Right-click: open
+with the default app, or copy the image."""
 
 from __future__ import annotations
 
@@ -7,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QImage, QImageReader, QMovie, QPixmap, QResizeEvent
-from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout
+from PySide6.QtGui import QContextMenuEvent, QGuiApplication, QImage, QImageReader, QMovie, QPixmap, QResizeEvent
+from PySide6.QtWidgets import QLabel, QMenu, QSizePolicy, QVBoxLayout
 
 from orchard_commander import fs
 from orchard_commander.preview import content
@@ -133,15 +134,53 @@ class ImageView(PreviewView):
     def __init__(self) -> None:
         super().__init__()
         self.label = _ScaledLabel()
+        self.data: ImageData | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.label)
 
     def show_data(self, data: ImageData) -> None:
+        self.data = data
         if data.image is None:
             self.label.show_animation(data.path)
         else:
             self.label.show_image(data.image)
 
     def clear(self) -> None:
+        self.data = None
         self.label.clear_media()
+
+    # -- context menu ------------------------------------------------------
+
+    def context_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.addAction("Open", self.open_file).setEnabled(self.data is not None)
+        menu.addAction("Copy", self.copy_image).setEnabled(self.data is not None)
+        return menu
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        self.context_menu().exec(event.globalPos())
+
+    def open_file(self) -> None:
+        """Open with the system's default app (a server's file: the downloaded copy)."""
+        if self.data is None:
+            return
+        try:
+            fs.open_with_default_app(self.data.path)
+        except OSError as exc:
+            self.notice.emit(f"Cannot open {self.data.path.name}: {exc}", "error")
+
+    def copy_image(self) -> None:
+        """Copy the image at full size (the preview may be scaled down); animations: the first frame."""
+        if self.data is None:
+            return
+        reader = QImageReader(str(self.data.path))
+        reader.setAutoTransform(True)
+        image = reader.read()
+        if image.isNull():
+            image = self.data.image or QImage()
+        if image.isNull():
+            self.notice.emit(f"Cannot copy {self.data.path.name}: {reader.errorString()}", "error")
+            return
+        QGuiApplication.clipboard().setImage(image)
+        self.notice.emit(f"Copied {self.data.path.name} ({image.width()}×{image.height()})", "info")
