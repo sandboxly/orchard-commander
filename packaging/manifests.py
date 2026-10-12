@@ -78,13 +78,13 @@ end
 
 def winget(version: str, sha: dict[str, str]) -> dict[str, str]:
     ident = "Sandboxly.OrchardCommander"
-    head = "# yaml-language-server: $schema=https://aka.ms/winget-manifest.{kind}.1.6.0.schema.json\n\n"
+    head = "# yaml-language-server: $schema=https://aka.ms/winget-manifest.{kind}.1.12.0.schema.json\n\n"
     return {
         f"{ident}.yaml": head.format(kind="version") + f"""PackageIdentifier: {ident}
 PackageVersion: {version}
 DefaultLocale: en-US
 ManifestType: version
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
 """,
         f"{ident}.installer.yaml": head.format(kind="installer") + f"""PackageIdentifier: {ident}
 PackageVersion: {version}
@@ -106,7 +106,7 @@ Installers:
   InstallerSwitches:
     Custom: /ALLUSERS
 ManifestType: installer
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
 """,
         f"{ident}.locale.en-US.yaml": head.format(kind="defaultLocale") + f"""PackageIdentifier: {ident}
 PackageVersion: {version}
@@ -133,7 +133,7 @@ Documentations:
 - DocumentLabel: User guide
   DocumentUrl: {HOMEPAGE}manual/
 ManifestType: defaultLocale
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
 """,
     }
 

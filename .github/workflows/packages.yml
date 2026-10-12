@@ -53,6 +53,24 @@ jobs:
           } else {
             Write-Host "::notice::winget is not available on this runner; the manifests were not validated"
           }
+      - name: Test the winget manifests (install, run, uninstall)
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Host "::notice::no winget on this runner"; exit 0 }
+          $dir = "manifests\winget\manifests\s\Sandboxly\OrchardCommander\$env:VERSION"
+          winget settings --enable LocalManifestFiles
+          winget install --manifest $dir --scope user --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $exe = "$env:LOCALAPPDATA\Programs\Orchard Commander\orchard-commander.exe"
+          if (-not (Test-Path $exe)) { throw "not installed: $exe" }
+          $run = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru -RedirectStandardOutput winget-selftest.txt
+          Get-Content winget-selftest.txt
+          if ($run.ExitCode) { throw "self-test failed ($($run.ExitCode))" }
+          winget uninstall --name "Orchard Commander" --silent --disable-interactivity
+          foreach ($i in 1..30) { if (-not (Test-Path $exe)) { break }; Start-Sleep 1 }
+          if (Test-Path $exe) { throw "uninstall left $exe behind" }
       - uses: actions/upload-artifact@v4
         with:
           name: package-managers-${{ inputs.version }}
