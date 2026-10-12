@@ -22,6 +22,8 @@ Website: https://sandboxly.github.io/orchard-commander/
 
 All versions are on the [releases page](https://github.com/sandboxly/orchard-commander/releases).
 
+If you enjoy Orchard Commander, you can [buy me a coffee](https://ko-fi.com/sandboxly).
+
 ## Documentation
 
 The [user manual](https://sandboxly.github.io/orchard-commander/manual/) covers
