@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Orchard Commander — a keyboard-first two-panel file manager</title>
-<meta name="description" content="A keyboard-first two-panel file manager for macOS, Windows and Linux, with previews, archives and servers as folders, search, batch renaming and a built-in terminal.">
+<title>Orchard Commander: a two-panel file manager for macOS, Windows and Linux</title>
+<meta name="description" content="A two-panel file manager for macOS, Windows and Linux in the tradition of Norton Commander and Total Commander. Free and open source.">
 <meta name="theme-color" content="#1d2021">
 <meta property="og:title" content="Orchard Commander">
-<meta property="og:description" content="The two-panel file manager, with previews, archives, servers, search, multi-rename and a terminal. macOS, Windows, Linux.">
+<meta property="og:description" content="A two-panel file manager for macOS, Windows and Linux in the tradition of Norton Commander and Total Commander. Free and open source.">
 <meta property="og:image" content="https://sandboxly.github.io/orchard-commander/screenshots/photos.webp">
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,12 +34,12 @@
 
 <main id="main">
   <section class="hero wrap">
-    <p class="kicker">v1.0.0 · free &amp; open source</p>
-    <h1>Two panels. <span>Every file within reach.</span></h1>
-    <p class="lede">Orchard Commander is a keyboard-first file manager in the tradition of Norton and Total Commander — rebuilt with previews for almost anything, archives and servers as folders, powerful search, batch renaming and a terminal that follows you around.</p>
+    <p class="kicker">Version 1.0 · free and open source</p>
+    <h1>A two-panel file manager <span>for macOS, Windows and Linux</span></h1>
+    <p class="lede">Orchard Commander shows two folders side by side. F5 copies the selected files from one panel to the other, F6 moves them, F7 creates a folder and F8 moves files to the trash. If you have used Norton Commander or Total Commander, you already know how it works.</p>
     <div class="cta">
       <a class="btn btn-primary" href="#download" data-hero-dl><i class="ph ph-download-simple" aria-hidden="true"></i><span>Download</span></a>
-      <span class="mute">for macOS, Windows and Linux · <a href="#download">all downloads</a></span>
+      <span class="mute"><a href="#download">Other systems and packages</a></span>
     </div>
 
     <div class="stage">
@@ -84,9 +84,9 @@
     <article class="feature">
       <div>
         <p class="kicker"><i class="ph ph-eye" aria-hidden="true"></i>Preview</p>
-        <h2>See what's inside before you open it</h2>
-        <p>Switch either side to Preview and it shows whatever the cursor is on in the other panel: syntax-highlighted code, rendered Markdown, images, PDFs page by page, audio with a live spectrum and waveform, and video. Files on servers stream instead of downloading first.</p>
-        <ul class="marks"><li>Code and text in your color scheme</li><li>PDF paging with the keyboard or the wheel</li><li>Hex view for everything else</li></ul>
+        <h2>Preview files in the other panel</h2>
+        <p>Press F3 and the other side shows the file under the cursor: source code with syntax highlighting, Markdown, images, PDFs, audio and video. The preview changes as you move through the list. Videos and music on a server start playing while they are still loading.</p>
+        <ul class="marks"><li>Highlighting follows the app's color scheme</li><li>Turn PDF pages with the arrow keys or the scroll wheel</li><li>Files of any other type open in a hex view</li></ul>
       </div>
       <button class="frame shot" type="button" data-name="code.webp" aria-label="Enlarge screenshot: code preview">
         <span class="chip">Preview</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
@@ -97,9 +97,9 @@
     <article class="feature">
       <div>
         <p class="kicker"><i class="ph ph-magnifying-glass" aria-hidden="true"></i>Find files</p>
-        <h2>Search results you can work with</h2>
-        <p>Search by name with wildcards or regular expressions, by contents, size and date — across folders, servers and inside archives. The hits appear as a folder while the search runs, so you can preview them, mark them all and move them somewhere else in one go.</p>
-        <ul class="marks"><li><code>*.py;*.md</code>, <code>report</code>, <code>*.zip|*old*</code></li><li>Files containing — or not containing — a phrase</li><li>Results stay available with <kbd>⇧⌘F</kbd></li></ul>
+        <h2>Search results open as a folder</h2>
+        <p>Alt+F7 or <kbd>⌘F</kbd> searches by name, content, size and date, on your disk, on servers and inside zip files. Matches appear in the panel as a folder while the search is still running. You can preview them, mark them all with <kbd>+</kbd> and move them elsewhere with F6.</p>
+        <ul class="marks"><li><code>*.py;*.md</code> finds Python and Markdown files</li><li><code>*.zip|*old*</code> finds zip files without “old” in the name</li><li>Content search can also list the files that lack a phrase</li></ul>
       </div>
       <button class="frame shot" type="button" data-name="find-files.webp" aria-label="Enlarge screenshot: search results">
         <span class="chip">Find files</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
@@ -110,9 +110,9 @@
     <article class="feature">
       <div>
         <p class="kicker"><i class="ph ph-textbox" aria-hidden="true"></i>Multi-rename</p>
-        <h2>Rename a hundred files as easily as one</h2>
-        <p>Build new names from placeholders — parts of the old name, counters, dates, parent folders — and from file metadata such as music tags, photo dates and video resolution. Every new name is checked before anything happens, and the whole batch can be undone.</p>
-        <ul class="marks"><li><code>[=track] [=artist] - [=title]</code></li><li>Search and replace with regular expressions</li><li>Safe swaps and case-only changes</li></ul>
+        <h2>Rename many files with one pattern</h2>
+        <p><kbd>⌘M</kbd> opens a multi-rename tool that uses Total Commander's placeholders: <code>[N]</code> for the old name, <code>[C]</code> for a counter, <code>[Y]-[M]-[D]</code> for the date. It also reads metadata, such as the artist of an MP3 or the date a photo was taken. You see every new name before you start, and <kbd>⌘Z</kbd> undoes the whole batch.</p>
+        <ul class="marks"><li><code>IMG_[C:4]</code> gives IMG_0001.jpg, IMG_0002.jpg and so on</li><li><code>[=track] [=artist] - [=title]</code> names songs from their tags</li><li>Duplicate names are caught before anything is renamed</li></ul>
       </div>
       <button class="frame shot" type="button" data-name="multi-rename.webp" aria-label="Enlarge screenshot: multi-rename dialog">
         <span class="chip">Multi-rename</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
@@ -123,9 +123,9 @@
     <article class="feature">
       <div>
         <p class="kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i>Terminal</p>
-        <h2>A shell that goes where you go</h2>
-        <p>Open a terminal below the panels with <kbd>⌘J</kbd>. Each side has its own shell, and it stays in step with its panel: <code>cd</code> in the terminal and the panel follows; browse in the panel and the shell follows. Full-screen tools like vim, htop and tmux work, mouse included.</p>
-        <ul class="marks"><li>Your own shell: zsh, bash, fish or PowerShell</li><li>Prompt themes with Nerd Font icons</li><li>Panels refresh after every command</li></ul>
+        <h2>A shell below the panels</h2>
+        <p><kbd>⌘J</kbd> opens your usual shell under the panels: zsh, bash, fish or PowerShell. Each side has its own session. When you type <code>cd</code>, the panel goes to the same folder, and when you change folders in the panel, the shell follows. vim, htop and tmux work, including the mouse.</p>
+        <ul class="marks"><li>Prompt themes like powerlevel10k keep their icons</li><li>Files you delete with <code>rm</code> disappear from the panel</li><li>Esc, Tab and Ctrl+C go to the shell</li></ul>
       </div>
       <button class="frame shot" type="button" data-name="terminal.webp" aria-label="Enlarge screenshot: terminal">
         <span class="chip">Terminal</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
@@ -136,9 +136,9 @@
     <article class="feature">
       <div>
         <p class="kicker"><i class="ph ph-file-zip" aria-hidden="true"></i>Archives &amp; servers</p>
-        <h2>Zip files and servers are just folders</h2>
-        <p>Press Enter on a zip, tar, 7z or rar archive to browse it like a folder — nested archives included — and copy out what you need. Connect to SFTP, SMB, WebDAV and S3 and work there with the same keys as on your own disk. Passwords stay in your system's keychain.</p>
-        <ul class="marks"><li>SFTP · SMB · WebDAV · S3</li><li>Bookmarks for local and remote folders</li><li>Copy between any two locations</li></ul>
+        <h2>Archives and servers open in a panel</h2>
+        <p>Press Enter on a zip, tar, 7z or rar file to look inside, even if it is inside another archive, and copy out what you need. Connections to SFTP, SMB, WebDAV and S3 servers open in a panel and work with the same keys as your disk. Passwords are stored in the system keychain.</p>
+        <ul class="marks"><li>Bookmarks can point to folders on servers</li><li>Copy from a server straight into a folder on another server</li><li>Archives are read-only</li></ul>
       </div>
       <div class="app small" data-filelist role="group" aria-label="Interactive demo: browsing inside a zip archive">
         <div class="app-panes">
@@ -172,29 +172,29 @@
           <span class="chip">audio.webp</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
           <img src="screenshots/audio.webp" alt="Playing an MP3 with a live spectrum and the waveform of the whole track" loading="lazy">
         </button>
-        <figcaption>Audio with a live spectrum and the whole track's waveform</figcaption>
+        <figcaption>Audio preview with a spectrum and the waveform of the track</figcaption>
       </figure>
       <figure>
         <button class="frame shot" type="button" data-name="pdf.webp" aria-label="Enlarge screenshot: PDF preview">
           <span class="chip">pdf.webp</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
           <img src="screenshots/pdf.webp" alt="A PDF report previewed next to the Documents folder" loading="lazy">
         </button>
-        <figcaption>PDFs, page by page</figcaption>
+        <figcaption>PDF preview</figcaption>
       </figure>
     </div>
 
     <div class="facts">
-      <div class="frame fact"><span class="chip">Keyboard first</span><i class="ph ph-keyboard" aria-hidden="true"></i><p>F-keys, marks with <kbd>Space</kbd> and <kbd>+</kbd>, a command palette on <kbd>⌘P</kbd>. The mouse works too.</p></div>
-      <div class="frame fact"><span class="chip">Looks like a terminal</span><i class="ph ph-brackets-square" aria-hidden="true"></i><p>A monospace grid, box frames and eight color schemes — or your own. Follows light and dark mode if you like.</p></div>
-      <div class="frame fact"><span class="chip">Cross-platform</span><i class="ph ph-devices" aria-hidden="true"></i><p>The same app and the same keys on macOS, Windows and Linux.</p></div>
-      <div class="frame fact"><span class="chip">Open source</span><i class="ph ph-git-branch" aria-hidden="true"></i><p>MIT licensed, with add-on interfaces for previewers, connection types and rename fields.</p></div>
+      <div class="frame fact"><span class="chip">Keys and mouse</span><i class="ph ph-keyboard" aria-hidden="true"></i><p>Most commands have a shortcut, and the command palette on <kbd>⌘P</kbd> finds the ones you forget. You can also do everything with the mouse.</p></div>
+      <div class="frame fact"><span class="chip">Color schemes</span><i class="ph ph-brackets-square" aria-hidden="true"></i><p>Eight schemes are built in, gruvbox among them, and you can add your own. The app can switch with the system between light and dark.</p></div>
+      <div class="frame fact"><span class="chip">Three systems</span><i class="ph ph-devices" aria-hidden="true"></i><p>The same app runs on macOS, Windows and Linux. The shortcuts are the same too, with ⌘ in place of Ctrl on a Mac.</p></div>
+      <div class="frame fact"><span class="chip">Open source</span><i class="ph ph-git-branch" aria-hidden="true"></i><p>Orchard Commander is MIT licensed. Add-ons can bring new previews, connection types and rename fields.</p></div>
     </div>
   </div>
 
   <section id="download" class="download" aria-labelledby="dl-title">
     <div class="wrap">
       <p class="kicker">Version 1.0.0</p>
-      <h2 id="dl-title">Download Orchard Commander</h2>
+      <h2 id="dl-title">Download</h2>
       <div class="dl-grid">
         <div class="frame dl" data-os="macos" data-label="macOS">
           <span class="chip">macOS</span><span class="badge">Your system</span>
@@ -227,7 +227,7 @@
           </div>
         </div>
       </div>
-      <p class="dl-note">All releases and release notes are on <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. New to Orchard Commander? Start with the <a href="manual/">getting started guide</a>.</p>
+      <p class="dl-note">Release notes and earlier versions are on <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. The <a href="manual/01-getting-started.html">getting started guide</a> covers installation and the first steps.</p>
     </div>
   </section>
 </main>
