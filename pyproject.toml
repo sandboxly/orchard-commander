@@ -1,8 +1,10 @@
 [project]
 name = "orchard-commander"
-version = "0.1.0"
+version = "1.0.0"
 description = "A modern, cross-platform two-panel file manager with a terminal look"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Stephan Lengl", email = "lengl.stephan@gmail.com" }
 ]

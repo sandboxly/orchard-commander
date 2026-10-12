@@ -436,3 +436,7 @@ pdf = "orchard_pdf:PdfPreviewer"
 `tests/test_previewers.py` runs a contract against every registered previewer —
 empty, garbage and valid files, on the local disk and a non-local file system —
 so a new previewer is checked automatically.
+
+## License
+
+MIT — see [LICENSE](LICENSE). The app bundles Qt (PySide6) and pyte under the LGPL.
