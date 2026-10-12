@@ -191,7 +191,7 @@ pkgdesc="{SUMMARY}"
 arch=('x86_64')
 url="{HOMEPAGE}"
 license=('MIT')
-depends=('libglvnd' 'libxkbcommon' 'libxkbcommon-x11' 'fontconfig' 'dbus' 'xcb-util-cursor')
+depends=('libglvnd' 'libxkbcommon' 'libxkbcommon-x11' 'fontconfig' 'dbus' 'xcb-util-cursor' 'libpulse')
 optdepends=('unrar: RAR archives' '7zip: RAR and 7z archives')
 provides=('orchard-commander')
 conflicts=('orchard-commander')
@@ -227,6 +227,7 @@ package() {{
 \tdepends = fontconfig
 \tdepends = dbus
 \tdepends = xcb-util-cursor
+\tdepends = libpulse
 \toptdepends = unrar: RAR archives
 \toptdepends = 7zip: RAR and 7z archives
 \tprovides = orchard-commander

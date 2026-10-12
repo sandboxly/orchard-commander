@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).parent  # noqa: F821 (SPECPATH is provided by PyInstaller)
 sys.path.insert(0, str(ROOT / "src"))
@@ -55,11 +55,21 @@ excluded = ["impacket", "asyncssh", "pytest", "pytestqt", "tkinter", "PIL",  # P
             "PySide6.QtWebEngineCore",
             "PySide6.Qt3DCore", "PySide6.QtQuick3D", "PySide6.QtCharts", "PySide6.QtDataVisualization"]
 
+datas = collect_data_files("orchard_commander")  # resources/icon.png (window icon)
+binaries = []
+if sys.platform == "win32":
+    # pywinpty: the terminal's ConPTY backend ships DLLs and a console host next to its module.
+    winpty_datas, winpty_binaries, winpty_hidden = collect_all("winpty")
+    datas += winpty_datas
+    binaries += winpty_binaries
+    hidden += winpty_hidden
+
 a = Analysis(  # noqa: F821
     [str(ROOT / "packaging" / "launcher.py")],
     pathex=[str(ROOT / "src")],
     hiddenimports=hidden,
-    datas=collect_data_files("orchard_commander"),  # resources/icon.png (window icon)
+    binaries=binaries,
+    datas=datas,
     excludes=excluded,
     noarchive=False,
 )

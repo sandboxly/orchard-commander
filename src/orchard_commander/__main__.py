@@ -106,7 +106,8 @@ def self_test() -> int:
             shown = "\n".join(session.screen.display)
         print("terminal shell:", " ".join(terminal.default_shell()))
         if "terminal-ok" not in shown:
-            failures.append(f"terminal: no output from {argv[0]}")
+            failures.append(f"terminal: no output from {argv[0]} (exited: {done.is_set()}, "
+                            f"status {session.exit_status}, screen: {shown.strip()[:200]!r})")
     except Exception as exc:
         failures.append(f"terminal: {exc}")
     for line in failures:

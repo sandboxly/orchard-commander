@@ -37,6 +37,7 @@ overrides:
       - libfontconfig1
       - libdbus-1-3
       - libxcb-cursor0
+      - libpulse0
     recommends:
       - unrar | 7zip | p7zip-full
   rpm:
@@ -48,5 +49,6 @@ overrides:
       - fontconfig
       - dbus-libs
       - xcb-util-cursor
+      - pulseaudio-libs
 rpm:
   group: Applications/File
