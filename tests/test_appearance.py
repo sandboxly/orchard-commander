@@ -17,10 +17,8 @@ from orchard_commander.ui.main_window import MainWindow
 from orchard_commander.ui.settings_dialog import SchemeEditor, SettingsDialog
 from orchard_commander.ui.style import ThemeManager, default_monospace_font, resolve_font
 
-import test_ui
 from test_ui import wait_until
 
-window = test_ui.window  # the fixture
 
 
 # -- settings ------------------------------------------------------------------------------------

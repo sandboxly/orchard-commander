@@ -32,6 +32,7 @@ from orchard_commander.config import Settings
 from orchard_commander.preview.api import PreviewStore
 from orchard_commander.themes import FONT_SIZE_RANGE, Appearance, all_schemes
 from orchard_commander.ui import bookmarks_ui, dialogs, rename_ui, search_ui, tasks
+from orchard_commander.ui import editor as editor_ui
 from orchard_commander.ui.terminal_view import TOGGLE_KEY, TerminalPanel
 from orchard_commander.ui.connect_dialogs import ConnectionManager, ask_password, confirm_question
 from orchard_commander.ui.operations import FileOperation
@@ -238,6 +239,7 @@ class MainWindow(QMainWindow):
         self.bookmark_items: list[bookmarks.Item] = bookmarks.load()
         self._search_form = search_ui.Form()
         self._rename_rule = rename.Rule()
+        self._editors: list[editor_ui.EditorWindow] = []
         self._last_rename: rename.Done | None = None
         self._last_results: search.SearchResultsFS | None = None
         self._search_seen: dict[int, int] = {}
@@ -317,6 +319,10 @@ class MainWindow(QMainWindow):
                     self.toggle_preview, ["F3"], ("F3", "Preview")),
             Command("Next preview view", "Show the previewed file another way (e.g. as text or hex)",
                     self.cycle_preview_view, ["Shift+F3"]),
+            Command("Edit", "Edit the file under the cursor in the text editor", self.edit_file, ["F4"],
+                    ("F4", "Edit")),
+            Command("New file", "Create a text file in the active panel and edit it", self.new_text_file,
+                    ["Shift+F4"]),
             Command("Copy", "Copy marked files to the other panel", self.copy, ["F5"], ("F5", "Copy")),
             Command("Move / rename", "Move or rename marked files", self.move, ["F6"], ("F6", "Move")),
             Command("Make directory", "Create a directory", self.mkdir, ["F7"], ("F7", "MkDir")),
@@ -743,6 +749,61 @@ class MainWindow(QMainWindow):
                 self.set_mode(side, FILES)
             side.panel.load(vfs.local(choice))
             side.panel.setFocus()
+
+    # -- text editor (Total Commander's F4) ------------------------------------------
+
+    def edit_file(self) -> None:
+        panel = self.active_panel
+        target = panel.cursor_target
+        if target is None or panel.cursor_name == "..":
+            return
+        entry = panel._entry(panel.cursor_name)
+        if entry is not None and entry.is_dir:
+            self.notify("F4 edits files; this is a folder", "warning")
+            return
+        if entry is not None and entry.size > editor_ui.ASK_ABOVE_BYTES and not dialogs.confirm(
+            self, self.themes, "Large file",
+            f"{target.name} is {fs.human_size(entry.size)}. Open it in the editor anyway?", "Open",
+        ):
+            return
+        self.open_editor(target)
+
+    def open_editor(self, location: vfs.VPath) -> editor_ui.EditorWindow:
+        for existing in self._editors:  # one window per file
+            if existing.location == location:
+                existing.show()
+                existing.raise_()
+                existing.activateWindow()
+                return existing
+        window = editor_ui.EditorWindow(self.themes, location)
+        self._editors.append(window)
+        window.closed.connect(lambda w: self._editors.remove(w) if w in self._editors else None)
+        window.saved.connect(lambda _: self.reload())
+        if not location.fs.writable:
+            self.notify(f"{location.fs.read_only_reason}: the file opens read-only", "warning")
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return window
+
+    def new_text_file(self) -> None:
+        panel = self.active_panel
+        folder = panel.location
+        if self._refuse(folder, "create a file here", ok=folder.fs.writable):
+            return
+        name = dialogs.ask_text(self, self.themes, "New file", f"Create in {folder.display}:", "", "Create")
+        if not name:
+            return
+
+        def created(location: vfs.VPath) -> None:
+            panel.load(folder, select=location.name)
+            self.open_editor(location)
+
+        def failed(exc: BaseException) -> None:
+            reason = "a file with this name already exists" if isinstance(exc, FileExistsError) else str(exc)
+            self.notify(f"Can't create {name}: {reason}", "warning")
+
+        tasks.run_in_background(lambda: editor_ui.new_file(folder, name), created, failed, owner=self)
 
     # -- multi-rename (Total Commander's Ctrl+M) ---------------------------------
 
@@ -1301,6 +1362,10 @@ class MainWindow(QMainWindow):
         self.toggle_terminal()  # shows it and focuses it…
         self._active.focus_main()  # …but the app starts in the panels
     def closeEvent(self, event: QCloseEvent) -> None:
+        for editor in list(self._editors):  # unsaved edits: each editor asks (and may cancel quitting)
+            if not editor.close():
+                event.ignore()
+                return
         if self._operation is not None and self._operation.isRunning():
             self._operation.cancel_requested = True
             self._operation.wait(3000)

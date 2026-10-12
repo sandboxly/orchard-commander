@@ -31,19 +31,6 @@ def wait_until(predicate, timeout: float = 5.0) -> None:
         wait(20)
 
 
-@pytest.fixture
-def window(qtbot, tree: Path) -> MainWindow:
-    themes = ThemeManager()
-    themes.apply()
-    # Hidden files off: tests navigate by key presses through a known listing.
-    w = MainWindow(Settings(show_hidden=False), themes, tree / "src", tree / "dst")
-    qtbot.addWidget(w)
-    w.show()
-    w.left.panel.setFocus()
-    settle(w)
-    return w
-
-
 def shown_text(pane: PreviewPane) -> str:
     """Text of the preview currently shown (text, listing, hex), or the message."""
     view = pane.current_view

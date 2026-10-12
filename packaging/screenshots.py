@@ -341,6 +341,25 @@ def main() -> int:
     shot(w, "code")
     w.close()
 
+    # 2b. The text editor (F4), with the search bar open
+    w = window(home / "Projects" / "harbor-ferries" / "src", home / "Projects")
+    select(w, w.left, "app.py")
+    w.edit_file()
+    wait_until(lambda: w._editors and w._editors[0]._loaded)
+    editor = w._editors[0]
+    editor.resize(WIDTH, HEIGHT)
+    editor.show_find()
+    editor.find_field.setText("crossing")
+    editor.find_next()
+    cursor = editor.editor.textCursor()
+    editor.editor.verticalScrollBar().setValue(0)
+    editor.editor.setTextCursor(cursor)
+    wait(800)
+    shot(editor, "editor")
+    editor.editor.document().setModified(False)
+    editor.close()
+    w.close()
+
     # 3. Find files: results as a folder, a hit previewed
     w = window(home, home / "Documents")
     query = search.Query(roots=(vfs.local(home / "Projects"),), names="*.py;*.md", text="TODO")

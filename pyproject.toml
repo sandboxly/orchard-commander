@@ -1,6 +1,6 @@
 [project]
 name = "orchard-commander"
-version = "1.0.0"
+version = "1.1.0"
 description = "A modern, cross-platform two-panel file manager with a terminal look"
 readme = "README.md"
 license = "MIT"

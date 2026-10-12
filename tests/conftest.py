@@ -58,3 +58,22 @@ def memory_keyring(monkeypatch):
     for name in ("get_password", "set_password", "delete_password"):
         monkeypatch.setattr(keyring, name, getattr(ring, name))
     return ring
+
+
+@pytest.fixture
+def window(qtbot, tree: Path):
+    """The main window on tree/src (left) and tree/dst (right), hidden files off."""
+    from orchard_commander.config import Settings
+    from orchard_commander.ui.main_window import MainWindow
+    from orchard_commander.ui.style import ThemeManager
+    from test_ui import settle
+
+    themes = ThemeManager()
+    themes.apply()
+    # Hidden files off: tests navigate by key presses through a known listing.
+    w = MainWindow(Settings(show_hidden=False), themes, tree / "src", tree / "dst")
+    qtbot.addWidget(w)
+    w.show()
+    w.left.panel.setFocus()
+    settle(w)
+    return w
