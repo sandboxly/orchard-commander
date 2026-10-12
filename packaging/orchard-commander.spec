@@ -90,7 +90,7 @@ if sys.platform == "darwin":
             "CFBundleName": APP_NAME,
             "CFBundleDisplayName": APP_NAME,
             "CFBundleShortVersionString": __version__,
-            "LSMinimumSystemVersion": "12.0",
+            "LSMinimumSystemVersion": "14.0",  # Qt 6.12 is built for macOS 14+
             "NSHighResolutionCapable": True,
             # Without this, macOS never asks and silently blocks LAN access (SMB/SFTP to a NAS).
             "NSLocalNetworkUsageDescription": (
