@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# The built website (site/build.py)
+_site/
+
+# Browser checks
+.playwright-mcp/

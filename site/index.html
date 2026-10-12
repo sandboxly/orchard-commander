@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchard Commander — a two-panel file manager for macOS, Windows and Linux</title>
+<meta name="description" content="A keyboard-driven two-panel file manager in the spirit of Norton and Total Commander, with previews, archives, servers, find files, multi-rename and a built-in terminal. Free and open source.">
+<meta property="og:title" content="Orchard Commander">
+<meta property="og:description" content="The two-panel file manager, with previews, archives, servers, search, multi-rename and a terminal. macOS, Windows, Linux.">
+<meta property="og:image" content="screenshots/photos.webp">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="./"><img src="icon.png" alt="" width="28" height="28"> Orchard Commander</a>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="manual/">Manual</a>
+    <a href="https://github.com/sandboxly/orchard-commander">GitHub</a>
+    <a class="button small" href="#download">Download</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero">
+  <p class="eyebrow mono">v1.0.0 · free &amp; open source</p>
+  <h1>Two panels.<br>Every file within reach.</h1>
+  <p class="lede">Orchard Commander is a keyboard-first file manager in the tradition of Norton and
+    Total Commander — rebuilt with previews for almost anything, archives and servers as folders,
+    powerful search, batch renaming and a terminal that follows you around.</p>
+  <div class="cta">
+    <a class="button primary" id="download-main" href="#download">Download</a>
+    <span class="platforms" id="download-alt">for macOS, Windows and Linux</span>
+  </div>
+  <figure class="window hero-shot">
+    <div class="titlebar"><i></i><i></i><i></i><span>Orchard Commander</span></div>
+    <img src="screenshots/photos.webp" alt="Orchard Commander with a folder of photos on the left and an image preview on the right" width="2880" height="1720">
+  </figure>
+</section>
+
+<div class="fkeys mono" aria-hidden="true">
+  <span><b>F3</b> Preview</span><span><b>F5</b> Copy</span><span><b>F6</b> Move</span><span><b>F7</b> MkDir</span>
+  <span><b>F8</b> Trash</span><span><b>⌘F</b> Find</span><span><b>⌘M</b> Rename</span><span><b>⌘J</b> Terminal</span>
+</div>
+
+<section id="features" class="features">
+
+  <article class="feature">
+    <div class="text">
+      <p class="kicker mono">Preview</p>
+      <h2>See what's inside before you open it</h2>
+      <p>Switch either side to Preview and it shows whatever the cursor is on in the other panel:
+        syntax-highlighted code, rendered Markdown, images, PDFs page by page, audio with a live
+        spectrum and waveform, and video. Files on servers stream instead of downloading first.</p>
+      <ul class="ticks">
+        <li>Code and text in your color scheme</li>
+        <li>PDF paging with the keyboard or the wheel</li>
+        <li>Hex view for everything else</li>
+      </ul>
+    </div>
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/code-light.webp" alt="A Python file previewed with syntax highlighting in a light color scheme" loading="lazy" width="2880" height="1720"></figure>
+  </article>
+
+  <article class="feature flip">
+    <div class="text">
+      <p class="kicker mono">Find files</p>
+      <h2>Search results you can work with</h2>
+      <p>Search by name with wildcards or regular expressions, by contents, size and date — across
+        folders, servers and inside archives. The hits appear as a folder while the search runs, so you
+        can preview them, mark them all and move them somewhere else in one go.</p>
+      <ul class="ticks">
+        <li><code>*.py;*.md</code>, <code>report</code>, <code>*.zip|*old*</code></li>
+        <li>Files containing — or not containing — a phrase</li>
+        <li>Results stay available with <span class="mono">⇧⌘F</span></li>
+      </ul>
+    </div>
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/find-files.webp" alt="Search results for files containing TODO, shown as a folder with a preview of one hit" loading="lazy" width="2880" height="1720"></figure>
+  </article>
+
+  <article class="feature">
+    <div class="text">
+      <p class="kicker mono">Multi-rename</p>
+      <h2>Rename a hundred files as easily as one</h2>
+      <p>Build new names from placeholders — parts of the old name, counters, dates, parent folders —
+        and from file metadata such as music tags, photo dates and video resolution. Every new name is
+        checked before anything happens, and the whole batch can be undone.</p>
+      <ul class="ticks">
+        <li><code>[=track] [=artist] - [=title]</code></li>
+        <li>Search and replace with regular expressions</li>
+        <li>Safe swaps and case-only changes</li>
+      </ul>
+    </div>
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/multi-rename.webp" alt="The multi-rename dialog renaming six music files from their tags" loading="lazy" width="3840" height="2000"></figure>
+  </article>
+
+  <article class="feature flip">
+    <div class="text">
+      <p class="kicker mono">Terminal</p>
+      <h2>A shell that goes where you go</h2>
+      <p>Open a terminal below the panels with <span class="mono">⌘J</span>. Each side has its own
+        shell, and it stays in step with its panel: <code>cd</code> in the terminal and the panel follows;
+        browse in the panel and the shell follows. Full-screen tools like vim, htop and tmux work,
+        mouse included.</p>
+      <ul class="ticks">
+        <li>Your own shell: zsh, bash, fish or PowerShell</li>
+        <li>Prompt themes with Nerd Font icons</li>
+        <li>Panels refresh after every command</li>
+      </ul>
+    </div>
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/terminal.webp" alt="The terminal panel below both file panels, showing grep output" loading="lazy" width="2880" height="1720"></figure>
+  </article>
+
+  <article class="feature">
+    <div class="text">
+      <p class="kicker mono">Archives &amp; servers</p>
+      <h2>Zip files and servers are just folders</h2>
+      <p>Press Enter on a zip, tar, 7z or rar archive to browse it like a folder — nested archives
+        included — and copy out what you need. Connect to SFTP, SMB, WebDAV and S3 and work there with
+        the same keys as on your own disk. Passwords stay in your system's keychain.</p>
+      <ul class="ticks">
+        <li>SFTP · SMB · WebDAV · S3</li>
+        <li>Bookmarks for local and remote folders</li>
+        <li>Copy between any two locations</li>
+      </ul>
+    </div>
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/archive.webp" alt="Browsing a folder inside a zip archive with a photo previewed" loading="lazy" width="2880" height="1720"></figure>
+  </article>
+
+  <div class="gallery">
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/audio.webp" alt="Playing an MP3 with a live spectrum and the waveform of the whole track" loading="lazy" width="2880" height="1720">
+      <figcaption>Audio with a live spectrum and the whole track's waveform</figcaption></figure>
+    <figure class="window"><div class="titlebar"><i></i><i></i><i></i></div>
+      <img src="screenshots/pdf.webp" alt="A PDF report previewed next to the Documents folder" loading="lazy" width="2880" height="1720">
+      <figcaption>PDFs, page by page</figcaption></figure>
+  </div>
+
+  <div class="facts">
+    <div><h3>Keyboard first</h3><p>F-keys, marks with Space and <span class="mono">+</span>, a command palette on <span class="mono">⌘P</span>. The mouse works too.</p></div>
+    <div><h3>Looks like a terminal</h3><p>A monospace grid, box frames and eight color schemes — or your own. Follows light and dark mode if you like.</p></div>
+    <div><h3>Cross-platform</h3><p>The same app and the same keys on macOS, Windows and Linux.</p></div>
+    <div><h3>Open source</h3><p>MIT licensed, with add-on interfaces for previewers, connection types and rename fields.</p></div>
+  </div>
+</section>
+
+<section id="download" class="download">
+  <h2>Download Orchard Commander 1.0.0</h2>
+  <div class="cards">
+    <a class="card" data-os="mac" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg">
+      <span class="os">macOS</span>
+      <span class="detail">Apple silicon · macOS 14 Sonoma or later<br>Signed and notarized disk image</span>
+      <span class="file mono">Orchard-Commander-macOS.dmg</span>
+    </a>
+    <a class="card" data-os="windows" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip">
+      <span class="os">Windows</span>
+      <span class="detail">Windows 10 and 11, 64-bit<br>Unzip and run orchard-commander.exe</span>
+      <span class="file mono">Orchard-Commander-Windows.zip</span>
+    </a>
+    <a class="card" data-os="linux" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz">
+      <span class="os">Linux</span>
+      <span class="detail">x86-64 · Ubuntu 22.04, Fedora 36 or newer<br>Extract and run ./orchard-commander</span>
+      <span class="file mono">Orchard-Commander-Linux.tar.gz</span>
+    </a>
+  </div>
+  <p class="small-print">All releases and release notes are on
+    <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. New to Orchard Commander?
+    Start with the <a href="manual/01-getting-started.html">getting started guide</a>.</p>
+</section>
+
+</main>
+
+<footer>
+  <p><img src="icon.png" alt="" width="20" height="20"> Orchard Commander · MIT License ·
+    <a href="manual/">Manual</a> · <a href="https://github.com/sandboxly/orchard-commander">Source code</a> ·
+    <a href="https://github.com/sandboxly/orchard-commander/issues">Report a problem</a></p>
+</footer>
+
+<div class="lightbox" id="lightbox" hidden><img alt=""></div>
+
+<script>
+  // Offer the download for the visitor's system first.
+  (function () {
+    var ua = navigator.userAgent, os = /Mac/.test(ua) ? "mac" : /Win/.test(ua) ? "windows" : /Linux|X11/.test(ua) ? "linux" : null;
+    var names = { mac: "macOS", windows: "Windows", linux: "Linux" };
+    var card = os && document.querySelector('.card[data-os="' + os + '"]');
+    if (card) {
+      var main = document.getElementById("download-main");
+      main.href = card.href;
+      main.textContent = "Download for " + names[os];
+      card.classList.add("yours");
+      document.getElementById("download-alt").innerHTML = 'or get it for <a href="#download">another system</a>';
+    }
+  })();
+  // Screenshots open full size.
+  (function () {
+    var box = document.getElementById("lightbox"), img = box.querySelector("img");
+    document.querySelectorAll(".window img").forEach(function (shot) {
+      shot.addEventListener("click", function () { img.src = shot.src; img.alt = shot.alt; box.hidden = false; });
+    });
+    box.addEventListener("click", function () { box.hidden = true; });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") box.hidden = true; });
+  })();
+</script>
+</body>
+</html>
