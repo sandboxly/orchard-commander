@@ -48,8 +48,10 @@ jobs:
         run: |
           $dir = "manifests\winget\manifests\s\Sandboxly\OrchardCommander\$env:VERSION"
           if (Get-Command winget -ErrorAction SilentlyContinue) {
-            winget validate --manifest $dir
-            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            # An older winget warns about newer schema headers ("succeeded with warnings"): that's fine.
+            $out = winget validate --manifest $dir | Out-String
+            Write-Host $out
+            if ($out -notmatch "Manifest validation succeeded") { throw "winget validate failed" }
           } else {
             Write-Host "::notice::winget is not available on this runner; the manifests were not validated"
           }
