@@ -44,6 +44,7 @@ class ImageData:
 
 
 class ImagePreviewer(Previewer):
+    reload_on_theme_change = False  # the view follows theme changes itself
     id = "image"
     title = "Image"
     access = Access.LOCAL_FILE

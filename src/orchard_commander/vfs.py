@@ -19,6 +19,8 @@ import hashlib
 import os
 import posixpath
 import shutil
+import threading
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -34,6 +36,14 @@ type RelPath = tuple[str, ...]  # path below a walk's starting point, as parts
 
 class ReadOnlyError(fs.OperationError):
     pass
+
+
+class FetchTimeout(TimeoutError):
+    """An online-only file was not delivered in time (the download may continue)."""
+
+
+class FetchCancelled(Exception):
+    """Waiting for an online-only file was cancelled (the download may continue)."""
 
 
 class FileSystem(ABC):
@@ -97,6 +107,28 @@ class FileSystem(ABC):
     def local_path(self, path: str) -> Path | None:
         """A real path for this item if one exists without copying."""
         return None
+
+    def real_location(self, path: str) -> VPath | None:
+        """If `path` only stands for a location elsewhere (e.g. a search hit), that
+        location; operations and previews then act on it. Default: None."""
+        return None
+
+    def exit_to(self) -> VPath | None:
+        """Where ".." leads from this file system's root: for an archive, the folder
+        holding it; for search results, where the search started. Default: nowhere."""
+        return self.container.parent() if self.container is not None else None
+
+    @property
+    def status_text(self) -> str | None:
+        """A short status for the panel's bottom line (e.g. "searching…"), if any."""
+        return None
+
+    def fetch_online_only(self, path: str, *, timeout: float, is_cancelled=lambda: False) -> None:
+        """Make sure an online-only file (`Entry.is_online_only`) is available for
+        reading, without blocking the caller longer than `timeout` seconds.
+
+        Raises FetchTimeout / FetchCancelled; the fetch itself may go on in the
+        background, so asking again later continues it. Default: nothing to do."""
 
     def materialize(self, path: str) -> Path:
         """A real file with this item's contents (extracted to a temp cache if needed)."""
@@ -166,7 +198,12 @@ class VPath:
         parent = self.fs.parent_path(self.path)
         if parent is not None:
             return VPath(self.fs, parent)
-        return self.fs.container.parent() if self.fs.container is not None else None
+        return self.fs.exit_to()
+
+    @property
+    def resolved(self) -> VPath:
+        """The real location this stands for (see `FileSystem.real_location`), or itself."""
+        return self.fs.real_location(self.path) or self
 
     def child(self, *names: str) -> VPath:
         return VPath(self.fs, self.fs.join(self.path, *names))
@@ -217,6 +254,50 @@ class VPath:
 # ---------------------------------------------------------------------------
 # Local file system
 # ---------------------------------------------------------------------------
+
+
+class _CloudFetches:
+    """Downloads of online-only local files (Dropbox, iCloud Drive, OneDrive placeholders).
+
+    The OS downloads a placeholder when it's first read, and the read blocks
+    until it's done — indefinitely, if the cloud app is stuck. So the read runs
+    on its own daemon thread (one per file, reused by later requests), and
+    callers only wait for it with a timeout. Never on a shared worker pool,
+    where stuck reads would block everything else.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._running: dict[str, threading.Event] = {}
+
+    def fetch(self, path: str, *, timeout: float, is_cancelled) -> None:
+        with self._lock:
+            done = self._running.get(path)
+            if done is None:
+                done = threading.Event()
+                self._running[path] = done
+                threading.Thread(target=self._read, args=(path, done), daemon=True,
+                                 name=f"cloud-fetch {os.path.basename(path)}").start()
+        deadline = time.monotonic() + timeout
+        while not done.wait(0.1):
+            if is_cancelled():
+                raise FetchCancelled(path)
+            if time.monotonic() >= deadline:
+                raise FetchTimeout(path)
+
+    def _read(self, path: str, done: threading.Event) -> None:
+        try:
+            with open(path, "rb") as f:
+                f.read(1)  # the OS downloads the whole file before returning
+        except OSError:
+            pass  # the actual read by the previewer reports errors
+        finally:
+            with self._lock:
+                self._running.pop(path, None)
+            done.set()
+
+
+_cloud_fetches = _CloudFetches()
 
 
 class LocalFS(FileSystem):
@@ -270,6 +351,9 @@ class LocalFS(FileSystem):
 
     def local_path(self, path: str) -> Path | None:
         return Path(path)
+
+    def fetch_online_only(self, path: str, *, timeout: float, is_cancelled=lambda: False) -> None:
+        _cloud_fetches.fetch(path, timeout=timeout, is_cancelled=is_cancelled)
 
     def free_space(self, path: str) -> int | None:
         return fs.disk_free(Path(path))

@@ -382,3 +382,78 @@ def test_online_only_flags_detected(monkeypatch):
     monkeypatch.setattr(fs, "IS_WINDOWS", True)
     assert fs._is_online_only(SimpleNamespace(st_file_attributes=0x00400000))  # RECALL_ON_DATA_ACCESS
     assert not fs._is_online_only(SimpleNamespace(st_file_attributes=0x20))  # ARCHIVE
+
+
+class StuckCloudFS(CloudFS):
+    """Online-only files that arrive only once `deliver` is set (like a stuck Dropbox)."""
+
+    def __init__(self) -> None:
+        import threading
+
+        super().__init__()
+        self.deliver = threading.Event()
+        self.fetches = 0
+
+    def fetch_online_only(self, path, *, timeout, is_cancelled=lambda: False):
+        import time as time_module
+
+        self.fetches += 1
+        deadline = time_module.monotonic() + timeout
+        while not self.deliver.wait(0.05):
+            if is_cancelled():
+                raise vfs.FetchCancelled(path)
+            if time_module.monotonic() >= deadline:
+                raise vfs.FetchTimeout(path)
+
+
+def test_stuck_cloud_download_times_out_with_explanation(qapp, monkeypatch):
+    import time as time_module
+
+    from orchard_commander.preview.api import CloudNotDelivered
+
+    monkeypatch.setattr(registry, "fetch_timeout", lambda size: 0.3)
+    cloud = StuckCloudFS()
+    cloud.files["report.pdf"] = pdf_bytes(1)
+    t0 = time_module.monotonic()
+    outcome = registry.preview(vfs.VPath(cloud, "report.pdf"), CTX)
+    assert time_module.monotonic() - t0 < 2
+    assert isinstance(outcome.error, CloudNotDelivered) and "report.pdf hasn't arrived" in str(outcome.error)
+    assert [c.previewer.id for c in outcome.candidates] == ["pdf", "hex"]  # by name, without reading
+    assert cloud.bytes_read == 0
+
+    cancelled = LoadContext(colors=CTX.colors, show_hidden=False, is_cancelled=lambda: True)
+    assert registry.preview(vfs.VPath(cloud, "report.pdf"), cancelled).error is None  # moved on: no message
+
+    cloud.deliver.set()  # the cloud app catches up: "Try again" works
+    outcome = registry.preview(vfs.VPath(cloud, "report.pdf"), CTX)
+    assert outcome.previewer.id == "pdf"
+    outcome.loaded.close()
+
+
+def test_local_cloud_fetch_uses_one_dedicated_thread(monkeypatch, tmp_path: Path):
+    """A stuck placeholder read must not occupy shared workers, and retries reuse it."""
+    import threading
+    import time as time_module
+
+    release = threading.Event()
+    reads: list[str] = []
+    fetches = vfs._CloudFetches()
+
+    def slow_read(path, done):
+        reads.append(threading.current_thread().name)
+        release.wait(10)
+        with fetches._lock:
+            fetches._running.pop(path, None)
+        done.set()
+
+    monkeypatch.setattr(fetches, "_read", slow_read)
+    for _ in range(3):  # three attempts while the cloud app is stuck
+        with pytest.raises(vfs.FetchTimeout):
+            fetches.fetch(str(tmp_path / "x.pdf"), timeout=0.2, is_cancelled=lambda: False)
+    assert len(reads) == 1 and reads[0].startswith("cloud-fetch")  # one download, its own thread
+    with pytest.raises(vfs.FetchCancelled):
+        fetches.fetch(str(tmp_path / "x.pdf"), timeout=5, is_cancelled=lambda: True)
+    release.set()
+    t0 = time_module.monotonic()
+    fetches.fetch(str(tmp_path / "x.pdf"), timeout=5, is_cancelled=lambda: False)  # completes
+    assert time_module.monotonic() - t0 < 2

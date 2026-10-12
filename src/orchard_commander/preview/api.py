@@ -105,6 +105,22 @@ class NeedsDownload(ShowMessage):
         self.size = size
 
 
+class CloudNotDelivered(ShowMessage):
+    """An online-only file didn't arrive in time; its download goes on in the background."""
+
+    def __init__(self, name: str, waited: float) -> None:
+        super().__init__(
+            f"{name} hasn't arrived from the cloud yet (waited {waited:.0f} s).\n\n"
+            "Check that the cloud app (Dropbox, iCloud Drive, OneDrive) is running, signed in and "
+            "online. The download continues in the background."
+        )
+
+
+def fetch_timeout(size: int) -> float:
+    """How long a preview waits for an online-only file: 20 s plus 1 s per MB."""
+    return 20 + size / 1024**2
+
+
 @dataclass(slots=True)
 class Loaded:
     """The result of `load()`: data for the view, plus the status line text."""
@@ -125,9 +141,27 @@ class LoadContext:
     download_limit: int | None = AUTO_DOWNLOAD_LIMIT  # for online-only files; None: always download
 
 
+class PreviewStore:
+    """Small values a previewer keeps between files and app runs (e.g. "muted").
+
+    Values must be JSON-serializable. The app stores them in its settings; this
+    base class only keeps them in memory (tests, embedding).
+    """
+
+    def __init__(self) -> None:
+        self._values: dict[str, Any] = {}
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._values.get(key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        self._values[key] = value
+
+
 @dataclass(frozen=True, slots=True)
 class ViewContext:
     themes: ThemeManager  # current theme, font, and the `changed` signal
+    store: PreviewStore = field(default_factory=PreviewStore)  # remembered per previewer
 
 
 class PreviewView(QWidget):
@@ -135,6 +169,17 @@ class PreviewView(QWidget):
 
     message = Signal(str)  # ask the pane to show a message instead (e.g. playback failed)
     notice = Signal(str, str)  # a passing notification (text, "info" | "warning" | "error"), e.g. "Copied"
+    finished = Signal()  # playback reached the end; the host may move on to the next file
+
+    def play(self) -> None:
+        """Start playback (media views). The host calls this after `show_data()` when it moved
+        on to this file automatically. Default: nothing to play."""
+
+    def set_continuous(self, on: bool) -> None:
+        """Whether the host plays the next file when this one ends (so e.g. don't loop)."""
+
+    def store_changed(self) -> None:
+        """Values in `ViewContext.store` were changed elsewhere (e.g. in Settings): show them."""
 
     @abstractmethod
     def show_data(self, data: Any) -> None:
@@ -155,6 +200,9 @@ class Previewer(ABC):
     access: ClassVar[Access] = Access.HEAD
     max_size: ClassVar[int | None] = None  # for LOCAL_FILE from other file systems: download limit
     needs_head: ClassVar[bool] = False  # whether score() wants FileInfo.head
+    # Load again when the color scheme changes (load() used LoadContext.colors). Previewers whose
+    # views restyle themselves (ViewContext.themes.changed) set False — e.g. so playback goes on.
+    reload_on_theme_change: ClassVar[bool] = True
 
     @classmethod
     def available(cls) -> bool:

@@ -23,8 +23,14 @@ one side can preview at a time.
 | Source code / text | Syntax-highlighted (Pygments), first 1 MB |
 | Markdown | Rendered |
 | Images (png, jpg, gif, webp, svg, tiff, heic on macOS, …) | Full resolution, scaled to fit; animated GIF/WebP play. Right-click: Open (default app) or Copy (the full-size image) |
-| Video (mp4, mov, mkv, webm, avi, …) | Plays muted and loops — Space play/pause, ←/→ seek, M mute |
-| Audio (mp3, flac, wav, ogg, …) | Title and artist, a live spectrum analyzer while playing, and the waveform of the whole file, which you can click or drag to seek — Space play/pause, ←/→ seek, M mute. On servers, files up to 100 MB get a waveform (it reads the whole file) |
+| Video (mp4, mov, mkv, webm, avi, …) | Space play/pause, ←/→ seek, M mute, A autoplay |
+| Audio (mp3, flac, wav, ogg, …) | Title and artist, a live spectrum analyzer while playing, and the waveform of the whole file, which you can click or drag to seek — Space play/pause, ←/→ seek, M mute, A autoplay. On servers, files up to 100 MB get a waveform (it reads the whole file) |
+
+When an audio or video file ends, the next one in the panel is selected and
+plays (Settings → Preview; switched off, videos loop instead). The player
+remembers whether it was muted — it starts muted until you unmute it once —
+and its **[x] Autoplay** toggle (key A, or Settings → Preview): on, files
+start playing as soon as they're selected; off, Space starts them.
 | PDF | Rendered pages, fitted to the pane — ←/→, PgUp/PgDn, Space or the scroll wheel turn pages; Home/End |
 | Directories and archives | Contents listing, like a folder |
 | Other binary | File info and hex dump |
@@ -133,10 +139,106 @@ panel's path, opens the bookmark menu at the panel:
   whether to include the other panel), **−** removes it if it's bookmarked,
   **\*** opens the organizer: drag and drop to reorder or move into folders,
   plus folders, separators, editing and deleting.
-- **Ctrl+Shift+D** searches all bookmarks as you type; bookmarks also appear
+- **Ctrl+Alt+D** (⌥⌘D) searches all bookmarks as you type; bookmarks also appear
   in the drive picker (Alt+F1 / Alt+F2).
 
 Bookmarks are saved in `bookmarks.json` in the config directory.
+
+## Find files
+
+Like Total Commander's Find Files (Alt+F7) with "Feed to listbox" built in.
+**Alt+F7** or **⌘F** / Ctrl+F opens the search:
+
+- **Names**: masks separated by spaces or `;` (`*.pdf;*.docx`), a mask
+  without wildcards matches anywhere in the name (`report`), and one `|`
+  separates what to exclude (`*.zip|*old*`). Or a regular expression;
+  case-sensitive if you want.
+- **Where**: the active panel's folder (also on servers and inside archives),
+  or several local folders separated by `;`; all subfolders or a maximum
+  depth; files, folders or both; hidden files; optionally inside archives.
+- **Contents**: text or a regular expression, case-sensitive, whole words, or
+  files *not* containing it; the matching line is kept. Cloud-only files
+  (Dropbox & co.) are skipped for content searches unless you allow
+  downloading them.
+- **Size and date**: at least / at most (`10M`, `1.5G`), modified within or
+  before a period.
+
+Results appear in the panel **as a folder while the search runs**, each hit
+named by its path below the search folder. Everything acts on the real
+files: preview, open, F5/F6 (mark all with `+` and move every hit to one
+place), F8; hits that were moved or deleted drop out of the list. Enter on
+a folder hit opens the real folder; `..` goes back to where you searched;
+**⌘⇧F** shows the last results again; **Esc** stops a running search.
+
+## Multi-rename
+
+Like Total Commander's Multi-Rename Tool: mark files (also search hits) and
+press **⌘M** / Ctrl+M. The new name is built from masks with TC's
+placeholders — pick them from the **Insert…** menu:
+
+| Placeholder | Meaning |
+|---|---|
+| `[N]` `[E]` | name without extension, extension |
+| `[N2-5]` `[N2,5]` `[N3-]` `[N-5-]` `[N-8-5]` `[N2--5]` | characters 2–5, 5 from the 2nd, from the 3rd, the last 5, 8th-last to 5th-last, 2nd to 5th-last |
+| `[1-5]` | characters of the whole name with extension |
+| `[P]` `[G]` | parent / grandparent folder |
+| `[C]` `[C10+5:3]` | counter (start, step, digits from the dialog or inline) |
+| `[Y]` `[M]` `[D]` `[h]` `[m]` `[s]` `[d]` `[t]` | modification date and time |
+| `[U]` `[L]` `[F]` `[n]` | upper / lower / Title Case / original case from here on |
+| `[[]` `[]]` | literal brackets |
+| `[=artist]` `[=artist:1-3]` `[=artist\|Unknown]` | file metadata, a range of it, a fallback when the file has none |
+
+Metadata fields (Insert… lists them per kind of file):
+**audio tags** `artist` `albumartist` `album` `title` `track` (03) `tracktotal`
+`disc` `year` `genre` `composer` `duration` `bitrate`; **video and images**
+`width` `height` (vertical resolution) `resolution` (1920x1080) `quality`
+(1080p) `duration` `fps` `title`; **photos (EXIF)** `taken` (2026-03-07)
+`taken_time` `taken_year` `taken_month` `camera` `make` `model` `lens` `iso`
+`focal`. Metadata is read in the background; files without a value are
+skipped (shown in the preview) unless the placeholder has a fallback. Values
+are made safe for names ("AC/DC" → "AC-DC"). Add-ons can provide more fields
+through the `orchard_commander.metadata` entry point.
+
+Then **search & replace** (several pairs with `|`, RegEx with `$1` groups)
+and an optional case conversion. The preview shows every new name and
+**refuses to rename while anything is wrong**: duplicate names, names that
+already exist, invalid names, or a broken mask (with the reason). Swaps
+(`a→b`, `b→a`) and case-only changes are done safely through temporary names.
+**⌘Z** / Ctrl+Z undoes the last batch. Renamed search hits stay in the results.
+
+## Terminal
+
+**⌃\`** (the Control key, on every platform; on macOS also **⌘J**, which
+works with keyboard layouts where \` is a dead key) opens a terminal below both
+panels, running your shell — your login shell, PowerShell on Windows, or
+what you set in Settings → Terminal. Each side has its own shell: switching
+the active side switches the terminal to that side's session, and the other
+keeps running.
+
+A side's shell and panel are **linked**: `cd` in the terminal takes the panel
+along, and navigating the panel types a `cd` into the shell — only when the
+shell is idle at its prompt (never into vim or a running build; it catches
+up when the program ends). Servers, archives and search results leave the
+shell where it is. After every command the panels refresh, so `rm`,
+`touch` or `echo >> file` show up right away. Settings → Terminal can unlink
+them; **⌃⇧\`** (Commands → Terminal: go to panel folder) still moves the shell
+to the panel's folder then.
+
+While the terminal has the focus it gets every key — Esc, Tab, F-keys,
+Ctrl+C — except ⌃\` / ⌘J (hide it again) and, on macOS, ⌘ shortcuts: ⌘C / ⌘V
+copy and paste (Ctrl+Shift+C / V elsewhere). Full-screen programs (vim,
+less, htop, tmux, mc) work, including the mouse: programs that ask for it
+get clicks, drags, motion and the wheel (xterm protocol, SGR and classic
+encodings) and focus changes. Otherwise the wheel scrolls back through the
+output, drag selects, double-click selects a word (or path), triple-click a
+line; hold Shift to select while a program has the mouse. When the shell
+exits, Enter starts a new one.
+
+The terminal uses your theme's font (ligatures included, e.g. Fira Code).
+Icons from prompt themes like powerlevel10k, starship or oh-my-posh come
+from an installed Nerd Font (e.g. MesloLGS NF, FiraCode Nerd Font) when the
+theme font doesn't have them; powerline separators, block elements and box
+lines are drawn to fill their cells exactly, whatever the font.
 
 ## Keys
 
@@ -150,6 +252,8 @@ Bookmarks are saved in `bookmarks.json` in the config directory.
 | Tab | Switch side |
 | Insert / Space, Ctrl-click, right-click | Mark file |
 | `+` / `-` / `*` | Mark all / unmark all / invert marks |
+| Ctrl+A / Ctrl+Alt+A (⌘A / ⌥⌘A) | Select (mark) all / clear the selection — also in the Files menu |
+| Home / End (fn+← / fn+→ on Mac keyboards) | First (`..`) / last entry |
 | F3 | Toggle preview in the other side |
 | Shift+F3 | Next "View as" for the previewed file |
 | F5 | Copy (to the other panel; edit the target to copy under a new name); extracts from archives |
@@ -166,7 +270,10 @@ Bookmarks are saved in `bookmarks.json` in the config directory.
 | Ctrl+E | Show the active folder in the other panel too (TC's "Target = Source") |
 | Ctrl+← / Ctrl+→ | Left / right panel: open the folder (or archive) under the cursor there — or, pressed in that panel itself, match the other panel (TC's cm_TransferLeft / cm_TransferRight) |
 | Ctrl+G | Go to path or server address (sftp://, smb://, webdavs://, …) |
-| Ctrl+D / Ctrl+Shift+D | Bookmark menu (also: click a panel's path) / search bookmarks |
+| Ctrl+D / Ctrl+Alt+D (⌥⌘D) | Bookmark menu (also: click a panel's path) / search bookmarks |
+| Control+\` / Control+Shift+\` | Terminal (show, focus; inside it: hide) / go to the panel's folder |
+| Ctrl+M / Ctrl+Z | Multi-rename marked files / undo the last multi-rename |
+| Alt+F7 or Ctrl+F / Ctrl+Shift+F / Esc | Find files / show the last search results / stop the search |
 | Ctrl+K / Ctrl+Shift+K | Connect to a server / disconnect |
 | Alt+F1 / Alt+F2 | Choose drive / volume for left / right panel |
 | Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset |
@@ -248,6 +355,9 @@ Docker and are skipped when Docker isn't available.
 | `remote/providers.py` | The built-in SFTP, SMB, WebDAV and S3 connection types |
 | `connections.py` | Provider-agnostic connections, saved connections, keychain passwords, live sessions |
 | `bookmarks.py`, `locations.py` | Bookmark tree and storage; serializable location specs (local, server, archive) |
+| `rename.py`, `ui/rename_ui.py` | Multi-rename: TC masks, search & replace, checks, safe two-phase renames, undo |
+| `terminal.py`, `ui/terminal_view.py` | Shell sessions (pseudo-terminal + pyte screen) and the terminal panel |
+| `search.py`, `ui/search_ui.py` | Find files on any file system; results as a virtual folder (`SearchResultsFS`); the dialog |
 | `testing.py` | Contract checks for file system implementations (also for add-on authors) |
 | `preview/api.py` | The previewer plugin interface: `Previewer`, `PreviewView`, `Access`, `Score`, … |
 | `preview/registry.py` | Registration, entry-point discovery, scoring, fallback |

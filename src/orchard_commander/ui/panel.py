@@ -284,6 +284,10 @@ class FileTable(QTableView):
             self.go_parent.emit()
         elif key in (Qt.Key.Key_Insert, Qt.Key.Key_Space) and plain:
             self.toggle_mark.emit()
+        elif key == Qt.Key.Key_Home and plain:  # Qt's default goes to the first *column*
+            self.set_current_row(0)
+        elif key == Qt.Key.Key_End and plain:
+            self.set_current_row(self.file_model.rowCount() - 1)
         elif event.text() == "+" and not mods & Qt.KeyboardModifier.ControlModifier:
             self.mark_all.emit(True)
         elif event.text() == "-" and not mods & Qt.KeyboardModifier.ControlModifier:
@@ -329,6 +333,7 @@ class FilePanel(BoxFrame):
         # Listing runs in the background; `_request` discards stale results.
         self._request = 0
         self._completed = 0
+        self._loading_location = location
         self._jobs = 0  # other background work (opening archives/files)
         self._free: int | None = None
         self._loading_hint = QTimer(self, singleShot=True, interval=200)
@@ -354,7 +359,8 @@ class FilePanel(BoxFrame):
 
     # -- navigation --------------------------------------------------------
 
-    def load(self, location: vfs.VPath, select: str | None = None, *, walk_up: bool = False) -> None:
+    def load(self, location: vfs.VPath, select: str | None = None, *, walk_up: bool = False,
+             keep_cursor: bool = False) -> None:
         """Show directory `location` once it has been listed (in the background).
 
         The current listing stays until then; on error it is kept and a message
@@ -363,6 +369,7 @@ class FilePanel(BoxFrame):
         """
         self._request += 1
         request = self._request
+        self._loading_location = location
         options = {"show_hidden": self.show_hidden, "sort_key": self.model.sort_key, "reverse": self.model.sort_reverse}
 
         def job() -> tuple[vfs.VPath, list[fs.Entry], bool, int | None]:
@@ -379,13 +386,13 @@ class FilePanel(BoxFrame):
         self._loading_hint.start()
         tasks.run_in_background(
             job,
-            lambda result: self._listed(request, select, *result),
+            lambda result: self._listed(request, select, keep_cursor, *result),
             lambda exc: self._list_failed(request, location, exc),
             owner=self,
         )
 
     def _listed(
-        self, request: int, select: str | None, location: vfs.VPath, entries: list[fs.Entry],
+        self, request: int, select: str | None, keep_cursor: bool, location: vfs.VPath, entries: list[fs.Entry],
         has_parent: bool, free: int | None,
     ) -> None:
         if request != self._request:
@@ -393,6 +400,8 @@ class FilePanel(BoxFrame):
         self._completed = request
         self._loading_hint.stop()
         changed = location != self.location
+        if keep_cursor and not changed:
+            select = self.cursor_name  # where the cursor is now: it may have moved while listing
         if changed:
             self.model.marked.clear()
         old_row = self.table.current_row()
@@ -428,8 +437,15 @@ class FilePanel(BoxFrame):
             self.reload()
 
     def reload(self) -> None:
-        """Re-read the current directory, keeping cursor and marks."""
-        self.load(self.location, select=self.cursor_name, walk_up=True)
+        """Re-read the current directory, keeping cursor and marks.
+
+        While a move to another folder is still loading, that folder is the one to re-read:
+        reloading the old one would cancel the move.
+        """
+        if self._completed != self._request and self._loading_location != self.location:
+            self.load(self._loading_location, walk_up=True)
+            return
+        self.load(self.location, select=self.cursor_name, walk_up=True, keep_cursor=True)
 
     def go_parent(self) -> None:
         parent = self.location.parent()
@@ -437,14 +453,16 @@ class FilePanel(BoxFrame):
             self.load(parent, select=self.location.name)
 
     def _target(self, name: str) -> vfs.VPath:
-        return self.location.parent() or self.location if name == PARENT else self.location.child(name)
+        if name == PARENT:
+            return self.location.parent() or self.location
+        return self.location.child(name).resolved  # e.g. a search hit: the real file
 
     def activate(self, name: str) -> None:
         """Enter a directory or archive, or open a file with its default application."""
         if name == PARENT:
             self.go_parent()
             return
-        target = self.location.child(name)
+        target = self.location.child(name).resolved
         entry = self._entry(name)
         if entry is not None and entry.is_dir:
             self.load(target)
@@ -555,7 +573,8 @@ class FilePanel(BoxFrame):
         return [entry] if entry else []
 
     def selected_paths(self) -> list[vfs.VPath]:
-        return [self.location.child(e.name) for e in self.selected_entries()]
+        """The selection as real locations (search hits resolve to the files they stand for)."""
+        return [self.location.child(e.name).resolved for e in self.selected_entries()]
 
     # -- chrome ------------------------------------------------------------
 
@@ -569,7 +588,9 @@ class FilePanel(BoxFrame):
     def _update_subtitle(self) -> None:
         filesystem = self.location.fs
         free = self._free
-        if free is not None:
+        if filesystem.status_text is not None:
+            where = filesystem.status_text
+        elif free is not None:
             where = f"{fs.human_size(free)} free"
         else:
             where = filesystem.type_name + ("" if filesystem.writable else " · read-only")

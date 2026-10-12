@@ -111,8 +111,35 @@ class Archive(ABC):
     def _open(self, name: str) -> BinaryIO:
         """Stream a file member's contents. Called with the lock held."""
 
-    def close(self) -> None:
-        pass
+    def _close_handle(self) -> None:
+        """Release the open file handle (if the subclass keeps one)."""
+
+    def _reopen_handle(self) -> None:
+        """Open the handle again after `_close_handle()`."""
+
+    _closed = False
+
+    def close(self, *, wait: bool = True) -> bool:
+        """Release the file handle; the archive stays usable and reopens it when read.
+
+        With wait=False, an archive that is being read right now is left open
+        (returns False) instead of blocking until the reader finishes.
+        """
+        if not self._lock.acquire(blocking=wait):
+            return False
+        try:
+            if not self._closed:
+                self._close_handle()
+                self._closed = True
+            return True
+        finally:
+            self._lock.release()
+
+    def _ensure_open(self) -> None:
+        """Called with the lock held, before touching the handle."""
+        if self._closed:
+            self._reopen_handle()
+            self._closed = False
 
     # -- index ----------------------------------------------------------------
 
@@ -175,6 +202,7 @@ class Archive(ABC):
         """Stream file member `name`. Holds the archive's lock until closed."""
         self._lock.acquire()
         try:
+            self._ensure_open()
             stream = self._open(name)
         except BaseException:
             self._lock.release()
@@ -185,6 +213,8 @@ class Archive(ABC):
         """Write file member `name` to `dst`. `on_chunk` may raise to abort."""
         tmp = dst.with_name(dst.name + ".part")
         try:
+            with self._lock:
+                self._ensure_open()
             with self._lock, self._open(name) as src, open(tmp, "wb") as out:
                 while chunk := src.read(CHUNK):
                     out.write(chunk)
@@ -244,8 +274,11 @@ class ZipArchive(Archive):
             raise ArchiveError("Encrypted zip entries are not supported yet")
         return self._zip.open(info)  # type: ignore[return-value]
 
-    def close(self) -> None:
+    def _close_handle(self) -> None:
         self._zip.close()
+
+    def _reopen_handle(self) -> None:
+        self._zip = zipfile.ZipFile(self.path)
 
 
 class TarArchive(Archive):
@@ -265,8 +298,11 @@ class TarArchive(Archive):
         f = self._tar.extractfile(self._infos[name])
         return f if f is not None else io.BytesIO()  # type: ignore[return-value]
 
-    def close(self) -> None:
+    def _close_handle(self) -> None:
         self._tar.close()
+
+    def _reopen_handle(self) -> None:
+        self._tar = tarfile.open(self.path, "r:*")
 
 
 class CompressedFile(Archive):
@@ -330,8 +366,13 @@ class SevenZipArchive(Archive):
         f = open(self._extract_to_dir(name, tmpdir), "rb")
         return _DeletingReader(f, tmpdir)  # type: ignore[return-value]
 
-    def close(self) -> None:
+    def _close_handle(self) -> None:
         self._sz.close()
+
+    def _reopen_handle(self) -> None:
+        import py7zr
+
+        self._sz = py7zr.SevenZipFile(self.path, "r")
 
 
 class _DeletingReader(io.RawIOBase):
@@ -384,8 +425,13 @@ class RarArchive(Archive):
     def _open(self, name: str) -> BinaryIO:
         return _ToolReader(rar_command(self.path, self._names[name]))  # type: ignore[return-value]
 
-    def close(self) -> None:
+    def _close_handle(self) -> None:
         self._rar.close()
+
+    def _reopen_handle(self) -> None:
+        import rarfile
+
+        self._rar = rarfile.RarFile(self.path)
 
 
 RAR_TOOL_HINT = "Install unrar or 7-Zip to extract this RAR archive"
@@ -479,8 +525,13 @@ def open_archive(path: Path) -> Archive:
             archive = CompressedFile(path, kind)
     with _open_lock:
         _open_cache[key] = archive
+        evicted = []
         while len(_open_cache) > _OPEN_CACHE_SIZE:
-            _open_cache.pop(next(iter(_open_cache))).close()
+            evicted.append(_open_cache.pop(next(iter(_open_cache))))
+    # Evicted archives may still be in use (open panels, search hits): close()
+    # only releases the handle, they reopen it when read again.
+    for old in evicted:
+        old.close(wait=False)
     return archive
 
 

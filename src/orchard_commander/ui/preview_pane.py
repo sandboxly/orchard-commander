@@ -7,6 +7,9 @@ others as "View as" choices.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -24,11 +27,15 @@ from orchard_commander.preview import registry
 from orchard_commander.preview.api import (
     AUTO_DOWNLOAD_LIMIT,
     CannotPreview,
+    CloudNotDelivered,
+    FileInfo,
     LoadContext,
     NeedsDownload,
     Outcome,
     Previewer,
+    PreviewStore,
     PreviewView,
+    Score,
     ShowMessage,
     ViewContext,
 )
@@ -44,6 +51,7 @@ class PreviewPane(BoxFrame):
     """Shows whatever `show_path()` is given, loading in the background."""
 
     notice = Signal(str, str)  # passing notifications from views (text, severity)
+    finished_playing = Signal(object)  # vfs.VPath: playback of this file reached its end
 
 
     def __init__(self, themes: ThemeManager) -> None:
@@ -57,6 +65,9 @@ class PreviewPane(BoxFrame):
         self._choice: dict[str, str] = {}  # extension -> previewer id picked via "View as" (this session)
         self._forced: str | None = None  # previewer id requested for the next load
         self._download_ok: vfs.VPath | None = None  # online-only file the user chose to download
+        self.store_for: Callable[[str], PreviewStore] = lambda _id: PreviewStore()  # set by the window
+        self.continuous = False  # the window plays the next file when one ends
+        self._autoplay: vfs.VPath | None = None  # start playing this file once it's shown
 
         # "View as" chips, shown when more than one previewer fits.
         self.chips = QWidget()
@@ -86,6 +97,10 @@ class PreviewPane(BoxFrame):
         message_layout.addWidget(self.busy, 0, Qt.AlignmentFlag.AlignHCenter)
         message_layout.addWidget(self.download_button, 0, Qt.AlignmentFlag.AlignHCenter)
         message_layout.addStretch(1)
+        self._loading_text = ""
+        self._loading_since = 0.0
+        self._loading_ticker = QTimer(self, interval=1000)
+        self._loading_ticker.timeout.connect(self._tick_loading)
         self._slow_timer = QTimer(self, singleShot=True, interval=SLOW_LOAD_MS)
         self._slow_timer.timeout.connect(self._show_slow_loading)
         self.stack.addWidget(self._message_page)
@@ -101,7 +116,7 @@ class PreviewPane(BoxFrame):
 
         self._debounce = QTimer(self, singleShot=True, interval=DEBOUNCE_MS)
         self._debounce.timeout.connect(self._start_load)
-        themes.changed.connect(self.refresh)
+        themes.changed.connect(self._theme_changed)
         self._show_message("No file selected")
 
     # -- public API --------------------------------------------------------
@@ -121,6 +136,8 @@ class PreviewPane(BoxFrame):
         """Preview `path` (debounced, so fast cursor movement stays smooth)."""
         if path == self.path and self._pending is None:
             return
+        if path != self._autoplay:
+            self._autoplay = None  # the user went somewhere else
         self._pending = path
         self._debounce.start()
 
@@ -129,6 +146,39 @@ class PreviewPane(BoxFrame):
             self._pending, self.path = self.path, None
             self._forced = self._current.id if self._current else None
             self._start_load()
+
+    def _theme_changed(self) -> None:
+        """Re-render previews that baked the colors in (text highlighting); others restyle live."""
+        if self._current is None or self._current.reload_on_theme_change:
+            self.refresh()
+
+    def set_continuous(self, on: bool) -> None:
+        self.continuous = on
+        for view in self._views.values():
+            view.set_continuous(on)
+
+    def store_changed(self) -> None:
+        for view in self._views.values():
+            view.store_changed()
+
+    def play_when_shown(self, path: vfs.VPath) -> None:
+        """Start playback of `path` as soon as it's previewed (moving on to the next file)."""
+        self._autoplay = path
+
+    def plays(self, entry: fs.Entry) -> bool:
+        """Whether the previewer showing the current file would also show `entry` (by its name)."""
+        if self._current is None or entry.is_dir:
+            return False
+        ext = entry.name.rpartition(".")[2].lower() if "." in entry.name else ""
+        info = FileInfo(entry.name, ext, entry.size, entry.mtime, False, has_direct_path=True)
+        try:
+            return self._current.score(info) > Score.NO
+        except Exception:
+            return False
+
+    def _view_finished(self) -> None:
+        if self.sender() is self.current_view and self.continuous and self.path is not None:
+            self.finished_playing.emit(self.path)
 
     def view_as(self, previewer_id: str) -> None:
         """Show the current file with a specific previewer (remembered per extension)."""
@@ -224,7 +274,9 @@ class PreviewPane(BoxFrame):
         if outcome.loaded is None or outcome.previewer is None:
             error = outcome.error
             if isinstance(error, NeedsDownload):
-                self._show_message(str(error), download=True)
+                self._show_message(str(error), download="Download and preview")
+            elif isinstance(error, CloudNotDelivered):
+                self._show_message(str(error), download="Try again")
             elif isinstance(error, (ShowMessage, CannotPreview)):
                 self._show_message(str(error))
             else:
@@ -232,8 +284,12 @@ class PreviewPane(BoxFrame):
             self.set_subtitle("")
             return
         view = self._view_for(outcome.previewer)
+        view.set_continuous(self.continuous)
         view.show_data(outcome.loaded.data)
         self.stack.setCurrentWidget(view)
+        if self._autoplay is not None and self._autoplay == self.path:
+            self._autoplay = None
+            view.play()
         self.setFocusProxy(view.focus_widget())
         self.set_subtitle(outcome.loaded.info)
 
@@ -242,8 +298,9 @@ class PreviewPane(BoxFrame):
     def _view_for(self, previewer: Previewer) -> PreviewView:
         view = self._views.get(previewer.id)
         if view is None:
-            view = previewer.create_view(ViewContext(self.themes))
+            view = previewer.create_view(ViewContext(self.themes, self.store_for(previewer.id)))
             view.message.connect(self._view_message)
+            view.finished.connect(self._view_finished)
             view.notice.connect(self.notice)
             self._views[previewer.id] = view
             self.stack.addWidget(view)
@@ -273,10 +330,26 @@ class PreviewPane(BoxFrame):
     def _show_loading(self, text: str) -> None:
         self._clear_view()
         self._show_message(text, busy=True)
+        self._loading_text = text
+        self._loading_since = time.monotonic()
+        self._loading_ticker.start()
 
-    def _show_message(self, text: str, *, download: bool = False, busy: bool = False) -> None:
-        self.download_button.setVisible(download)
+    def _tick_loading(self) -> None:
+        """Count up the seconds while waiting, so a slow download visibly isn't stuck."""
+        if not self.busy.isVisible() or self.stack.currentWidget() is not self._message_page:
+            self._loading_ticker.stop()
+            return
+        waited = int(time.monotonic() - self._loading_since)
+        if waited >= 2:
+            self.message_label.setText(f"{self._loading_text}\n{waited} s")
+
+    def _show_message(self, text: str, *, download: str | None = None, busy: bool = False) -> None:
+        self.download_button.setVisible(download is not None)
+        if download is not None:
+            self.download_button.setText(download)
         self.busy.setVisible(busy)
+        if not busy:
+            self._loading_ticker.stop()
         self.message_label.setText(text)
         self.stack.setCurrentWidget(self._message_page)
         self.setFocusProxy(None)

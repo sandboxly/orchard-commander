@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -12,6 +13,7 @@ from PySide6.QtCore import QByteArray, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QSplitter,
     QButtonGroup,
     QHBoxLayout,
     QLabel,
@@ -24,11 +26,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from orchard_commander import APP_NAME, archives, bookmarks, connections, fs, fsproviders, locations, vfs
+from orchard_commander import APP_NAME, archives, bookmarks, connections, fs, fsproviders, locations, rename, search, terminal, vfs
 from orchard_commander.fsproviders import AuthenticationRequired, ConnectContext, ConnectionCancelled
 from orchard_commander.config import Settings
+from orchard_commander.preview.api import PreviewStore
 from orchard_commander.themes import FONT_SIZE_RANGE, Appearance, all_schemes
-from orchard_commander.ui import bookmarks_ui, dialogs, tasks
+from orchard_commander.ui import bookmarks_ui, dialogs, rename_ui, search_ui, tasks
+from orchard_commander.ui.terminal_view import TOGGLE_KEY, TerminalPanel
 from orchard_commander.ui.connect_dialogs import ConnectionManager, ask_password, confirm_question
 from orchard_commander.ui.operations import FileOperation
 from orchard_commander.ui.panel import FilePanel
@@ -37,6 +41,51 @@ from orchard_commander.ui.settings_dialog import SettingsDialog
 from orchard_commander.ui.style import ThemeManager, system_is_dark
 
 IS_MACOS = sys.platform == "darwin"
+
+
+def _same_dir(a: Path | None, b: Path | None) -> bool:
+    """Same folder, also through symlinks (/tmp is /private/tmp on macOS)."""
+    if a is None or b is None:
+        return False
+    if a == b:
+        return True
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return False
+
+
+def _as_seen_from(folder: Path, panel_dir: Path | None) -> Path:
+    """`folder` (a shell's physical path) written relative to the panel's path where possible,
+    so a panel in /tmp goes to /tmp/sub, not /private/tmp/sub."""
+    if panel_dir is None:
+        return folder
+    try:
+        real = panel_dir.resolve()
+        if folder == real or real in folder.parents:
+            return panel_dir / folder.relative_to(real)
+        for ancestor in panel_dir.parents:
+            if ancestor.resolve() == folder:
+                return ancestor
+    except (OSError, ValueError):
+        pass
+    return folder
+
+
+class _SettingsStore(PreviewStore):
+    """A previewer's remembered values, kept in the settings file (`extra`)."""
+
+    def __init__(self, settings: Settings, previewer_id: str) -> None:
+        super().__init__()
+        self._settings = settings
+        self._prefix = f"preview.{previewer_id}."
+
+    def get(self, key: str, default=None):
+        return self._settings.extra.get(self._prefix + key, default)
+
+    def set(self, key: str, value) -> None:
+        if self.get(key) != value:
+            self._settings.update(extra={**self._settings.extra, self._prefix + key: value})
 FILES, PREVIEW = "files", "preview"
 
 
@@ -187,6 +236,18 @@ class MainWindow(QMainWindow):
         self.themes = themes
         self.sessions = connections.Sessions()
         self.bookmark_items: list[bookmarks.Item] = bookmarks.load()
+        self._search_form = search_ui.Form()
+        self._rename_rule = rename.Rule()
+        self._last_rename: rename.Done | None = None
+        self._last_results: search.SearchResultsFS | None = None
+        self._search_seen: dict[int, int] = {}
+        self._shell_dirs: dict[str, Path] = {}  # each side's shell folder, as last seen
+        self._pending_cd: dict[str, Path] = {}  # panel moves to pass on once the shell is idle
+        self._commands_seen: dict[str, int] = {}
+        self._terminal_sync = QTimer(self, interval=300)
+        self._terminal_sync.timeout.connect(self._sync_terminals)
+        self._search_timer = QTimer(self, interval=300)
+        self._search_timer.timeout.connect(self._refresh_searches)
         self.setWindowTitle(APP_NAME)
         self._operation: FileOperation | None = None
 
@@ -200,11 +261,24 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        sides = QHBoxLayout()
+        sides_widget = QWidget()
+        sides = QHBoxLayout(sides_widget)
+        sides.setContentsMargins(0, 0, 0, 0)
         sides.setSpacing(0)
         sides.addWidget(self.left, 1)
         sides.addWidget(self.right, 1)
-        layout.addLayout(sides, 1)
+        # The terminal spans both sides below them; each side has its own shell in the background.
+        self.terminal = TerminalPanel(themes, lambda: terminal.shell_command(self.settings.terminal_shell))
+        self.terminal.view.toggle_requested.connect(self.toggle_terminal)
+        self.terminal.hide()
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(3)
+        self.splitter.addWidget(sides_widget)
+        self.splitter.addWidget(self.terminal)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.splitterMoved.connect(lambda *_: self._remember_terminal())
+        layout.addWidget(self.splitter, 1)
         self.commands = self._build_commands()
         layout.addWidget(self._build_footer())
         self.setCentralWidget(central)
@@ -216,6 +290,9 @@ class MainWindow(QMainWindow):
             side.mode_requested.connect(self.set_mode)
             side.panel.message.connect(self.notify)
             side.preview.notice.connect(self.notify)
+            side.preview.store_for = self._preview_store
+            side.preview.set_continuous(self.settings.play_next_enabled)
+            side.preview.finished_playing.connect(lambda path, s=side: self._play_next(s, path))
             side.panel.title_clicked.connect(lambda pos, s=side: self.bookmark_menu(s, pos))
             side.panel.location_changed.connect(lambda loc, s=side: self._location_changed(s, loc))
             side.panel.cursor_changed.connect(lambda target, o=other: self._cursor_changed(o, target))
@@ -263,9 +340,25 @@ class MainWindow(QMainWindow):
                     lambda: self.transfer(self.left), [f"{mod}+Left"]),
             Command("Transfer to right panel", "Right panel: open the folder under the cursor, or match the left panel",
                     lambda: self.transfer(self.right), [f"{mod}+Right"]),
+            Command("Select all", "Mark every file and folder in the active panel",
+                    lambda: self.active_panel.set_all_marks(True), [f"{mod}+A"]),
+            Command("Clear selection", "Unmark everything in the active panel",
+                    lambda: self.active_panel.set_all_marks(False), [f"{mod}+Alt+A"]),
+            Command("Terminal", "Show the terminal (one shell per side) and type into it; inside it: hide it",
+                    self.toggle_terminal, [TOGGLE_KEY, *(["Ctrl+J"] if IS_MACOS else [])]),  # ⌘J: any layout
+            Command("Terminal: go to panel folder", "Change the active side's shell to its panel's folder",
+                    self.terminal_to_panel_folder, ["Meta+Shift+`" if IS_MACOS else "Ctrl+Shift+`"]),
+            Command("Multi-rename", "Rename marked files with a pattern: [N], [C], dates, search & replace "
+                    "(Total Commander: Ctrl+M)", self.multi_rename, [f"{mod}+M"]),
+            Command("Undo rename", "Undo the last multi-rename", self.undo_rename, [f"{mod}+Z"]),
+            Command("Find files", "Search by name, contents, size and date (Total Commander: Alt+F7)",
+                    self.find_files, ["Alt+F7", f"{mod}+F"]),
+            Command("Stop search", "Stop the running search", self.stop_search, ["Escape"]),
+            Command("Last search results", "Show the results of the last search again",
+                    self.show_last_results, [f"{mod}+Shift+F"]),
             Command("Bookmarks", "Bookmarked folders: open, add the current folder, organize",
                     self.bookmark_menu, [f"{mod}+D"]),
-            Command("Go to bookmark", "Search bookmarks as you type", self.go_to_bookmark, [f"{mod}+Shift+D"]),
+            Command("Go to bookmark", "Search bookmarks as you type", self.go_to_bookmark, [f"{mod}+Alt+D"]),
             Command("Add current folder to bookmarks", "Bookmark the active panel's folder", self.add_bookmark),
             Command("Organize bookmarks", "Reorder, group, edit and delete bookmarks", self.organize_bookmarks),
             Command("Go to path", "Type a directory or a server address", self.goto_path,
@@ -337,11 +430,13 @@ class MainWindow(QMainWindow):
             add(menu, location, transfer)
 
         side_menu(self.left, "&Left", "Left drive / location", "Transfer to left panel")
-        add(bar.addMenu("&Files"), "Copy", "Move / rename", "Make directory", "Move to trash", None, "Quit")
+        add(bar.addMenu("&Files"), "Select all", "Clear selection", None, "Copy", "Move / rename", "Multi-rename",
+            "Undo rename", "Make directory", "Move to trash", None, "Find files", "Last search results", None, "Quit")
         add(bar.addMenu("&Commands"),
             "Command palette", None, "Toggle preview", "Next preview view", None,
             "Go to path", "Bookmarks", "Go to bookmark", "Add current folder to bookmarks", "Organize bookmarks",
-            None, "Connect to server", "Disconnect", None, "Swap panels", "Same directory", "Reload panels")
+            None, "Connect to server", "Disconnect", None, "Swap panels", "Same directory", "Reload panels",
+            None, "Terminal", "Terminal: go to panel folder")
         add(bar.addMenu("&Options"),
             "Settings…", "Choose color scheme…", None, "Toggle hidden files", None,
             "Zoom in", "Zoom out", "Reset zoom")
@@ -394,6 +489,7 @@ class MainWindow(QMainWindow):
         return None
 
     def _focus_changed(self, _old: QWidget | None, new: QWidget | None) -> None:
+        self.terminal.set_active(new is not None and self.terminal.isAncestorOf(new))
         side = self._side_of(new)
         if side is not None and side is not self._active:
             self._active = side
@@ -402,6 +498,112 @@ class MainWindow(QMainWindow):
     def _update_active(self) -> None:
         for side in (self.left, self.right):
             side.set_active(side is self._active)
+        if self.terminal.isVisible():
+            self._show_terminal_session()
+
+    # -- terminal --------------------------------------------------------------
+
+    def _side_folder(self, side: Side) -> Path:
+        return side.panel.location.local_anchor() or Path.home()
+
+    def _show_terminal_session(self) -> None:
+        """The terminal shows the active side's shell (the other keeps running)."""
+        self.terminal.show_side(self._active.name, self._side_folder(self._active))
+        if not self._terminal_sync.isActive():
+            self._terminal_sync.start()
+
+    def toggle_terminal(self) -> None:
+        """Show the terminal and type into it; from inside it, hide it again."""
+        if not self.terminal.isVisible():
+            self.terminal.show()
+            total = sum(self.splitter.sizes())
+            height = self.settings.extra.get("terminal_height")
+            if not isinstance(height, int) or height < self.terminal.minimumHeight():
+                height = total // 3  # first time: a third of the window
+            height = min(height, total - self.terminal.minimumHeight())  # leave room for the panels
+            self.splitter.setSizes([max(total - height, 1), height])
+            self._show_terminal_session()
+            self.terminal.view.setFocus()
+        elif self.terminal.view.hasFocus():
+            self._active.focus_main()  # first: hiding the focused terminal would focus some other side
+            self.terminal.hide()
+        else:
+            self.terminal.view.setFocus()
+        self._remember_terminal()
+
+    # Linked folders: a side's shell and panel follow each other (Settings → Terminal).
+
+    def _sync_terminals(self) -> None:
+        """Every 300 ms: follow the shells' folders, type pending cds, refresh after commands."""
+        if not self.terminal.sessions:
+            self._terminal_sync.stop()
+            return
+        finished_command = False
+        for name, session in list(self.terminal.sessions.items()):
+            if not session.alive:
+                continue
+            side = self.left if name == "left" else self.right
+            at_prompt = session.at_prompt()
+            if session.commands != self._commands_seen.get(name, 0) and at_prompt:
+                self._commands_seen[name] = session.commands
+                finished_command = True
+            if not self.settings.terminal_link_enabled:
+                continue
+            now = session.current_dir()
+            if now is None:
+                continue
+            seen = self._shell_dirs.get(name)
+            if seen is None or not _same_dir(now, seen):  # the shell moved (cd in the terminal)
+                self._shell_dirs[name] = now
+                panel_dir = self._panel_dir(side)
+                if seen is not None and not _same_dir(now, panel_dir) and now.is_dir():
+                    self._pending_cd.pop(name, None)
+                    side.panel.load(vfs.local(_as_seen_from(now, panel_dir)))
+                continue
+            pending = self._pending_cd.get(name)
+            if pending is not None and at_prompt:  # the panel moved while a program ran: catch up now
+                del self._pending_cd[name]
+                if not _same_dir(pending, now):
+                    session.change_dir(pending)
+        if finished_command:  # rm, touch, echo >> …: show the result (watching folders misses some)
+            for side in (self.left, self.right):
+                if side.panel.location.is_local:
+                    side.panel.reload()
+
+    @staticmethod
+    def _panel_dir(side: Side) -> Path | None:
+        location = side.panel.location
+        return Path(location.path) if location.is_local else None
+
+    def _panel_moved(self, side: Side, location: vfs.VPath) -> None:
+        """The panel went somewhere: take that side's shell along (when it's idle at its prompt)."""
+        session = self.terminal.sessions.get(side.name)
+        if not self.settings.terminal_link_enabled or session is None or not session.alive:
+            return
+        if not location.is_local:
+            return  # servers, archives, search results: the shell stays where it is
+        folder = Path(location.path)
+        if _same_dir(folder, self._shell_dirs.get(side.name)):
+            return  # already there (e.g. the shell moved the panel)
+        if session.at_prompt():
+            self._pending_cd.pop(side.name, None)
+            session.change_dir(folder)
+        else:
+            self._pending_cd[side.name] = folder  # don't type into vim or a running build
+
+    def terminal_to_panel_folder(self) -> None:
+        """Change the active side's shell to its panel's folder."""
+        if not self.terminal.isVisible():
+            self.toggle_terminal()
+        self.terminal.run_in(self._active.name, self._side_folder(self._active))
+        self.terminal.view.setFocus()
+
+    def _remember_terminal(self) -> None:
+        changes = {"terminal_visible": self.terminal.isVisible()}
+        if self.terminal.isVisible():
+            changes["terminal_height"] = self.splitter.sizes()[1]
+        if any(self.settings.extra.get(k) != v for k, v in changes.items()):
+            self.settings.update(extra={**self.settings.extra, **changes})
 
     @property
     def active_panel(self) -> FilePanel:
@@ -449,6 +651,7 @@ class MainWindow(QMainWindow):
             other.preview.show_path(target)
 
     def _location_changed(self, side: Side, location: vfs.VPath) -> None:
+        self._panel_moved(side, location)
         # Persist the nearest real directory; places inside archives or on servers aren't restored.
         anchor = location.local_anchor()
         if anchor is not None:
@@ -541,6 +744,159 @@ class MainWindow(QMainWindow):
             side.panel.load(vfs.local(choice))
             side.panel.setFocus()
 
+    # -- multi-rename (Total Commander's Ctrl+M) ---------------------------------
+
+    def multi_rename(self) -> None:
+        panel = self.active_panel
+        entries = panel.selected_entries()
+        if not entries:
+            return
+        # The real files: search hits are renamed where they are.
+        paths = panel.selected_paths()
+        for path in paths:
+            if not path.fs.writable:
+                self._refuse(path, "rename here", ok=False)
+                return
+            if not path.fs.can_rename:
+                self.notify(f"Can't rename on {path.fs.type_name}", "warning")
+                return
+        items = [rename.item_for(p, e) for p, e in zip(paths, entries)]
+
+        def ask(exists) -> None:
+            dialog = rename_ui.MultiRenameDialog(self, self.themes, items, self._rename_rule, exists)
+            answer = dialog.ask()
+            self._rename_rule = dialog.rule  # remembered for this session, even when cancelled
+            if answer is None:
+                return
+            plan, _ = answer
+            tasks.run_in_background(lambda: rename.execute(plan), lambda done: self._renamed(done, panel),
+                                    owner=self)
+
+        tasks.run_in_background(lambda: rename.existing_names(items), ask, owner=self)
+
+    def _renamed(self, done: rename.Done, panel: FilePanel, *, undo: bool = False) -> None:
+        for _, results in self._shown_results():
+            results.relocate(rename.renamed_locations(done))
+        if self._last_results is not None:
+            self._last_results.relocate(rename.renamed_locations(done))
+        self._last_rename = None if undo else done
+        panel.clear_marks()
+        self.reload()
+        n = len(done.renames)
+        what = f"{'Undid renaming' if undo else 'Renamed'} {n} item{'s' * (n != 1)}"
+        if done.errors:
+            self.notify(f"{what}; {len(done.errors)} failed: {done.errors[0]}", "warning")
+        else:
+            self.notify(what + ("" if undo else " · ⌘Z to undo" if IS_MACOS else " · Ctrl+Z to undo"))
+
+    def undo_rename(self) -> None:
+        done = self._last_rename
+        if done is None or not done.renames:
+            self.notify("Nothing to undo", "warning")
+            return
+        n = len(done.renames)
+        if not dialogs.confirm(self, self.themes, "Undo rename",
+                               f"Give {n} item{'s' * (n != 1)} their old names back?", "Undo"):
+            return
+        panel = self.active_panel
+        tasks.run_in_background(lambda: rename.undo(done), lambda undone: self._renamed(undone, panel, undo=True),
+                                owner=self)
+
+    # -- find files (Total Commander's Alt+F7 + "Feed to listbox") -----------------
+
+    def find_files(self) -> None:
+        side = self._side_of_location()
+        here = side.panel.location
+        if isinstance(here.fs, search.SearchResultsFS):  # searching from results: search where they came from
+            here = here.fs.exit_to() or vfs.local(Path.home())
+        answer = search_ui.FindFilesDialog(self, self.themes, here, self._search_form).ask()
+        if answer is None:
+            return
+        query, self._search_form = answer
+        self.start_search(query, side)
+
+    def start_search(self, query: search.Query, side: Side) -> search.SearchResultsFS:
+        """Search in the background; the hits appear in `side` as a folder while it runs."""
+        results = search.SearchResultsFS(query)
+        results.cancel_requested = False  # type: ignore[attr-defined]
+        self._last_results = results
+        if side.mode == PREVIEW:
+            self.set_mode(side, FILES)
+        side.panel.load(vfs.VPath(results, ""))
+        side.panel.setFocus()
+
+        def run() -> None:
+            try:
+                search.run(query, results.add, progress=results.progress,
+                           is_cancelled=lambda: results.cancel_requested)  # type: ignore[attr-defined]
+            except Exception as exc:  # report, don't lose the hits found so far
+                results.progress.errors.append(str(exc))
+            finally:
+                results.finish(cancelled=results.cancel_requested)  # type: ignore[attr-defined]
+
+        threading.Thread(target=run, daemon=True, name="search").start()
+        self._search_timer.start()
+        return results
+
+    def _shown_results(self) -> list[tuple[Side, search.SearchResultsFS]]:
+        return [(s, s.panel.location.fs) for s in (self.left, self.right)
+                if isinstance(s.panel.location.fs, search.SearchResultsFS)]
+
+    def _refresh_searches(self) -> None:
+        """While searches run, show new hits and progress (every 300 ms)."""
+        active = False
+        for side, results in self._shown_results():
+            seen = self._search_seen.get(id(results))
+            if results.running:
+                active = True
+            if results.changes != seen or results.running:
+                self._search_seen[id(results)] = results.changes
+                if results.changes != seen:
+                    side.panel.reload()
+                else:
+                    side.panel._update_subtitle()  # progress counters
+            if not results.running and seen is not None and not getattr(results, "announced", False):
+                results.announced = True  # type: ignore[attr-defined]
+                found = len(results.hits)
+                self.notify(f"Search {'stopped' if results.cancelled else 'finished'}: "
+                            f"{found:,} hit{'s' * (found != 1)}")
+        if self._last_results is not None and self._last_results.running:
+            active = True
+        if not active:
+            self._search_timer.stop()
+
+    def stop_search(self) -> None:
+        for _, results in self._shown_results():
+            if results.running:
+                results.cancel_requested = True  # type: ignore[attr-defined]
+        if self._last_results is not None and self._last_results.running:
+            self._last_results.cancel_requested = True  # type: ignore[attr-defined]
+
+    def show_last_results(self) -> None:
+        if self._last_results is None:
+            self.notify("No search yet: Alt+F7 or ⌘F to find files", "warning")
+            return
+        side = self._side_of_location()
+        if side.mode == PREVIEW:
+            self.set_mode(side, FILES)
+        side.panel.load(vfs.VPath(self._last_results, ""))
+        side.panel.setFocus()
+        if self._last_results.running:
+            self._search_timer.start()
+
+    def _prune_search_results_then_reload(self) -> None:
+        """After file operations: forget hits that were moved or deleted, then reload."""
+        shown = self._shown_results()
+        if not shown:
+            self.reload()
+            return
+        tasks.run_in_background(
+            lambda: [results.prune() for _, results in shown],
+            lambda _: self.reload(),
+            lambda exc: self.reload(),
+            owner=self,
+        )
+
     # -- bookmarks (Total Commander's Directory Hotlist) ----------------------------
 
     def _side_of_location(self) -> Side:
@@ -598,7 +954,7 @@ class MainWindow(QMainWindow):
             self._save_bookmarks()
 
     def go_to_bookmark(self) -> None:
-        """Search all bookmarks as you type (Ctrl+Shift+D)."""
+        """Search all bookmarks as you type (Ctrl+Alt+D, ⌥⌘D)."""
         entries = bookmarks.bookmarks(self.bookmark_items)
         if not entries:
             self.notify("No bookmarks yet: add one with Ctrl+D → Add current folder", "warning")
@@ -737,6 +1093,28 @@ class MainWindow(QMainWindow):
             self.themes.set_appearance(self.settings.appearance())
         if "menu_bar_visible" in changes:
             self.menu_strip.setVisible(bool(self.settings.menu_bar_visible))
+        if "play_next" in changes:
+            for side in (self.left, self.right):
+                side.preview.set_continuous(self.settings.play_next_enabled)
+        if "extra" in changes:  # e.g. autoplay, also the players' own toggle
+            for side in (self.left, self.right):
+                side.preview.store_changed()
+
+    def _preview_store(self, previewer_id: str) -> PreviewStore:
+        return _SettingsStore(self.settings, previewer_id)
+
+    def _play_next(self, side: Side, finished: vfs.VPath) -> None:
+        """A file in `side`'s preview ended: select the next one it plays in the other panel, and play it."""
+        panel = self._other(side).panel
+        if panel.cursor_target != finished or side.mode != PREVIEW:
+            return  # the user moved on meanwhile
+        for row in range(panel.table.current_row() + 1, panel.model.rowCount()):
+            entry = panel.model.entry_at(row)
+            if entry is not None and side.preview.plays(entry):
+                panel.table.set_current_row(row)
+                if panel.cursor_target is not None:
+                    side.preview.play_when_shown(panel.cursor_target)
+                return
 
     def choose_color_scheme(self) -> None:
         """Pick a scheme for the current mode (light or dark, when following the system)."""
@@ -820,7 +1198,10 @@ class MainWindow(QMainWindow):
         if not entries:
             return
         destination = self.other_panel.location
-        if kind == "move" and self._refuse(source.location, "move from here", ok=source.location.fs.writable):
+        # Ask the real files (search hits stand for files elsewhere), not the folder they're listed in.
+        sources = source.selected_paths()
+        blocked = next((p for p in sources if not p.fs.writable), None)
+        if kind == "move" and blocked is not None and self._refuse(blocked, "move from here", ok=False):
             return
         if self._refuse(destination, "copy there", ok=destination.fs.writable):
             return
@@ -838,30 +1219,34 @@ class MainWindow(QMainWindow):
             if not path.is_absolute():
                 if source.location.fs.writable:  # e.g. a new name in the same directory
                     target = source.location.child(value)
-                    self._run(FileOperation(kind, source.selected_paths(), target), source)
+                    self._run(FileOperation(kind, sources, target), source)
                     return
                 path = (source.location.local_anchor() or Path.home()) / path
             target = vfs.local(path)
-        self._run(FileOperation(kind, source.selected_paths(), target), source)
+        self._run(FileOperation(kind, sources, target), source)
 
     def trash(self) -> None:
         """Move to the trash, or — where there is none, e.g. on servers — delete permanently."""
         panel = self.active_panel
-        filesystem = panel.location.fs
-        if self._refuse(panel.location, "delete here", ok=filesystem.can_trash or filesystem.writable):
-            return
         entries = panel.selected_entries()
         if not entries:
             return
+        # Ask the real files (search hits stand for files elsewhere), not the folder they're listed in.
+        paths = panel.selected_paths()
+        blocked = next((p for p in paths if not (p.fs.can_trash or p.fs.writable)), None)
+        if blocked is not None and self._refuse(blocked, "delete here", ok=False):
+            return
         what = self._describe(entries)
-        if filesystem.can_trash:
+        if all(p.fs.can_trash for p in paths):
             if dialogs.confirm(self, self.themes, "Move to trash", f"Move {what} to the trash?", "Trash"):
-                self._run(FileOperation("trash", panel.selected_paths()), panel)
-        elif dialogs.confirm(
-            self, self.themes, "Delete permanently",
-            f"{filesystem.type_name} has no trash.\n\nDelete {what} permanently? This can't be undone.", "Delete",
-        ):
-            self._run(FileOperation("delete", panel.selected_paths()), panel)
+                self._run(FileOperation("trash", paths), panel)
+        else:
+            no_trash = next(p for p in paths if not p.fs.can_trash).fs.type_name
+            if dialogs.confirm(
+                self, self.themes, "Delete permanently",
+                f"{no_trash} has no trash.\n\nDelete {what} permanently? This can't be undone.", "Delete",
+            ):
+                self._run(FileOperation("delete", paths), panel)
 
     def _run(self, op: FileOperation, source: FilePanel) -> None:
         if self._operation is not None and self._operation.isRunning():
@@ -886,7 +1271,7 @@ class MainWindow(QMainWindow):
             if progress is not None:
                 progress.done(0)
             source.clear_marks()
-            self.reload()
+            self._prune_search_results_then_reload()
             source.setFocus()
 
         op.finished.connect(finished)
@@ -909,7 +1294,12 @@ class MainWindow(QMainWindow):
             if extra.get(f"{side.name}_mode") == PREVIEW:
                 QTimer.singleShot(0, lambda s=side: self.set_mode(s, PREVIEW))
         QTimer.singleShot(0, self.left.panel.setFocus)
+        if extra.get("terminal_visible"):
+            QTimer.singleShot(0, self._reopen_terminal)
 
+    def _reopen_terminal(self) -> None:
+        self.toggle_terminal()  # shows it and focuses it…
+        self._active.focus_main()  # …but the app starts in the panels
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._operation is not None and self._operation.isRunning():
             self._operation.cancel_requested = True
@@ -919,4 +1309,5 @@ class MainWindow(QMainWindow):
         for side in (self.left, self.right):
             side.preview.deactivate()
         self.sessions.close_all()
+        self.terminal.close_all()
         super().closeEvent(event)

@@ -25,6 +25,12 @@ hidden = [
     *collect_submodules("pygments.lexers"),
     *collect_submodules("pygments.styles"),
     *collect_submodules("pygments.formatters"),
+    *collect_submodules("pyte"),  # the terminal panel
+    "ptyprocess",
+    "wcwidth",
+    *collect_submodules("mutagen"),  # metadata for multi-rename: formats are imported lazily
+    *collect_submodules("exifread"),
+    *collect_submodules("hachoir", filter=lambda name: not name.startswith("hachoir.wx")),  # wx: its own GUI
     "py7zr",
     "rarfile",
     "paramiko",

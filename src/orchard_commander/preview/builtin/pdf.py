@@ -116,6 +116,7 @@ def _stream_usable(stream: BinaryIO) -> bool:
 
 
 class PdfPreviewer(Previewer):
+    reload_on_theme_change = False  # the view follows theme changes itself
     id = "pdf"
     title = "PDF"
     access = Access.STREAM

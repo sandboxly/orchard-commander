@@ -33,6 +33,8 @@ def self_test() -> int:
         "PySide6.QtWidgets", "PySide6.QtMultimedia", "PySide6.QtMultimediaWidgets", "PySide6.QtSvg",
         "orchard_commander.ui.main_window", "orchard_commander.remote.sftp", "orchard_commander.remote.smb",
         "orchard_commander.remote.webdav", "orchard_commander.remote.s3", "truststore", "py7zr", "rarfile", "keyring",
+        "mutagen.easyid3", "mutagen.easymp4", "mutagen.flac", "exifread", "hachoir.parser.video",
+        "hachoir.parser.image", "hachoir.metadata.video", "hachoir.metadata.image",
     ]:
         try:
             importlib.import_module(name)
@@ -89,6 +91,24 @@ def self_test() -> int:
         del app
     except Exception as exc:
         failures.append(f"multimedia: {exc}")
+    try:  # the terminal panel: a shell in a pseudo-terminal (hardened runtime, bundled pyte)
+        import threading
+        from pathlib import Path
+
+        from orchard_commander import terminal
+
+        done = threading.Event()
+        argv = ["cmd.exe", "/c", "echo terminal-ok"] if terminal.IS_WINDOWS else ["/bin/sh", "-c", "echo terminal-ok"]
+        session = terminal.Session(argv, Path.home(), on_exit=done.set)
+        session.start()
+        done.wait(10)
+        with session.lock:
+            shown = "\n".join(session.screen.display)
+        print("terminal shell:", " ".join(terminal.default_shell()))
+        if "terminal-ok" not in shown:
+            failures.append(f"terminal: no output from {argv[0]}")
+    except Exception as exc:
+        failures.append(f"terminal: {exc}")
     for line in failures:
         print("FAIL", line)
     print("self-test", "failed" if failures else "ok")

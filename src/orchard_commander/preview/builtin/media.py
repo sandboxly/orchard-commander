@@ -29,8 +29,9 @@ from orchard_commander.preview.api import (
     FileInfo,
     LoadContext,
     Loaded,
-    Previewer,
+    PreviewStore,
     PreviewView,
+    Previewer,
     Score,
     ViewContext,
 )
@@ -55,6 +56,7 @@ class MediaData:
 
 
 class MediaPreviewer(Previewer):
+    reload_on_theme_change = False  # the view follows theme changes itself
     id = "media"
     title = "Player"
     access = Access.STREAM
@@ -86,7 +88,7 @@ class MediaPreviewer(Previewer):
         return Loaded(MediaData(video, src.name, src.size, path=path), f"{fs.human_size(src.size)} · {kind}")
 
     def create_view(self, ctx: ViewContext) -> PreviewView:
-        return MediaView(ctx.themes)
+        return MediaView(ctx.themes, ctx.store)
 
 
 def _seekable(stream: BinaryIO) -> bool:
@@ -97,12 +99,14 @@ def _seekable(stream: BinaryIO) -> bool:
 
 
 class MediaView(PreviewView):
-    """Video/audio player: Space play/pause, ←/→ seek 5 s, M mute."""
+    """Video/audio player: Space play/pause, ←/→ seek 5 s, M mute, A autoplay on/off."""
 
-    def __init__(self, themes: ThemeManager) -> None:
+    def __init__(self, themes: ThemeManager, store: PreviewStore | None = None) -> None:
         super().__init__()
         self.setObjectName("previewPage")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._store = store or PreviewStore()
+        self._continuous = False  # the host plays the next file at the end: don't loop videos
         self.player = QMediaPlayer(self)
         self._device: StreamDevice | None = None
         self.audio = QAudioOutput(self)
@@ -155,6 +159,10 @@ class MediaView(PreviewView):
 
         self.play_button = self._button("▶", self.toggle_play)
         self.mute_button = self._button("🔇", self.toggle_mute)
+        self.autoplay_button = self._button("Autoplay", self.toggle_autoplay)
+        self.autoplay_button.setCheckable(True)
+        self._update_autoplay()
+        self.autoplay_button.setToolTip("Start playing as soon as a file is selected (A)")
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.slider.sliderMoved.connect(self.player.setPosition)
@@ -167,6 +175,7 @@ class MediaView(PreviewView):
         row.addWidget(self.play_button)
         row.addWidget(self.slider, 1)
         row.addWidget(self.time_label)
+        row.addWidget(self.autoplay_button)
         row.addWidget(self.mute_button)
 
         layout = QVBoxLayout(self)
@@ -179,16 +188,17 @@ class MediaView(PreviewView):
         self.player.durationChanged.connect(self.waveform.set_duration)
         self.player.metaDataChanged.connect(self._metadata_changed)
         self.player.playbackStateChanged.connect(self._state_changed)
+        self.player.mediaStatusChanged.connect(self._status_changed)
         self.player.hasVideoChanged.connect(lambda v: self.screen_stack.setCurrentIndex(0 if v else 1))
         self.player.errorOccurred.connect(lambda _e, msg: msg and self.message.emit(f"Cannot play this file:\n{msg}"))
 
     def show_data(self, data: MediaData) -> None:
         self.stop()
-        self.audio.setMuted(True)
+        self.audio.setMuted(bool(self._store.get("muted", True)))  # remembered; muted until first unmuted
         self._update_mute()
-        self.player.setLoops(QMediaPlayer.Loops.Infinite if data.video else QMediaPlayer.Loops.Once)
         self._name = data.name
         self._is_video = data.video
+        self._apply_loops()
         self.spectrum.reset()
         self.spectrum_analyzer.reset()
         self.slider.setVisible(data.video)  # audio seeks on the waveform
@@ -212,8 +222,24 @@ class MediaView(PreviewView):
         else:
             assert data.path is not None
             self.player.setSource(QUrl.fromLocalFile(str(data.path)))
-        if data.video:  # videos autoplay muted and loop; audio waits for Space
-            self.player.play()
+        if self.autoplay:  # otherwise Space starts it (or the host, when it moves on to this file)
+            self.play()
+
+    def play(self) -> None:
+        self.follow_default_output()
+        self.player.play()
+
+    def set_continuous(self, on: bool) -> None:
+        self._continuous = on
+        self._apply_loops()
+
+    def _apply_loops(self) -> None:
+        loop = self._is_video and not self._continuous
+        self.player.setLoops(QMediaPlayer.Loops.Infinite if loop else QMediaPlayer.Loops.Once)
+
+    def _status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.finished.emit()
 
     def clear(self) -> None:
         self.stop()
@@ -256,8 +282,26 @@ class MediaView(PreviewView):
         if not default.isNull() and default.id() != self.audio.device().id():
             self.audio.setDevice(default)
 
+    @property
+    def autoplay(self) -> bool:
+        return bool(self._store.get("autoplay", True))
+
+    def toggle_autoplay(self) -> None:
+        self._store.set("autoplay", not self.autoplay)  # for the next file, and the next run
+        self._update_autoplay()
+
+    def store_changed(self) -> None:
+        self._update_autoplay()
+        self.audio.setMuted(bool(self._store.get("muted", True)))
+        self._update_mute()
+
+    def _update_autoplay(self) -> None:
+        self.autoplay_button.setChecked(self.autoplay)
+        self.autoplay_button.setText(f"[{'x' if self.autoplay else ' '}] Autoplay")
+
     def toggle_mute(self) -> None:
         self.audio.setMuted(not self.audio.isMuted())
+        self._store.set("muted", self.audio.isMuted())  # for the next file, and the next run
         self._update_mute()
 
     def seek(self, delta_ms: int) -> None:
@@ -307,5 +351,7 @@ class MediaView(PreviewView):
                 self.seek(5000)
             case Qt.Key.Key_M:
                 self.toggle_mute()
+            case Qt.Key.Key_A:
+                self.toggle_autoplay()
             case _:
                 super().keyPressEvent(event)

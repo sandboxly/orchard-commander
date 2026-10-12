@@ -46,9 +46,25 @@ class Settings:
     menu_bar_visible: bool | None = None  # in-window menu bar always shown (otherwise F9 shows it)
 
     show_hidden: bool | None = None  # None: DEFAULT_SHOW_HIDDEN (only a toggle stores a choice)
+    play_next: bool | None = None  # previews: play the next audio/video file when one ends (None: on)
+    terminal_shell: str = ""  # the terminal panel's shell command; "": the user's login shell / PowerShell
+    terminal_link: bool | None = None  # a side's shell and panel follow each other's folder (None: on)
     left_path: str = ""
     right_path: str = ""
     extra: dict = field(default_factory=dict)
+
+    @property
+    def autoplay_enabled(self) -> bool:
+        """Audio/video previews start playing when selected (the player's own toggle, shared)."""
+        return bool(self.extra.get("preview.media.autoplay", True))
+
+    @property
+    def terminal_link_enabled(self) -> bool:
+        return True if self.terminal_link is None else bool(self.terminal_link)
+
+    @property
+    def play_next_enabled(self) -> bool:
+        return True if self.play_next is None else bool(self.play_next)
 
     @property
     def hidden_visible(self) -> bool:

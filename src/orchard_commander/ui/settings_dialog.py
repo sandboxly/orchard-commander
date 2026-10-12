@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from orchard_commander import themes
+from orchard_commander import terminal, themes
 from orchard_commander.config import Settings
 from orchard_commander.ui.boxframe import BoxFrame
 from orchard_commander.ui.dialogs import Dialog, confirm
@@ -64,7 +64,9 @@ class SettingsDialog(Dialog):
         self.sections.setFixedWidth(16 * cw)
         self.pages = _body(QStackedWidget())
         self.appearance = AppearancePage(themes_, settings, apply)
-        for title, page in (("Appearance", self.appearance),):
+        self.preview = PreviewPage(settings, apply)
+        self.terminal = TerminalPage(settings, apply)
+        for title, page in (("Appearance", self.appearance), ("Preview", self.preview), ("Terminal", self.terminal)):
             self.sections.addItem(title)
             self.pages.addWidget(page)
         self.sections.currentRowChanged.connect(self.pages.setCurrentIndex)
@@ -74,6 +76,64 @@ class SettingsDialog(Dialog):
         self.content.addLayout(row)
         close, = self.add_buttons(("Close", self.accept))
         close.setFocus()
+
+
+# ---------------------------------------------------------------------------
+# Preview
+# ---------------------------------------------------------------------------
+
+
+class PreviewPage(QWidget):
+    def __init__(self, settings: Settings, apply: Apply) -> None:
+        super().__init__()
+        _body(self)
+        self.settings = settings
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(_heading("Audio and video"))
+        self.autoplay = QCheckBox("Start playing as soon as a file is selected (autoplay)")
+        self.autoplay.setToolTip("Also in the player: the [x] Autoplay button, or the A key")
+        self.autoplay.setChecked(settings.autoplay_enabled)
+        self.autoplay.toggled.connect(
+            lambda on: apply(extra={**self.settings.extra, "preview.media.autoplay": on}))
+        layout.addWidget(self.autoplay)
+        self.play_next = QCheckBox("Play the next file when one ends")
+        self.play_next.setToolTip("Selects the next audio or video file in the panel and plays it. "
+                                  "Off: videos loop, audio stops at the end.")
+        self.play_next.setChecked(settings.play_next_enabled)
+        self.play_next.toggled.connect(lambda on: apply(play_next=on))
+        layout.addWidget(self.play_next)
+        layout.addStretch(1)
+
+
+# ---------------------------------------------------------------------------
+# Terminal
+# ---------------------------------------------------------------------------
+
+
+class TerminalPage(QWidget):
+    def __init__(self, settings: Settings, apply: Apply) -> None:
+        super().__init__()
+        _body(self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(_heading("Shell"))
+        self.shell = QLineEdit(settings.terminal_shell)
+        self.shell.setPlaceholderText(" ".join(terminal.default_shell()) + "   (your default)")
+        self.shell.editingFinished.connect(lambda: apply(terminal_shell=self.shell.text().strip()))
+        layout.addWidget(self.shell)
+        hint = QLabel("Used for new terminal sessions. Empty: your login shell (PowerShell on Windows).")
+        hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addWidget(_heading("Panels", space_above=True))
+        self.link = QCheckBox("Link each side's terminal and panel folders")
+        self.link.setToolTip("cd in the terminal moves the panel; moving the panel types a cd in the shell "
+                             "(once it's back at its prompt)")
+        self.link.setChecked(settings.terminal_link_enabled)
+        self.link.toggled.connect(lambda on: apply(terminal_link=on))
+        layout.addWidget(self.link)
+        layout.addStretch(1)
 
 
 # ---------------------------------------------------------------------------

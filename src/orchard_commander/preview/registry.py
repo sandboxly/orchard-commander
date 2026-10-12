@@ -11,7 +11,9 @@ from orchard_commander.preview.api import (
     CannotPreview,
     Candidate,
     LoadContext,
+    CloudNotDelivered,
     NeedsDownload,
+    fetch_timeout,
     Outcome,
     Previewer,
     Score,
@@ -120,6 +122,18 @@ def preview(target: vfs.VPath, ctx: LoadContext, preferred: str | None = None) -
         entry = src.entry
         too_big = (entry.is_online_only and ctx.download_limit is not None
                    and entry.size > ctx.download_limit)
+        if entry.is_online_only and not too_big:
+            # Download first, with a time limit: any read (even sniffing the
+            # first bytes) would otherwise block until the cloud app delivers.
+            timeout = fetch_timeout(entry.size)
+            try:
+                target.fs.fetch_online_only(target.path, timeout=timeout, is_cancelled=ctx.is_cancelled)
+            except vfs.FetchCancelled:
+                return outcome  # the pane has moved on
+            except vfs.FetchTimeout:
+                outcome.candidates = candidates(src, may_read=False)
+                outcome.error = CloudNotDelivered(target.name, timeout)
+                return outcome
         outcome.candidates = candidates(src, may_read=not too_big)
     except Exception as exc:
         outcome.error = exc

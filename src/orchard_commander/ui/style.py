@@ -228,6 +228,9 @@ def stylesheet(t: ColorScheme, item_padding: int = 1) -> str:
         background: {t.border_active};
         color: {t.surface};
     }}
+    QToolButton#fkey:checked {{
+        color: {t.accent};
+    }}
 
     /* Buttons and inputs in dialogs. */
     QPushButton {{

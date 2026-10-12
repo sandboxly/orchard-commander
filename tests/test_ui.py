@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -1043,3 +1044,440 @@ def test_cancelled_trash_keeps_the_file(qtbot, window: MainWindow, tree: Path):
     settle(window)
     wait(200)
     assert (tree / "src" / "a.txt").exists()
+
+
+def test_stuck_cloud_file_offers_try_again(qtbot, window: MainWindow, monkeypatch):
+    from orchard_commander.preview import registry
+    from test_previewers import StuckCloudFS, pdf_bytes
+
+    monkeypatch.setattr(registry, "fetch_timeout", lambda size: 0.3)
+    cloud = StuckCloudFS()
+    cloud.files["report.pdf"] = pdf_bytes(1)
+    window.left.panel.load(vfs.VPath(cloud, ""))
+    settle(window)
+    window.set_mode(window.right, PREVIEW)
+    select(window, "report.pdf")
+    pane = window.right.preview
+    wait_until(lambda: pane.download_button.isVisible())
+    assert pane.download_button.text() == "Try again" and "hasn't arrived from the cloud" in pane.message_label.text()
+    assert not pane.busy.isVisible()
+    cloud.deliver.set()
+    pane.download_button.click()
+    wait_until(lambda: pane.current_id == "pdf")
+
+
+# -- find files ----------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def searchable(tree: Path) -> Path:
+    """src/{a.txt, b.bin, sub/c.txt, .hidden, docs/{one.txt, two.md}}"""
+    (tree / "src" / "docs").mkdir()
+    (tree / "src" / "docs" / "one.txt").write_text("needle here")
+    (tree / "src" / "docs" / "two.md").write_text("no match")
+    return tree
+
+
+def run_search(window: MainWindow, side, **options):
+    from orchard_commander import search
+
+    here = side.panel.location
+    if isinstance(here.fs, search.SearchResultsFS):  # like find_files(): search where the results came from
+        here = here.fs.exit_to()
+    query = search.Query(roots=(here,), **options)
+    results = window.start_search(query, side)
+    wait_until(lambda: not results.running)
+    wait_until(lambda: len(side.panel.entries) == len(results.hits))
+    settle(window)
+    return results
+
+
+def test_search_results_are_a_folder(qtbot, window: MainWindow, searchable: Path):
+    panel = window.left.panel
+    results = run_search(window, window.left, names="*.txt")
+    assert sorted(e.name.replace(os.sep, "/") for e in panel.entries) == ["a.txt", "docs/one.txt", "sub/c.txt"]
+    assert panel._display_path().startswith("Search: *.txt in")
+    assert "3 hits" in panel._subtitle
+    press(qtbot, window, Qt.Key.Key_Backspace)  # ".." leads back to where the search started
+    assert panel.location == vfs.local(searchable / "src")
+    window.show_last_results()
+    settle(window)
+    assert panel.location.fs is results
+
+
+def test_bulk_move_all_hits(qtbot, window: MainWindow, searchable: Path, monkeypatch):
+    run_search(window, window.left, names="*.txt")
+    monkeypatch.setattr(dialogs, "ask_text", lambda parent, themes, title, message, value, ok: value)
+    qtbot.keyClicks(window.left.panel.table, "+")  # mark all hits
+    window.move()
+    wait_until(lambda: (searchable / "dst" / "one.txt").exists() and window.left.panel.entries == [])
+    assert sorted(p.name for p in (searchable / "dst").iterdir()) == ["a.txt", "c.txt", "one.txt"]
+    assert not (searchable / "src" / "docs" / "one.txt").exists()  # really moved, not copied
+
+
+def test_trash_hits(qtbot, window: MainWindow, searchable: Path, monkeypatch):
+    trashed: list[Path] = []
+    monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(fs, "send2trash", lambda p: (trashed.append(p), p.unlink()))
+    run_search(window, window.left, names="*.md")
+    panel = window.left.panel
+    panel.table.set_current_row(panel.model.row_of(f"docs{os.sep}two.md"))  # row 0 is ".."
+    window.trash()
+    wait_until(lambda: window.left.panel.entries == [])
+    assert trashed == [searchable / "src" / "docs" / "two.md"]
+
+
+def test_preview_and_enter_hits(qtbot, window: MainWindow, searchable: Path):
+    run_search(window, window.left, names="*", text="needle")
+    panel = window.left.panel
+    assert [e.name.replace(os.sep, "/") for e in panel.entries] == ["docs/one.txt"]
+    window.set_mode(window.right, PREVIEW)
+    panel.setFocus()
+    panel.table.set_current_row(panel.model.row_of(f"docs{os.sep}one.txt"))
+    pane = window.right.preview
+    wait_until(lambda: pane.current_id == "text" and shown_text(pane) == "needle here")
+
+    window.set_mode(window.right, FILES)
+    panel.setFocus()
+    run_search(window, window.left, names="docs", kinds="dirs")
+    panel.table.set_current_row(panel.model.row_of("docs"))
+    press(qtbot, window, Qt.Key.Key_Return)  # a folder hit: go into the real folder
+    assert panel.location == vfs.local(searchable / "src" / "docs")
+
+
+def test_stop_search(qtbot, window: MainWindow, searchable: Path, monkeypatch):
+    import time as time_module
+
+    from orchard_commander import search
+
+    def endless(query, on_hit, *, progress=None, is_cancelled=lambda: False):
+        while not is_cancelled():
+            progress.folders += 1
+            time_module.sleep(0.01)
+        return progress
+
+    monkeypatch.setattr(search, "run", endless)
+    results = window.start_search(search.Query(roots=(window.left.panel.location,)), window.left)
+    wait_until(lambda: results.progress.folders > 3)
+    assert "searching…" in window.left.panel._subtitle or results.running
+    qtbot.keyClick(window.left.panel.table, Qt.Key.Key_Escape)
+    wait_until(lambda: not results.running)
+    assert results.cancelled
+
+
+def test_find_files_dialog_builds_query(qtbot, window: MainWindow, searchable: Path):
+    from orchard_commander.ui import search_ui
+
+    dialog = search_ui.FindFilesDialog(window, window.themes, vfs.local(searchable / "src"), search_ui.Form())
+    qtbot.addWidget(dialog)
+    dialog.names.setText("*.txt|*one*")
+    dialog.text.setText("needle")
+    dialog.not_containing.setChecked(True)
+    dialog.min_size.setText("1k")
+    dialog.depth.setCurrentIndex(1)  # this folder only
+    dialog._search()
+    q = dialog.query
+    assert q.names == "*.txt|*one*" and q.text == "needle" and q.not_containing
+    assert q.min_size == 1024 and q.max_depth == 0 and q.roots == (vfs.local(searchable / "src"),)
+    bad = search_ui.FindFilesDialog(window, window.themes, vfs.local(searchable), search_ui.Form())
+    qtbot.addWidget(bad)
+    bad.max_size.setText("lots")
+    bad._search()
+    assert bad.query is None and "Not a size" in bad.error.text()
+    assert search_ui.parse_size("1.5G") == int(1.5 * 1024**3) and search_ui.parse_size("") is None
+
+
+# -- multi-rename --------------------------------------------------------------------------------
+
+
+def open_rename_dialog(window: MainWindow, monkeypatch, configure) -> list:
+    """Run multi_rename(), letting `configure(dialog)` fill in the dialog before it is accepted."""
+    from orchard_commander.ui import rename_ui
+
+    shown = []
+
+    def fake_exec(dialog):
+        shown.append(dialog)
+        configure(dialog)
+        dialog._accept()
+        return dialog.result()
+
+    monkeypatch.setattr(rename_ui.MultiRenameDialog, "exec", fake_exec)
+    window.multi_rename()
+    wait_until(lambda: shown)
+    return shown
+
+
+def test_multi_rename_with_counter_and_undo(qtbot, window: MainWindow, tree: Path, monkeypatch):
+    src = tree / "src"
+    panel = window.left.panel
+    before = sorted(p.name for p in src.iterdir())
+    for name in ("a.txt", "b.bin"):
+        panel.table.set_current_row(panel.model.row_of(name))
+        qtbot.keyClick(panel.table, Qt.Key.Key_Space)
+
+    def configure(dialog):
+        dialog.name_mask.setText("file_[C:2]")
+        dialog._update()
+        assert [dialog.table.item(r, 1).text() for r in range(2)] == ["file_01.txt", "file_02.bin"]
+
+    open_rename_dialog(window, monkeypatch, configure)
+    wait_until(lambda: (src / "file_01.txt").exists() and (src / "file_02.bin").exists())
+    assert not (src / "a.txt").exists()
+
+    monkeypatch.setattr(dialogs, "confirm", lambda *a, **k: True)
+    window.undo_rename()
+    wait_until(lambda: (src / "a.txt").exists())
+    assert sorted(p.name for p in src.iterdir()) == before
+
+
+def test_multi_rename_refuses_problems(qtbot, window: MainWindow, tree: Path, monkeypatch):
+    panel = window.left.panel
+    for name in ("a.txt", "b.bin"):
+        panel.table.set_current_row(panel.model.row_of(name))
+        qtbot.keyClick(panel.table, Qt.Key.Key_Space)
+    states = []
+
+    def configure(dialog):
+        dialog.name_mask.setText("same")
+        dialog.ext_mask.setText("x")
+        dialog._update()
+        states.append((dialog.rename_button.isEnabled(), dialog.table.item(0, 2).text(), dialog.summary.text()))
+        dialog.name_mask.setText("[N")
+        dialog._update()
+        states.append((dialog.rename_button.isEnabled(), dialog.summary.text()))
+
+    dialogs_shown = open_rename_dialog(window, monkeypatch, configure)
+    assert not dialogs_shown[0].result()
+    assert states[0][0] is False and states[0][1].startswith("same new name") and "problems to fix" in states[0][2]
+    assert states[1][0] is False and "never closed" in states[1][1]
+    assert (tree / "src" / "a.txt").exists() and (tree / "src" / "b.bin").exists()
+
+
+def test_multi_rename_search_hits(qtbot, window: MainWindow, searchable: Path, monkeypatch):
+    results = run_search(window, window.left, names="*.txt")
+    qtbot.keyClicks(window.left.panel.table, "+")
+
+    def configure(dialog):
+        dialog.search.setText(".txt")
+        dialog.replace.setText(".log")
+
+    open_rename_dialog(window, monkeypatch, configure)
+    wait_until(lambda: (searchable / "src" / "docs" / "one.log").exists())
+    assert (searchable / "src" / "a.log").exists() and (searchable / "src" / "sub" / "c.log").exists()
+    names = lambda: sorted(e.name.replace(os.sep, "/") for e in window.left.panel.entries)  # noqa: E731
+    wait_until(lambda: names() == ["a.log", "docs/one.log", "sub/c.log"])  # the results follow the renamed files
+    assert all(h.location.exists() for h in results.hits)
+
+
+def test_multi_rename_with_metadata(qtbot, window: MainWindow, tmp_path: Path):
+    from orchard_commander import rename
+    from orchard_commander.ui import rename_ui
+    from test_metadata import DATA
+
+    folder = tmp_path / "videos"
+    folder.mkdir()
+    (folder / "a.mp4").write_bytes((DATA / "clip-160x90.mp4").read_bytes())
+    (folder / "b.mp4").write_bytes(b"not a video")
+    root = vfs.local(folder)
+    items = [rename.item_for(root.child(n), root.child(n).stat()) for n in ("a.mp4", "b.mp4")]
+    dialog = rename_ui.MultiRenameDialog(window, window.themes, items, rename.Rule(), rename.existing_names(items))
+    qtbot.addWidget(dialog)
+    dialog.name_mask.setText("[=title] ([=quality])")
+    dialog._update()
+    assert "reading metadata" in dialog.summary.text() or dialog.plan.pending == 0
+    wait_until(lambda: dialog.plan.pending == 0)
+    assert dialog.table.item(0, 1).text() == "Test Clip (90p).mp4"
+    assert dialog.table.item(1, 2).text().startswith("skipped: no")
+    assert dialog.rename_button.isEnabled() and "1 skipped" in dialog.summary.text()
+    from PySide6.QtWidgets import QMenu
+
+    menu_labels = [m.title() for m in dialog.findChildren(QMenu) if m.title()]  # submenus per provider
+    assert "Audio tags" in menu_labels and "Photo (EXIF)" in menu_labels
+
+
+def test_select_all_home_end(qtbot, window: MainWindow, tree: Path):
+    panel = window.left.panel
+    table = panel.table
+    qtbot.keyClick(table, Qt.Key.Key_End)
+    assert panel.table.current_row() == panel.model.rowCount() - 1
+    qtbot.keyClick(table, Qt.Key.Key_Home)
+    assert panel.table.current_row() == 0 and panel.cursor_name == ".."
+    qtbot.keyClick(table, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)  # ⌘A on macOS
+    assert panel.marked == {e.name for e in panel.entries} and panel.marked
+    ctrl_alt = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
+    qtbot.keyClick(table, Qt.Key.Key_A, ctrl_alt)  # ⌥⌘A: clear the selection
+    assert panel.marked == set()
+    files_menu = next(a.menu() for a in window.menuBar().actions() if a.text() == "&Files")
+    assert [a.text() for a in files_menu.actions()][:2] == ["Select all", "Clear selection"]
+
+
+def test_theme_change_keeps_media_preview(qtbot, window: MainWindow, tmp_path: Path):
+    """Changing the color scheme re-highlights text previews but must not restart (stop) audio/video."""
+    from test_metadata import DATA
+
+    (tmp_path / "song.mp3").write_bytes((DATA / "tone-then-silence.mp3").read_bytes())
+    (tmp_path / "notes.txt").write_text("hello")
+    panel = window.left.panel
+    panel.load(vfs.local(tmp_path))
+    settle(window)
+    window.set_mode(window.right, PREVIEW)
+    panel.setFocus()
+    pane = window.right.preview
+    panel.table.set_current_row(panel.model.row_of("song.mp3"))
+    wait_until(lambda: pane.current_id == "media")
+    view, request = pane.current_view, pane._request
+    window.themes.changed.emit()
+    settle(window)
+    assert pane._request == request and pane.current_view is view  # not reloaded
+
+    panel.table.set_current_row(panel.model.row_of("notes.txt"))
+    wait_until(lambda: pane.current_id == "text")
+    request = pane._request
+    window.themes.changed.emit()
+    wait_until(lambda: pane._request > request)  # text is re-rendered in the new colors
+
+
+@pytest.fixture
+def playlist(tmp_path: Path) -> Path:
+    from test_metadata import DATA
+
+    folder = tmp_path / "playlist"
+    folder.mkdir()
+    for name in ("1.mp3", "2.mp3", "notes.txt", "3.mp3"):
+        target = folder / name
+        if name.endswith(".mp3"):
+            target.write_bytes((DATA / "tone-then-silence.mp3").read_bytes())
+        else:
+            target.write_text("not audio")
+    return folder
+
+
+def preview_from_left(window: MainWindow, folder: Path, name: str):
+    panel = window.left.panel
+    panel.load(vfs.local(folder))
+    settle(window)
+    window.set_mode(window.right, PREVIEW)
+    panel.setFocus()
+    panel.table.set_current_row(panel.model.row_of(name))
+    pane = window.right.preview
+    wait_until(lambda: pane.current_id == "media" and pane.path == vfs.local(folder / name))
+    return panel, pane
+
+
+def test_play_next_file_when_one_ends(qtbot, window: MainWindow, playlist: Path, monkeypatch):
+    from orchard_commander.preview.builtin.media import MediaView
+
+    played = []
+    monkeypatch.setattr(MediaView, "play", lambda self: played.append(self._name))
+    panel, pane = preview_from_left(window, playlist, "2.mp3")
+    pane.current_view.toggle_autoplay()  # off: only moving on at the end starts playback
+    pane.current_view.finished.emit()  # 2.mp3 ended
+    wait_until(lambda: played[-1:] == ["3.mp3"])  # skips notes.txt, plays without pressing Space
+    assert panel.cursor_name == "3.mp3"
+    played.clear()
+    pane.current_view.finished.emit()  # the last one ended: stay there
+    settle(window)
+    assert panel.cursor_name == "3.mp3" and played == []
+
+    window.apply_settings(play_next=False)  # Settings → Preview
+    panel.table.set_current_row(panel.model.row_of("1.mp3"))
+    wait_until(lambda: pane.path == vfs.local(playlist / "1.mp3"))
+    pane.current_view.finished.emit()
+    settle(window)
+    assert panel.cursor_name == "1.mp3" and played == []
+
+
+def test_media_remembers_mute(qtbot, window: MainWindow, playlist: Path):
+    from orchard_commander.config import Settings
+
+    panel, pane = preview_from_left(window, playlist, "1.mp3")
+    view = pane.current_view
+    assert view.audio.isMuted()  # muted until unmuted once
+    view.toggle_mute()
+    panel.table.set_current_row(panel.model.row_of("2.mp3"))
+    wait_until(lambda: pane.path == vfs.local(playlist / "2.mp3"))
+    assert not view.audio.isMuted()  # still unmuted for the next file
+    assert Settings.load().extra["preview.media.muted"] is False  # and after a restart
+
+
+def test_videos_loop_only_without_play_next(qtbot):
+    from PySide6.QtMultimedia import QMediaPlayer
+
+    from orchard_commander.preview.builtin.media import MediaView
+    from orchard_commander.ui.style import ThemeManager
+
+    view = MediaView(ThemeManager())
+    qtbot.addWidget(view)
+    view._is_video = True
+    view.set_continuous(False)
+    assert view.player.loops() == QMediaPlayer.Loops.Infinite
+    view.set_continuous(True)
+    assert view.player.loops() == QMediaPlayer.Loops.Once
+    ended = []
+    view.finished.connect(lambda: ended.append(True))
+    view._status_changed(QMediaPlayer.MediaStatus.EndOfMedia)
+    assert ended == [True]
+
+
+def test_media_autoplay_toggle(qtbot, window: MainWindow, playlist: Path, monkeypatch):
+    from orchard_commander.config import Settings
+    from orchard_commander.preview.builtin.media import MediaView
+
+    played = []
+    monkeypatch.setattr(MediaView, "play", lambda self: played.append(self._name))
+    panel, pane = preview_from_left(window, playlist, "1.mp3")
+    view = pane.current_view
+    assert played == ["1.mp3"] and view.autoplay_button.text() == "[x] Autoplay"  # on by default
+    view.setFocus()
+    qtbot.keyClick(view, Qt.Key.Key_A)  # A, or click the button
+    assert view.autoplay_button.text() == "[ ] Autoplay" and not view.autoplay_button.isChecked()
+    assert Settings.load().extra["preview.media.autoplay"] is False  # remembered
+    panel.setFocus()
+    panel.table.set_current_row(panel.model.row_of("2.mp3"))
+    wait_until(lambda: pane.path == vfs.local(playlist / "2.mp3"))
+    settle(window)
+    assert played == ["1.mp3"]  # waits for Space now
+    view.finished.emit()  # but moving on at the end still plays the next file
+    wait_until(lambda: played == ["1.mp3", "3.mp3"])
+
+
+def test_autoplay_global_setting(qtbot, window: MainWindow, playlist: Path, monkeypatch):
+    from orchard_commander.preview.builtin.media import MediaView
+    from orchard_commander.ui.settings_dialog import SettingsDialog
+
+    played = []
+    monkeypatch.setattr(MediaView, "play", lambda self: played.append(self._name))
+    panel, pane = preview_from_left(window, playlist, "1.mp3")
+    view = pane.current_view
+    dialog = SettingsDialog(window, window.themes, window.settings, window.apply_settings)
+    qtbot.addWidget(dialog)
+    assert dialog.preview.autoplay.isChecked()
+    dialog.preview.autoplay.setChecked(False)  # Settings → Preview
+    assert view.autoplay_button.text() == "[ ] Autoplay"  # the player follows right away
+    panel.table.set_current_row(panel.model.row_of("2.mp3"))
+    wait_until(lambda: pane.path == vfs.local(playlist / "2.mp3"))
+    settle(window)
+    assert played == ["1.mp3"]
+    view.toggle_autoplay()  # and the other way round
+    again = SettingsDialog(window, window.themes, window.settings, window.apply_settings)
+    qtbot.addWidget(again)
+    assert again.preview.autoplay.isChecked()
+
+
+def test_reload_keeps_where_the_cursor_moved_meanwhile(qtbot, window: MainWindow, tree: Path):
+    """A background re-listing (e.g. the folder changed) must not jump the cursor back."""
+    panel = window.left.panel
+    panel.table.set_current_row(panel.model.row_of("a.txt"))
+    panel.reload()  # listing runs in the background…
+    panel.table.set_current_row(panel.model.row_of("b.bin"))  # …while the user moves on
+    settle(window)
+    assert panel.cursor_name == "b.bin"
+
+
+def test_reload_during_navigation_keeps_the_navigation(qtbot, window: MainWindow, tree: Path):
+    panel = window.left.panel
+    panel.load(vfs.local(tree / "src" / "sub"))  # still loading…
+    panel.reload()  # …when something asks for a refresh (e.g. a command finished in the terminal)
+    settle(window)
+    assert panel.location == vfs.local(tree / "src" / "sub")
