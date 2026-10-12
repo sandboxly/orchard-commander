@@ -353,8 +353,8 @@ def test_copy_out_of_archive_extracts(qtbot, window: MainWindow, zipped: Path, t
     press(qtbot, window, Qt.Key.Key_Return)
     panel.model.marked = {"docs", "top.txt"}
     window.copy()
-    wait_until(lambda: (tree / "dst" / "top.txt").exists() and (tree / "dst" / "docs" / "readme.md").exists())
-    assert (tree / "dst" / "docs" / "readme.md").read_text() == "# Hello\n"
+    readme = tree / "dst" / "docs" / "readme.md"
+    wait_until(lambda: (tree / "dst" / "top.txt").exists() and readme.exists() and readme.read_text() == "# Hello\n")
 
 
 def test_archives_are_read_only(qtbot, window: MainWindow, zipped: Path, monkeypatch):
@@ -461,8 +461,9 @@ def test_sftp_browse_preview_copy_delete(qtbot, window: MainWindow, sftp_server,
     monkeypatch.setattr(dialogs, "ask_text", lambda parent, themes, title, message, value, ok: value)
     select(window, "hello.txt")
     window.copy()
-    wait_until(lambda: (tree / "dst" / "hello.txt").exists())
-    assert (tree / "dst" / "hello.txt").read_text() == "remote hello"
+    target = tree / "dst" / "hello.txt"
+    # Wait for the content, not just the file: it exists as soon as the copy starts writing.
+    wait_until(lambda: target.exists() and target.read_text() == "remote hello")
 
     # No trash on servers: F8 deletes permanently after confirmation.
     confirmations = []

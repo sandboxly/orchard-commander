@@ -2,11 +2,11 @@
 
 ## System requirements
 
-| System | Requirements | Download |
-| --- | --- | --- |
-| macOS | macOS 14 Sonoma or later, Apple silicon (M1 or newer) | `Orchard-Commander-macOS.dmg` |
-| Windows | Windows 10 or 11, 64-bit | `Orchard-Commander-Windows.zip` |
-| Linux | x86-64, glibc 2.35 or later (for example Ubuntu 22.04, Fedora 36, Debian 12), X11 or Wayland | `Orchard-Commander-Linux.tar.gz` |
+| System | Requirements |
+| --- | --- |
+| macOS | macOS 14 Sonoma or later, Apple silicon (M1 or newer) |
+| Windows | Windows 10 or 11, 64-bit |
+| Linux | x86-64, glibc 2.35 or later (for example Ubuntu 22.04, Fedora 36, Debian 12), X11 or Wayland |
 
 Downloads are available from the Orchard Commander website and from the
 releases page of the GitHub repository.
@@ -14,6 +14,14 @@ releases page of the GitHub repository.
 ## Installing
 
 ### macOS
+
+With Homebrew:
+
+```sh
+brew install --cask sandboxly/tap/orchard-commander
+```
+
+With the disk image:
 
 1. Open `Orchard-Commander-macOS.dmg`.
 2. Drag **Orchard Commander** onto the **Applications** folder in the window
@@ -25,23 +33,37 @@ The app is signed and notarized, so macOS opens it without a warning.
 
 ### Windows
 
-1. Extract `Orchard-Commander-Windows.zip` to a folder of your choice, for example
-   `C:\Program Files\Orchard Commander` or a folder in your user directory.
-2. Run `orchard-commander.exe` in the extracted `orchard-commander` folder.
+1. Run `Orchard-Commander-Setup.exe`.
+2. Choose whether to install for yourself only or for all users of the
+   computer. Installing for all users requires administrator rights.
+3. Follow the steps of the installer. You can add a desktop shortcut on the
+   **Select Additional Tasks** page.
 
-The first time you run it, Windows SmartScreen may show "Windows protected
-your PC". Click **More info**, then **Run anyway**.
+The installer adds Orchard Commander to the Start menu and to **Settings >
+Apps**, where you can uninstall it.
 
-Tip: To start the app from the Start menu, right-click
-`orchard-commander.exe` and choose **Pin to Start**.
+Windows SmartScreen may show "Windows protected your PC" when you run the
+installer. Click **More info**, then **Run anyway**.
+
+To use Orchard Commander without installing it, extract
+`Orchard-Commander-Windows.zip` to a folder of your choice and run
+`orchard-commander.exe` in the extracted `orchard-commander` folder.
 
 ### Linux
 
-1. Extract `Orchard-Commander-Linux.tar.gz`, for example with
-   `tar xzf Orchard-Commander-Linux.tar.gz`, or with your file manager.
-2. Run `./orchard-commander` in the extracted `orchard-commander` folder.
+| Distribution | File | Install with |
+| --- | --- | --- |
+| Debian, Ubuntu, Linux Mint | `Orchard-Commander-Linux-x86_64.deb` | `sudo apt install ./Orchard-Commander-Linux-x86_64.deb` |
+| Fedora, RHEL, openSUSE | `Orchard-Commander-Linux-x86_64.rpm` | `sudo dnf install ./Orchard-Commander-Linux-x86_64.rpm` (openSUSE: `sudo zypper install`) |
+| Any distribution | `Orchard-Commander-Linux-x86_64.AppImage` | Make the file executable (`chmod +x`) and run it |
+| Any distribution | `Orchard-Commander-Linux.tar.gz` | Extract it and run `./orchard-commander` in the `orchard-commander` folder |
 
-The app needs a desktop session (X11 or Wayland).
+The `.deb` and `.rpm` packages install the app to `/opt/orchard-commander`,
+add the `orchard-commander` command and a menu entry, and install the
+libraries the app needs. Uninstall them with your package manager.
+
+The AppImage needs FUSE 2 (`libfuse2` on Debian and Ubuntu). Without it, run
+the AppImage with `--appimage-extract-and-run`.
 
 ## The main window
 

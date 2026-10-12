@@ -117,11 +117,23 @@ code { font-size: 0.86em; background: var(--panel); border: 1px solid var(--line
   background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text);
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
-.card:hover { text-decoration: none; border-color: var(--accent-2); transform: translateY(-2px); }
+.card:hover { border-color: #4a4b42; }
 .card.yours { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .card .os { font-size: 24px; font-weight: 700; }
 .card .detail { color: var(--muted); font-size: 15px; }
-.card .file { margin-top: auto; color: var(--accent-2); font-size: 13px; }
+.card .get {
+  margin-top: 10px; padding: 11px 16px; border-radius: 10px; text-align: center; font-weight: 700;
+  color: #1b1c18; background: var(--accent-2);
+}
+.card.yours .get { background: var(--accent); }
+.card .get:hover { text-decoration: none; filter: brightness(1.08); }
+.card .get .mono { font-weight: 400; font-size: 13px; opacity: 0.8; margin-left: 6px; }
+.card .or { color: var(--muted); font-size: 13px; text-align: center; margin-top: 4px; }
+.card .alts { display: flex; flex-direction: column; gap: 6px; }
+.card .alt { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); font-size: 14px; }
+.card .alt:hover { border-color: var(--accent-2); text-decoration: none; }
+.card .alt .mono { color: var(--accent-2); margin-right: 6px; }
+.card .cmd { display: block; padding: 10px 12px; font-size: 12.5px; white-space: nowrap; overflow-x: auto; user-select: all; }
 .small-print { color: var(--muted); margin-top: 26px; }
 
 footer { border-top: 1px solid rgba(255, 255, 255, 0.06); padding: 30px 16px 40px; text-align: center; color: var(--muted); font-size: 15px; }

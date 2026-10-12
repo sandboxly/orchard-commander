@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Orchard Commander
+GenericName=File Manager
+Comment=Two-panel file manager with previews, archives, servers and a terminal
+Exec=orchard-commander %F
+Icon=orchard-commander
+Terminal=false
+Categories=System;FileTools;FileManager;Utility;
+Keywords=files;folders;commander;norton;total;twin panel;sftp;archive;
+MimeType=inode/directory;
+StartupWMClass=orchard-commander

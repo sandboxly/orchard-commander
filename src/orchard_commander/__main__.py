@@ -147,6 +147,7 @@ def main() -> None:
 
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
+    app.setDesktopFileName(COMMAND)  # Linux: match orchard-commander.desktop (icon, taskbar)
     app.setStyle("Fusion")  # identical widget rendering on every platform
     set_app_icon(app)
 

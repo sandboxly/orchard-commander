@@ -157,21 +157,29 @@
 <section id="download" class="download">
   <h2>Download Orchard Commander 1.0.0</h2>
   <div class="cards">
-    <a class="card" data-os="mac" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg">
+    <div class="card" data-os="mac">
       <span class="os">macOS</span>
-      <span class="detail">Apple silicon · macOS 14 Sonoma or later<br>Signed and notarized disk image</span>
-      <span class="file mono">Orchard-Commander-macOS.dmg</span>
-    </a>
-    <a class="card" data-os="windows" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip">
+      <span class="detail">Apple silicon · macOS 14 Sonoma or later</span>
+      <a class="get" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg">Disk image <span class="mono">.dmg</span></a>
+      <span class="or">or with Homebrew</span>
+      <code class="cmd">brew install --cask sandboxly/tap/orchard-commander</code>
+    </div>
+    <div class="card" data-os="windows">
       <span class="os">Windows</span>
-      <span class="detail">Windows 10 and 11, 64-bit<br>Unzip and run orchard-commander.exe</span>
-      <span class="file mono">Orchard-Commander-Windows.zip</span>
-    </a>
-    <a class="card" data-os="linux" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz">
+      <span class="detail">Windows 10 and 11, 64-bit</span>
+      <a class="get" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe">Installer <span class="mono">.exe</span></a>
+      <span class="or">or without installing</span>
+      <a class="alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip">Portable <span class="mono">.zip</span></a>
+    </div>
+    <div class="card" data-os="linux">
       <span class="os">Linux</span>
-      <span class="detail">x86-64 · Ubuntu 22.04, Fedora 36 or newer<br>Extract and run ./orchard-commander</span>
-      <span class="file mono">Orchard-Commander-Linux.tar.gz</span>
-    </a>
+      <span class="detail">x86-64 · Ubuntu 22.04, Fedora 36, Debian 12 or newer</span>
+      <a class="get" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage">AppImage <span class="mono">any distribution</span></a>
+      <span class="or">or as a package</span>
+      <span class="alts"><a class="alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb"><span class="mono">.deb</span> Debian, Ubuntu</a>
+        <a class="alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm"><span class="mono">.rpm</span> Fedora, openSUSE</a>
+        <a class="alt" href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz"><span class="mono">.tar.gz</span></a></span>
+    </div>
   </div>
   <p class="small-print">All releases and release notes are on
     <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. New to Orchard Commander?
@@ -196,7 +204,7 @@
     var card = os && document.querySelector('.card[data-os="' + os + '"]');
     if (card) {
       var main = document.getElementById("download-main");
-      main.href = card.href;
+      main.href = card.querySelector("a.get").href;
       main.textContent = "Download for " + names[os];
       card.classList.add("yours");
       document.getElementById("download-alt").innerHTML = 'or get it for <a href="#download">another system</a>';
