@@ -98,7 +98,9 @@ def test_user_scheme_names_rename_and_delete():
 
 
 def test_fonts_and_line_spacing(qapp):
-    fixed = next(f for f in QFontDatabase.families() if QFontDatabase.isFixedPitch(f))
+    fixed = next((f for f in QFontDatabase.families() if QFontDatabase.isFixedPitch(f)), None)
+    if fixed is None:  # Qt's offscreen platform on Windows lists no fixed-pitch fonts
+        pytest.skip("no fixed-pitch fonts in this font database")
     assert resolve_font(fixed, "", 15).family() == fixed
     assert resolve_font(fixed, "", 15).pointSize() == 15
     assert resolve_font("No Such Font", "", 12).family() == default_monospace_font(12).family()

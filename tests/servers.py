@@ -120,7 +120,9 @@ def docker_available() -> bool:
 
     if not shutil.which("docker"):
         return False
-    return subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+    # The Samba image needs Linux containers (Docker on Windows runners runs Windows ones).
+    info = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True)
+    return info.returncode == 0 and info.stdout.strip() == "linux"
 
 
 def start_samba_container(max_credits: int | None = None) -> tuple[SMBServer, callable]:

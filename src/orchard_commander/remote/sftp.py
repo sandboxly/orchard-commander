@@ -107,7 +107,13 @@ def connect(
     except HostKeyRejected:
         client.close()
         raise
-    except (paramiko.SSHException, socket.error) as exc:
+    except paramiko.SSHException as exc:
+        client.close()
+        if "No authentication methods available" in str(exc):
+            # No agent and no default keys (common on Windows): the password is what's missing.
+            raise AuthenticationRequired(f"{username or ''}@{host} needs a password") from exc
+        raise ConnectionError(describe_connect_error(host, port, exc)) from exc
+    except socket.error as exc:
         client.close()
         raise ConnectionError(describe_connect_error(host, port, exc)) from exc
     label = f"{username}@{host}" if username else host

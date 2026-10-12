@@ -122,3 +122,23 @@ def test_archive_on_server(server, known_hosts):
         assert pack.local_anchor() is None
     finally:
         remote.close()
+
+
+def test_password_asked_without_agent_or_keys(tmp_path, monkeypatch):
+    """No ssh-agent and no ~/.ssh keys (e.g. a fresh Windows account): ask for the password."""
+    import pytest
+
+    from orchard_commander.fsproviders import AuthenticationRequired
+    from orchard_commander.remote import sftp
+    from servers import USER, start_sftp_server
+
+    monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "root").mkdir()
+    server = start_sftp_server(tmp_path / "root")
+    try:
+        with pytest.raises(AuthenticationRequired):
+            sftp.connect(server.host, port=server.port, username=USER, known_hosts=tmp_path / "known_hosts",
+                         confirm_host_key=lambda q: True, timeout=5)
+    finally:
+        server.stop()

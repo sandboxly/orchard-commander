@@ -31,7 +31,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 \
-            libpulse0 libasound2t64 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0
+            libpulse0 libasound2t64 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 unrar
+      - name: RAR extraction tool (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sevenzip
       - run: uv sync --locked
       - run: uv run pytest -q -p no:cacheprovider
         timeout-minutes: 20
