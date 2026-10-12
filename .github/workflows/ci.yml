@@ -93,8 +93,15 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           Start-Process release\Orchard-Commander-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER' -Wait
-          $exe = "$env:LOCALAPPDATA\Programs\Orchard Commander\orchard-commander.exe"
+          $app = "$env:LOCALAPPDATA\Programs\Orchard Commander"
+          $exe = "$app\orchard-commander.exe"
           if (-not (Test-Path $exe)) { throw "not installed: $exe" }
+          $bundle = (Resolve-Path dist\orchard-commander).Path
+          $want = Get-ChildItem -Recurse -File $bundle | ForEach-Object { $_.FullName.Substring($bundle.Length) }
+          $have = Get-ChildItem -Recurse -File $app | ForEach-Object { $_.FullName.Substring($app.Length) }
+          $missing = $want | Where-Object { $have -notcontains $_ }
+          Write-Host "bundle: $($want.Count) files, installed: $($have.Count), missing: $($missing.Count)"
+          $missing | Select-Object -First 25 | ForEach-Object { Write-Host "  missing $_" }
           & $exe --self-test
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Start-Process "$env:LOCALAPPDATA\Programs\Orchard Commander\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait

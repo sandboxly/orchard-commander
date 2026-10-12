@@ -16,8 +16,9 @@ vendor: Stephan Lengl
 homepage: https://sandboxly.github.io/orchard-commander/
 license: MIT
 contents:
-  - src: dist/orchard-commander/
-    dst: /opt/orchard-commander/
+  - src: dist/orchard-commander
+    dst: /opt/orchard-commander
+    type: tree
   - src: /opt/orchard-commander/orchard-commander
     dst: /usr/bin/orchard-commander
     type: symlink
