@@ -41,14 +41,14 @@ pub fn register(reg: &mut Registry) {
             .help("Create a directory")
             .keys(&["F7"])
             .fkey("F7", "MkDir")
-            .menu(Menu::Files, "ops"),
+            .menu(Menu::Files, "ops.more"),
     );
     reg.add(
         Command::new("files.trash", "Move to trash", trash)
             .help("Move marked files to the trash (delete where there is none)")
             .keys(&["F8", "Delete", "Primary+Backspace"])
             .fkey("F8", "Trash")
-            .menu(Menu::Files, "ops"),
+            .menu(Menu::Files, "ops.more"),
     );
 }
 

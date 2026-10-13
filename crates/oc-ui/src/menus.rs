@@ -40,11 +40,13 @@ impl Menu {
 
     /// Section names in display order. A feature puts its commands in one of
     /// these (adding a section here is the only shared edit a new kind of
-    /// menu group needs).
+    /// menu group needs). A leading "+" continues the previous group without
+    /// a separator line (1.x: Copy, Move, Multi-rename, Undo rename, Make
+    /// directory, Move to trash are one group).
     pub fn sections(self) -> &'static [&'static str] {
         match self {
             Menu::Left | Menu::Right => &["mode", "location"],
-            Menu::Files => &["select", "ops", "rename", "find", "quit"],
+            Menu::Files => &["select", "ops", "+rename", "+ops.more", "find", "quit"],
             Menu::Commands => &["palette", "preview", "navigate", "bookmarks", "servers", "panels", "terminal"],
             Menu::Options => &["settings", "view", "zoom"],
         }
@@ -55,11 +57,15 @@ impl Menu {
 pub fn menu_items(app: &App, menu: Menu) -> Vec<Option<CommandId>> {
     let mut items: Vec<Option<CommandId>> = Vec::new();
     for section in menu.sections() {
+        let (joined, section) = match section.strip_prefix('+') {
+            Some(s) => (true, s),
+            None => (false, *section),
+        };
         let cmds = app.registry.in_menu_section(menu, section);
         if cmds.is_empty() {
             continue;
         }
-        if !items.is_empty() {
+        if !items.is_empty() && !joined {
             items.push(None);
         }
         items.extend(cmds.iter().map(|c| Some(c.id)));
