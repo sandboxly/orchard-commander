@@ -164,15 +164,25 @@ pub struct MediaView {
 
 impl MediaView {
     pub fn new(mut data: MediaData, path: VPath) -> Self {
+        let info = data.info.take().map(|b| *b);
+        // Without a waveform source: a big file on a server (the loader
+        // opens a second stream only for small audio files), or sound in a
+        // video container there (no second stream either; nothing to say).
+        let missing_waveform = if data.video { "" } else { REMOTE_NOTE };
+        // The extension guesses; the probe knows (an .mp4 with only sound
+        // gets the audio screen and its waveform).
+        if let Some(i) = &info {
+            data.video = i.has_video();
+        }
         MediaView {
             path,
             name: data.name.clone(),
             video: data.video,
-            info: data.info.take().map(|b| *b),
+            info,
             data: Some(data),
             player: None,
             waveform: None,
-            note: "",
+            note: missing_waveform,
             error: None,
             animator: SpectrumAnimator::new(),
             anim_timer: None,
@@ -284,6 +294,11 @@ impl MediaView {
                             p.set_video_size(Some(self.screen_px(app, area)));
                         }
                         self.video = info.has_video();
+                        if !self.video && self.waveform.is_none() {
+                            // Sound only after all (the probe failed while
+                            // loading): no waveform source was opened.
+                            self.waveform = Some(WaveformAnalyzer::none());
+                        }
                         self.info = Some(*info);
                     }
                     MediaEvent::Finished => finished = true,
@@ -334,6 +349,9 @@ impl MediaView {
                 self.schedule_frame(app, h);
             }
         } else {
+            if let Some(t) = self.frame_timer.take() {
+                app.cancel_timer(t);
+            }
             self.animator.active = playing;
             let moving = playing || self.animator.peaks.iter().any(|&p| p > 0.001);
             if moving && self.anim_timer.is_none() {
@@ -344,13 +362,18 @@ impl MediaView {
     }
 
     fn schedule_frame(&mut self, app: &mut App, h: Handle) {
-        let due = self.player.as_ref().and_then(Player::next_frame_in).unwrap_or(Duration::from_millis(10));
+        // No frame queued (decoding behind, or the picture ended before the
+        // sound): look again a frame later rather than spinning.
+        let frame_interval = self.info.as_ref().and_then(|i| i.video.as_ref()?.fps).filter(|f| *f > 1.0).map_or(Duration::from_millis(33), |f| {
+            Duration::from_secs_f64(1.0 / f)
+        });
+        let due = self.player.as_ref().and_then(Player::next_frame_in).unwrap_or(frame_interval);
         let due = due.clamp(Duration::from_millis(4), Duration::from_millis(50));
         self.frame_timer = Some(app.schedule(due, move |app| {
             h.with::<MediaView, _>(app, |v, app, _| {
                 v.frame_timer = None;
                 v.poll_frame(app);
-                if v.is_playing() && v.error.is_none() {
+                if v.video && v.is_playing() && v.error.is_none() {
                     v.schedule_frame(app, h);
                 }
             });
@@ -629,11 +652,11 @@ impl ContentView for MediaView {
         ));
         if !self.video {
             self.waveform = Some(match waveform_source {
-                Some(src) => WaveformAnalyzer::start(src, WaveformOptions { waker: Some(waker), ..WaveformOptions::default() }),
-                None => {
-                    self.note = REMOTE_NOTE;
-                    WaveformAnalyzer::none()
+                Some(src) => {
+                    self.note = "";
+                    WaveformAnalyzer::start(src, WaveformOptions { waker: Some(waker), ..WaveformOptions::default() })
                 }
+                None => WaveformAnalyzer::none(),
             });
         }
         self.sync(app, h);

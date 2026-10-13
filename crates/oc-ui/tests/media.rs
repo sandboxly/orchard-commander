@@ -201,6 +201,21 @@ fn video_frames_reach_the_image_store() {
 }
 
 #[test]
+fn sound_in_a_video_container_gets_the_audio_screen_and_its_waveform() {
+    let e = env();
+    fs::copy(data("tone-then-silence.mp3"), e.src.join("sound.mp4")).unwrap();
+    let mut app = app(&e);
+    app.update_settings(|s| s.play_next = Some(false));
+    show(&mut app, "sound.mp4");
+    assert!(!view(&app).video, "the probe found no picture");
+    wait_for(&mut app, "the waveform", |app| view(app).waveform_levels().is_some_and(|l| l.complete && !l.peaks.is_empty()));
+    assert_eq!(view(&app).frames_shown, 0);
+    // Played to its end: no timer keeps polling for frames.
+    wait_for(&mut app, "the end", |app| view(app).player().is_some_and(|p| p.state() != PlaybackState::Playing));
+    wait_until(&mut app, "the bars to settle", Duration::from_secs(10), |app| app.next_deadline().is_none());
+}
+
+#[test]
 fn videos_loop_only_without_play_next() {
     let e = env();
     let mut app = app(&e);

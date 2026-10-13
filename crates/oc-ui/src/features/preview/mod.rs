@@ -168,7 +168,23 @@ struct Arrived {
     /// (previewer id, title), best first.
     candidates: Vec<(String, String)>,
     previewer: Option<String>,
-    body: Result<(Prepared, String), PreviewError>,
+    /// Taken by [`PreviewView::loaded`]; left here when nobody wants it.
+    body: Option<Result<(Prepared, String), PreviewError>>,
+}
+
+impl Drop for Arrived {
+    /// A result nobody wants (the cursor moved on, the load was cancelled
+    /// after the worker finished, the pane closed) may be dropped on the UI
+    /// thread. Media data streamed from a server holds open streams whose
+    /// closing can wait on the network: close them on a thread of their own.
+    fn drop(&mut self) {
+        if let Some(Ok((Prepared::Media(m), _))) = &self.body
+            && matches!(m.source, oc_preview::DocumentSource::Stream(_))
+        {
+            let body = self.body.take();
+            let _ = std::thread::Builder::new().name("oc-preview drop".into()).spawn(move || drop(body));
+        }
+    }
 }
 
 #[derive(Default)]
@@ -425,11 +441,11 @@ impl PreviewView {
                 let outcome = oc_preview::Registry::global().preview(&path, &ctx, preferred.as_deref());
                 let candidates = outcome.candidates.iter().map(|c| (c.previewer.id().to_owned(), c.previewer.title().to_owned())).collect();
                 let previewer = outcome.previewer_id().map(str::to_owned);
-                let body = match (outcome.loaded, outcome.error) {
+                let body = Some(match (outcome.loaded, outcome.error) {
                     (Some(loaded), _) => Ok((views::prepare(loaded.data), loaded.info)),
                     (None, Some(e)) => Err(e),
                     (None, None) => return None, // cancelled
-                };
+                });
                 Some(Arrived { candidates, previewer, body })
             },
             move |app, arrived| {
@@ -440,18 +456,18 @@ impl PreviewView {
 
     fn loaded(&mut self, app: &mut App, side: usize, request: u64, arrived: Option<Arrived>) {
         if request != self.request {
-            discard(arrived);
-            return; // the cursor moved on meanwhile
+            return; // the cursor moved on meanwhile (dropping `arrived` closes its streams off this thread)
         }
         self.token = None;
         if let Some(t) = self.slow_timer.take() {
             app.cancel_timer(t);
         }
-        let (Some(arrived), Some(path)) = (arrived, self.path.clone()) else { return };
-        self.current = arrived.previewer;
-        self.chips = arrived.candidates;
+        let (Some(mut arrived), Some(path)) = (arrived, self.path.clone()) else { return };
+        let Some(body) = arrived.body.take() else { return };
+        self.current = arrived.previewer.take();
+        self.chips = std::mem::take(&mut arrived.candidates);
         self.title = display_name(&path);
-        let content: Box<dyn ContentView> = match arrived.body {
+        let content: Box<dyn ContentView> = match body {
             Ok((prepared, info)) => {
                 self.info = info;
                 views::make(prepared, &path)
@@ -529,14 +545,6 @@ impl PreviewView {
         self.chips.clear();
         self.title.clear();
         self.info.clear();
-    }
-}
-
-/// Drop a result nobody wants; media data may hold open streams on a
-/// server, which are closed off the UI thread.
-fn discard(arrived: Option<Arrived>) {
-    if let Some(Arrived { body: Ok((Prepared::Media(data), _)), .. }) = arrived {
-        let _ = std::thread::Builder::new().name("oc-preview drop".into()).spawn(move || drop(data));
     }
 }
 

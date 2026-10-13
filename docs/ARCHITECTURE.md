@@ -255,7 +255,11 @@ fill rects). `shown` opens an `oc_media::Player` (and, for audio, a
 the spectrum at 60 fps while playing or falling, the video frame timer at
 `Player::next_frame_in` while playing. Video frames go into the image store
 under one key (`impl Pixels for oc_media::VideoFrame`, no copy). `clear`
-drops player and analyzer (neither waits for its threads). Mute/autoplay
+drops player and analyzer (neither waits for its threads); a worker result
+nobody takes (`Arrived` in `mod.rs`) closes streamed media data on a thread
+of its own, wherever it is dropped. Whether the screen is video or audio
+comes from the probe in `MediaData.info` (the extension only guesses).
+Mute/autoplay
 live in `Settings.extra` `preview.media.muted` / `preview.media.autoplay`;
 `media::settings_changed` (an `on_settings_changed` hook) makes shown
 players follow mute and `play_next` (looping). At the end of a file the view
