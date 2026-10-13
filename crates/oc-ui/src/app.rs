@@ -728,6 +728,12 @@ impl App {
             }
             return;
         };
+        // A key equivalent without ⌘ (F5, ⌥F7, ⌃`) is a key press like any
+        // other: the focused view (the terminal, a dialog) may want it.
+        if by_key && let Some(s) = cmd.menu_shortcut().filter(|s| !s.mods.logo) {
+            self.handle_event(win, Event::Key(s.to_event()));
+            return;
+        }
         if !cmd.global {
             if self.has_modal(win) && !by_key {
                 return;

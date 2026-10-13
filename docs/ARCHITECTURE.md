@@ -114,14 +114,17 @@ reg.add(
   `every_shortcut_belongs_to_one_command` fails on duplicates.
 * Dispatch order in the main window: open dialog → command shortcuts → `Tab`
   (switch side) → the active side (file panel keys or the side view).
-* The same registry feeds: key dispatch, the native macOS menu bar (only ⌘
-  shortcuts become native key equivalents, so plain keys stay with the
-  window), the in-window strip (F9), the F-key bar (`.fkey`), the right end
-  of the bar (`.footer_right("Commands")`) and the command palette (⌘P,
-  fuzzy filter; `.hidden_from_palette()` to leave one out).
+* The same registry feeds: key dispatch, the native macOS menu bar (each
+  item shows the command's first shortcut, `Command::menu_shortcut`, as
+  1.x's Qt menus did), the in-window strip (F9), the F-key bar (`.fkey`),
+  the right end of the bar (`.footer_right("Commands")`) and the command
+  palette (⌘P, fuzzy filter, 1.x's order; `.hidden_from_palette()` to leave
+  one out). `.alias_keys` adds keys that run a command without being shown.
 * Native menu items: a click is `App::menu_activated`, a key equivalent
-  (macOS gives ⌘ keys to the menu, not the window; the binary tells them
-  apart by `NSApp.currentEvent`) is `App::menu_key_equivalent`. While a
+  (macOS gives those keys to the menu, not the window; the binary tells them
+  apart by `NSApp.currentEvent`) is `App::menu_key_equivalent`. One without
+  ⌘ (F5, ⌥F7, ⌃`) goes to the focused window as the key it is, so the
+  terminal still gets it. While a
   dialog is open a click does nothing (like Qt's menus under a modal
   dialog) and a key equivalent goes to the dialog as its key (so ⌘A selects
   text in a field). `.global()` commands (Quit) run anyway.

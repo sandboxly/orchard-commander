@@ -51,6 +51,9 @@ pub struct Command {
     pub help: String,
     /// For this platform, in the order given (the first is shown in menus).
     pub shortcuts: Vec<Shortcut>,
+    /// More keys that run it but are not shown (palette, menus): another
+    /// spelling of a listed key on some layouts.
+    pub alias_shortcuts: Vec<Shortcut>,
     /// (key label, bar label) on the F-key bar.
     pub fkey: Option<(&'static str, &'static str)>,
     /// Label on the right end of the F-key bar, with the first shortcut.
@@ -77,6 +80,7 @@ impl Command {
             title: title.into(),
             help: String::new(),
             shortcuts: Vec::new(),
+            alias_shortcuts: Vec::new(),
             fkey: None,
             footer_right: None,
             run: Rc::new(run),
@@ -98,6 +102,12 @@ impl Command {
     /// Shortcuts on every platform.
     pub fn keys(mut self, specs: &[&str]) -> Self {
         self.shortcuts.extend(specs.iter().map(|s| parse(s)));
+        self
+    }
+
+    /// Keys that run it but are not listed (see `alias_shortcuts`).
+    pub fn alias_keys(mut self, specs: &[&str]) -> Self {
+        self.alias_shortcuts.extend(specs.iter().map(|s| parse(s)));
         self
     }
 
@@ -166,6 +176,14 @@ impl Command {
     /// The first shortcut in the platform's notation ("⌘R"), or "".
     pub fn shortcut_text(&self) -> String {
         self.shortcuts.first().map(Shortcut::display).unwrap_or_default()
+    }
+
+    /// The key a native menu item shows (macOS then hands it to the menu):
+    /// the first shortcut, as Qt shows it (F5, ⌥F7, ⌃`); Quit in the
+    /// application menu keeps ⌘Q.
+    pub fn menu_shortcut(&self) -> Option<Shortcut> {
+        let quit = self.shortcuts.iter().find(|s| s.mods.logo).filter(|_| self.role == MenuRole::Quit);
+        quit.or(self.shortcuts.first()).copied()
     }
 
     pub fn is_enabled(&self, app: &App) -> bool {
@@ -263,7 +281,7 @@ impl Registry {
     /// earlier command stays with that one (and is logged).
     pub fn add(&mut self, cmd: Command) -> &mut Self {
         assert!(!self.by_id.contains_key(cmd.id), "command {} registered twice", cmd.id);
-        for s in &cmd.shortcuts {
+        for s in cmd.shortcuts.iter().chain(&cmd.alias_shortcuts) {
             match self.by_key.get(s) {
                 Some(other) => log::warn!("{} is already the shortcut of {other}; not for {}", s.display(), cmd.id),
                 None => {

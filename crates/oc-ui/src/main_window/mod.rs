@@ -552,6 +552,7 @@ pub fn register(reg: &mut Registry) {
                 .help("Show the file panel on this side")
                 .menu_label("Files")
                 .menu(menu, "mode")
+                .hidden_from_palette() // a menu entry only, as in 1.x
                 .checked(move |app| app.main.sides[side].mode == SideMode::Files),
         );
     }

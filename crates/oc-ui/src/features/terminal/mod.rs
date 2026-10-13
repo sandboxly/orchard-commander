@@ -149,7 +149,9 @@ pub fn register(reg: &mut Registry) {
     reg.add(
         Command::new("terminal.panel_folder", "Terminal: go to panel folder", to_panel_folder)
             .help("Change the active side's shell to its panel's folder")
-            .keys(&["Ctrl+Shift+`", "Ctrl+Shift+~"])
+            .keys(&["Ctrl+Shift+`"])
+            // What ⇧` arrives as on US layouts; not listed (1.x shows ⌃⇧`).
+            .alias_keys(&["Ctrl+Shift+~"])
             .menu(Menu::Commands, "terminal"),
     );
     reg.on_start(restore);

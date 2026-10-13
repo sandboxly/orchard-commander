@@ -43,13 +43,13 @@ pub fn register(reg: &mut Registry) {
         Command::new("files.multi_rename", "Multi-rename", multi_rename)
             .help("Rename marked files with a pattern: [N], [C], dates, search & replace (Total Commander: Ctrl+M)")
             .keys(&["Primary+M"])
-            .menu(Menu::Files, "rename"),
+            .menu(Menu::Files, "ops"),
     );
     reg.add(
         Command::new("files.undo_rename", "Undo rename", undo_rename)
             .help("Undo the last multi-rename")
             .keys(&["Primary+Z"])
-            .menu(Menu::Files, "rename"),
+            .menu(Menu::Files, "ops"),
     );
 }
 

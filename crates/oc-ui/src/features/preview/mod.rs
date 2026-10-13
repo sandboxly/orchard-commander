@@ -81,6 +81,7 @@ pub fn register(reg: &mut Registry) {
                 .help("Preview the other panel's file on this side")
                 .menu(menu, "mode")
                 .menu_label("Preview")
+                .hidden_from_palette() // a menu entry only, as in 1.x
                 .checked(move |app| app.main.sides[side].mode_id() == ID),
         );
     }
