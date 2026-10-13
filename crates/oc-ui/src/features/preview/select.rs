@@ -60,10 +60,6 @@ impl Selection {
         *self = Selection { anchor: Some((0, 0)), head: (rows, 0), dragging: false };
     }
 
-    pub fn is_dragging(&self) -> bool {
-        self.dragging
-    }
-
     /// Selected cells of `row` (a row of `width` cells): from..to, `to` one
     /// past the text when the line break is selected too.
     pub fn cells_in_row(&self, row: usize, width: usize) -> Option<(usize, usize)> {

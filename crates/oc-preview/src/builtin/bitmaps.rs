@@ -10,7 +10,7 @@ const WHITE: [u8; 4] = [255, 255, 255, 255];
 const MAX_PIXELS: u64 = 64 * 1024 * 1024;
 
 fn canvas(w: u64, h: u64) -> Result<RgbaImage, String> {
-    if w == 0 || h == 0 || w * h > MAX_PIXELS {
+    if w == 0 || h == 0 || w.checked_mul(h).is_none_or(|n| n > MAX_PIXELS) {
         return Err(format!("invalid size {w}×{h}"));
     }
     Ok(RgbaImage::new(w as u32, h as u32))
@@ -41,12 +41,12 @@ pub fn decode_wbmp(data: &[u8]) -> Result<RgbaImage, String> {
         return Err("unsupported WBMP header".into());
     }
     let (w, h) = (int()?, int()?);
+    let mut img = canvas(w, h)?;
     let row = w.div_ceil(8) as usize;
     let bits = data.get(pos..).unwrap_or_default();
     if bits.len() < row * h as usize {
         return Err("truncated WBMP".into());
     }
-    let mut img = canvas(w, h)?;
     for (x, y, p) in img.enumerate_pixels_mut() {
         let byte = bits[y as usize * row + x as usize / 8];
         p.0 = if byte & (0x80 >> (x % 8)) != 0 { WHITE } else { BLACK };
@@ -77,11 +77,11 @@ pub fn decode_xbm(data: &[u8]) -> Result<RgbaImage, String> {
             u16::from_str_radix(hex, 16).map(|v| v as u8).map_err(|_| "invalid XBM data")
         })
         .collect::<Result<_, _>>()?;
+    let mut img = canvas(w, h)?;
     let row = w.div_ceil(8) as usize;
     if bytes.len() < row * h as usize {
         return Err("truncated XBM".into());
     }
-    let mut img = canvas(w, h)?;
     for (x, y, p) in img.enumerate_pixels_mut() {
         let byte = bytes[y as usize * row + x as usize / 8];
         p.0 = if byte & (1 << (x % 8)) != 0 { BLACK } else { WHITE };
@@ -164,7 +164,8 @@ pub fn decode_xpm(data: &[u8]) -> Result<RgbaImage, String> {
     let &[w, h, ncolors, cpp] = values.as_slice() else {
         return Err("not an XPM file".into());
     };
-    if cpp == 0 || cpp > 8 || rest.len() < (ncolors + h) as usize {
+    let mut img = canvas(w, h)?;
+    if cpp == 0 || cpp > 8 || (rest.len() as u64) < ncolors.saturating_add(h) {
         return Err("truncated XPM".into());
     }
     let cpp = cpp as usize;
@@ -182,7 +183,6 @@ pub fn decode_xpm(data: &[u8]) -> Result<RgbaImage, String> {
         let spec = ["c", "g", "g4", "m"].iter().find_map(|k| value_of(k)).unwrap_or_default();
         colors.insert(key, xpm_color(&spec));
     }
-    let mut img = canvas(w, h)?;
     let rows = &rest[ncolors as usize..];
     for (y, row) in rows.iter().take(h as usize).enumerate() {
         for x in 0..w as usize {
@@ -206,6 +206,16 @@ mod tests {
         assert_eq!(img.get_pixel(1, 0).0, BLACK);
         assert_eq!(img.get_pixel(2, 1).0, WHITE);
         assert!(decode_wbmp(&[0, 0, 3, 2, 0]).is_err());
+    }
+
+    #[test]
+    fn absurd_sizes_are_refused_not_overflowed() {
+        let xbm = format!("#define t_width {m}\n#define t_height {m}\nstatic char t_bits[] = {{ 0x00 }};\n", m = u64::MAX);
+        assert!(decode_xbm(xbm.as_bytes()).is_err());
+        let xpm = format!("\"1 1 {m} 1\",\n\". c #000000\",\n\".\"", m = u64::MAX);
+        assert!(decode_xpm(xpm.as_bytes()).is_err());
+        let xpm = format!("\"{m} {m} 1 1\"", m = u64::MAX);
+        assert!(decode_xpm(xpm.as_bytes()).is_err());
     }
 
     #[test]

@@ -441,6 +441,9 @@ pub fn panel_key(app: &mut App, side: usize, k: &crate::input::KeyEvent) -> Outc
 fn mouse(app: &mut App, m: &crate::input::MouseEvent) -> Outcome {
     let l = layout(app);
     let pressed = matches!(m.kind, MouseKind::Down(_) | MouseKind::DoubleClick(_));
+    if pressed {
+        app.main.view_drag = None; // a release lost to a dialog doesn't keep the grab
+    }
     if let Some(side) = app.main.view_drag
         && matches!(m.kind, MouseKind::Move | MouseKind::Up(MouseButton::Left))
     {

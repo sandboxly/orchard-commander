@@ -544,7 +544,13 @@ impl ApplicationHandler<AppEvent> for Platform {
                     }
                 };
                 if lines != 0.0 {
+                    #[cfg(target_os = "macos")]
+                    let momentum = crate::macos::scroll_is_momentum();
+                    #[cfg(not(target_os = "macos"))]
+                    let momentum = false;
+                    self.app().wheel_momentum = momentum;
                     self.mouse(key, MouseKind::Scroll(lines));
+                    self.app().wheel_momentum = false;
                 }
             }
             WindowEvent::Focused(f) => self.send(key, Event::Focus(f)),

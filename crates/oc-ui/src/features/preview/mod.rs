@@ -425,6 +425,7 @@ impl PreviewView {
             // "Loading …"; a slow local file (a big image or PDF) gets its
             // name over an empty pane, as 1.x showed it while loading.
             let remote = !path.is_local();
+            let title = display_name(&path);
             self.slow_timer = Some(app.schedule(SLOW_LOAD, move |app| {
                 with_view_as::<PreviewView, _>(app, side, ID, |v, app| {
                     v.slow_timer = None;
@@ -435,7 +436,7 @@ impl PreviewView {
                         let text = format!("Loading {name}…");
                         v.show_loading(app, side, &name, text);
                     } else {
-                        v.title = name;
+                        v.title = title;
                         v.info.clear();
                         v.chips.clear();
                         v.set_content(app, side, Box::new(MessageView::new("", None)));

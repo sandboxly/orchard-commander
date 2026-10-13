@@ -441,6 +441,16 @@ fn pdf_wheel_turns_one_page_per_step() {
     std::thread::sleep(Duration::from_millis(400));
     wheel(&mut app, 1.0);
     assert_eq!(pdf_view(&app).index, 1);
+
+    // Trackpad momentum after the fingers lift turns no page (1.x ignored
+    // ScrollMomentum), however long it goes on.
+    std::thread::sleep(Duration::from_millis(400));
+    app.wheel_momentum = true;
+    wheel(&mut app, -1.0);
+    app.wheel_momentum = false;
+    assert_eq!(pdf_view(&app).index, 1, "momentum");
+    wheel(&mut app, -1.0);
+    assert_eq!(pdf_view(&app).index, 2, "a new flick after the momentum");
 }
 
 // ---------------------------------------------------------------------------

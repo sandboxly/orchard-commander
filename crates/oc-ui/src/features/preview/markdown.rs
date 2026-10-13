@@ -410,7 +410,6 @@ impl MarkdownView {
             | MouseKind::Up(MouseButton::Left)
             | MouseKind::Move => {
                 let rows = self.rows(area.w);
-                let dragging = self.selection.is_dragging();
                 let top = clamp_top(self.top, rows.len(), area.h as usize);
                 let pos = select::pos_at(m, text_area, top, 0);
                 let word = |(r, c): Pos| rows.get(r).and_then(|row| select::word_at(&row.text(), c));
@@ -425,8 +424,8 @@ impl MarkdownView {
                     }
                     _ => {}
                 }
-                // Hovering changes nothing on screen.
-                let mine = changed || dragging || m.kind != MouseKind::Move;
+                // Hovering, or dragging within the same cell, changes nothing on screen.
+                let mine = changed || m.kind != MouseKind::Move;
                 Some(if mine { Outcome::Consumed } else { Outcome::Ignored })
             }
             _ => None,

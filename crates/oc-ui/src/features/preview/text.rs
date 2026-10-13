@@ -258,14 +258,13 @@ impl TextView {
             | MouseKind::DoubleClick(MouseButton::Left)
             | MouseKind::Up(MouseButton::Left)
             | MouseKind::Move => {
-                let dragging = self.selection.is_dragging();
                 let top = clamp_top(self.top, self.doc.lines.len(), l.rows.h as usize);
                 let left = self.left.min(self.doc.max_width.saturating_sub(l.text_w as usize));
                 let pos = select::pos_at(m, l.rows, top, left);
                 let lines = &self.doc.lines;
                 let changed = self.selection.mouse(m, pos, |(r, c)| lines.get(r).and_then(|l| select::word_at(&l.text, c)));
-                // Hovering changes nothing on screen.
-                let mine = changed || dragging || m.kind != MouseKind::Move;
+                // Hovering, or dragging within the same cell, changes nothing on screen.
+                let mine = changed || m.kind != MouseKind::Move;
                 Some(if mine { Outcome::Consumed } else { Outcome::Ignored })
             }
             _ => None,

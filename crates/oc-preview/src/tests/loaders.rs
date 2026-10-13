@@ -327,7 +327,9 @@ fn qt_formats_cur_xbm_xpm_wbmp() {
 fn imageio_formats_on_macos() {
     let dir = tempfile::tempdir().unwrap();
     let png = dir.path().join("src.png");
-    std::fs::write(&png, png_bytes(128, 128)).unwrap(); // ICNS has no 64×64 slot
+    // Green, the bottom quarter blue: a decode upside down shows.
+    let img = image::RgbaImage::from_fn(128, 128, |_, y| image::Rgba(if y < 96 { [0, 128, 0, 255] } else { [0, 0, 200, 255] }));
+    img.save(&png).unwrap(); // ICNS has no 64×64 slot
     for (ext, format) in [("heic", "HEIC"), ("icns", "ICNS"), ("jp2", "JP2")] {
         let out = dir.path().join(format!("x.{ext}"));
         let ok = std::process::Command::new("sips")
@@ -345,6 +347,8 @@ fn imageio_formats_on_macos() {
         assert_eq!((img.width, img.height), (128, 128));
         let px = &img.frames[0].rgba[..4];
         assert!(px[1] > 100 && px[0] < 40 && px[2] < 40 && px[3] == 255, "{ext}: {px:?}");
+        let bottom = &img.frames[0].rgba[(127 * 128) * 4..][..4];
+        assert!(bottom[2] > 150 && bottom[1] < 40, "{ext} bottom: {bottom:?}");
     }
 }
 
