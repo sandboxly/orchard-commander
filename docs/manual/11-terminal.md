@@ -99,7 +99,7 @@ bracketed paste, which current versions of zsh, bash and fish do.
 Typing returns the view to the bottom.
 
 Programs that support the mouse, such as `htop`, `vim` with mouse support
-turned on, `tmux` or Midnight Commander, receive clicks, drags and the scroll
+turned on, or `tmux`, receive clicks, drags and the scroll
 wheel themselves. The mouse pointer changes to an arrow while a program uses
 the mouse. To select text in such a program, hold **Shift** while you drag.
 

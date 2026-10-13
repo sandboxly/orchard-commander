@@ -23,8 +23,7 @@ REPO = "sandboxly/orchard-commander"
 HOMEPAGE = "https://sandboxly.github.io/orchard-commander/"
 SUMMARY = "Two-panel file manager with previews, archives, servers, search and a terminal"
 DESCRIPTION = (
-    "Orchard Commander is a keyboard-driven two-panel file manager in the spirit of Norton and "
-    "Total Commander. It previews code, images, PDFs, audio and video, opens archives and SFTP, SMB, "
+    "Orchard Commander is a keyboard-driven two-panel file manager in the classic style. It previews code, images, PDFs, audio and video, opens archives and SFTP, SMB, "
     "WebDAV and S3 servers as folders, and has find files, multi-rename and a built-in terminal."
 )
 ASSETS = {
@@ -124,8 +123,8 @@ Description: {DESCRIPTION}
 Moniker: orchard-commander
 Tags:
 - file-manager
-- total-commander
-- norton-commander
+- two-panel
+- orthodox-file-manager
 - sftp
 - terminal
 ReleaseNotesUrl: https://github.com/{REPO}/releases/tag/v{version}
@@ -157,7 +156,7 @@ def chocolatey(version: str, sha: dict[str, str]) -> dict[str, str]:
     <docsUrl>{HOMEPAGE}manual/</docsUrl>
     <bugTrackerUrl>https://github.com/{REPO}/issues</bugTrackerUrl>
     <releaseNotes>https://github.com/{REPO}/releases/tag/v{version}</releaseNotes>
-    <tags>file-manager commander total-commander norton-commander sftp terminal foss</tags>
+    <tags>file-manager commander two-panel orthodox-file-manager sftp terminal foss</tags>
     <summary>{SUMMARY}</summary>
     <description>{DESCRIPTION}</description>
   </metadata>

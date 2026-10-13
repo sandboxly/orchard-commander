@@ -22,7 +22,7 @@ The **Sample** panel on the right shows the effect of your changes.
 | Edit… | Change the colors of the scheme next to it (see [Custom color schemes](#custom-color-schemes)) |
 
 Built-in schemes: `monokai` (default), `dracula`, `nord`, `gruvbox`,
-`tokyo-night`, `commander` (blue, in the style of Norton Commander),
+`tokyo-night`, `commander` (white on blue, the classic look),
 `solarized-light` and `paper`.
 
 To try schemes quickly, choose **Options → Choose color scheme…**. The

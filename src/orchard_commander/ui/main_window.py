@@ -338,7 +338,7 @@ class MainWindow(QMainWindow):
             Command("Command palette", "Search all commands", self.command_palette, [f"{mod}+P", f"{mod}+Shift+P"]),
             Command("Reload panels", "Re-read both directories", self.reload, [f"{mod}+R"]),
             Command("Toggle hidden files", "Show or hide hidden files", self.toggle_hidden, hidden_keys),
-            Command("Swap panels", "Exchange the left and right folders (Total Commander: Ctrl+U)",
+            Command("Swap panels", "Exchange the left and right folders",
                     self.swap_panels, [f"{mod}+U"]),
             Command("Same directory", "Show the active folder in the other panel too (Target = Source)",
                     self.same_dir, [f"{mod}+E"]),
@@ -354,10 +354,9 @@ class MainWindow(QMainWindow):
                     self.toggle_terminal, [TOGGLE_KEY, *(["Ctrl+J"] if IS_MACOS else [])]),  # ⌘J: any layout
             Command("Terminal: go to panel folder", "Change the active side's shell to its panel's folder",
                     self.terminal_to_panel_folder, ["Meta+Shift+`" if IS_MACOS else "Ctrl+Shift+`"]),
-            Command("Multi-rename", "Rename marked files with a pattern: [N], [C], dates, search & replace "
-                    "(Total Commander: Ctrl+M)", self.multi_rename, [f"{mod}+M"]),
+            Command("Multi-rename", "Rename marked files with a pattern: [N], [C], dates, search & replace", self.multi_rename, [f"{mod}+M"]),
             Command("Undo rename", "Undo the last multi-rename", self.undo_rename, [f"{mod}+Z"]),
-            Command("Find files", "Search by name, contents, size and date (Total Commander: Alt+F7)",
+            Command("Find files", "Search by name, contents, size and date",
                     self.find_files, ["Alt+F7", f"{mod}+F"]),
             Command("Stop search", "Stop the running search", self.stop_search, ["Escape"]),
             Command("Last search results", "Show the results of the last search again",

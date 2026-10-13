@@ -1,7 +1,7 @@
 # Orchard Commander
 
-A two-panel file manager for macOS, Windows and Linux in the tradition of Norton
-Commander and Total Commander. It shows two folders side by side and is driven
+A two-panel file manager for macOS, Windows and Linux in the classic
+keyboard-driven style. It shows two folders side by side and is driven
 by the keyboard: F5 copies, F6 moves, F7 creates a folder, F8 moves files to the
 trash. It previews code, images, PDFs, audio and video, edits text files (F4),
 opens archives and SFTP, SMB, WebDAV and S3 servers in a panel, and has a file

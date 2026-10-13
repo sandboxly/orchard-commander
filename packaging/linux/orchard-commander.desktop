@@ -7,6 +7,6 @@ Exec=orchard-commander %F
 Icon=orchard-commander
 Terminal=false
 Categories=System;FileTools;FileManager;Utility;
-Keywords=files;folders;commander;norton;total;twin panel;sftp;archive;
+Keywords=files;folders;commander;two panel;twin panel;sftp;archive;
 MimeType=inode/directory;
 StartupWMClass=orchard-commander
