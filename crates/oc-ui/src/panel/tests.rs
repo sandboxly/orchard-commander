@@ -170,6 +170,39 @@ fn run_for(app: &mut App, d: Duration) {
 }
 
 #[test]
+fn watcher_reload_due_during_a_resort_still_runs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (cfg, l, r) = (tmp.path().join("c"), tmp.path().join("l"), tmp.path().join("r"));
+    for d in [&cfg, &l, &r] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::write(l.join("a.txt"), "a").unwrap();
+    let mut app = crate::testing::headless_app(&cfg, &l, &r);
+    crate::testing::settle(&mut app);
+    let names = |app: &App| panel(app, 0).entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+
+    // The change is seen, then a header click sorts what is shown; the
+    // watcher's reload falls due before the sorted entries come back.
+    std::thread::sleep(Duration::from_millis(2));
+    std::fs::write(l.join("new.txt"), "new").unwrap();
+    directory_changed(&mut app, 0);
+    sort_by(&mut app, 0, SortKey::Size);
+    std::thread::sleep(WATCH_DEBOUNCE * 2);
+    app.tick(Instant::now());
+    assert!(!reload_pending(&app, 0), "the watcher gave way to the re-sort");
+    crate::testing::settle(&mut app);
+    assert_eq!(names(&app), ["a.txt", "new.txt"], "the change is listed after all");
+
+    // Sorted again with nothing changed: no listing, only the new order.
+    let before = panel(&app, 0).request;
+    sort_by(&mut app, 0, SortKey::Size);
+    crate::testing::settle(&mut app);
+    run_for(&mut app, WATCH_DEBOUNCE * 3);
+    assert_eq!(names(&app), ["new.txt", "a.txt"]);
+    assert_eq!(panel(&app, 0).request, before + 1);
+}
+
+#[test]
 fn watcher_reloads_skip_what_our_own_reload_already_shows() {
     let tmp = tempfile::tempdir().unwrap();
     let (cfg, l, r) = (tmp.path().join("c"), tmp.path().join("l"), tmp.path().join("r"));
