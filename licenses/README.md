@@ -11,6 +11,15 @@ The About / licenses page should show them too.
 | --- | --- | --- | --- |
 | UnRAR (RAR decoder) | `unrar_sys` crate, vendored C++ source in `vendor/unrar`; only with the `oc-archive/rar` cargo feature (default on) | RARLAB UnRAR license: freeware, **not** open source; forbids using the code to re-create the RAR compression algorithm | [`UnRAR.txt`](UnRAR.txt) (copied verbatim from `unrar_sys-0.5.8/vendor/unrar/license.txt`) |
 
+FFmpeg (audio/video previews, crate `oc-media`) ships as LGPL-2.1-or-later
+shared libraries built without GPL or non-free parts. On macOS
+`packaging/macos/build-ffmpeg.sh` builds them from the pinned release tarball
+and writes `LICENSE.md`, `COPYING.LGPLv2.1` and `SOURCE.txt` (source URL,
+SHA-256, configure line) next to them; `packaging/macos/package.sh` puts these
+in `Contents/Resources/licenses/ffmpeg/`. The Rust crates' notice
+(`THIRD-PARTY-LICENSES.txt`) is generated with cargo-about from
+`packaging/about.toml` + `packaging/about.hbs` when packaging.
+
 Builds without RAR support (`cargo build --no-default-features --features …` on
 `oc-archive`) don't contain UnRAR and don't need `UnRAR.txt`.
 
