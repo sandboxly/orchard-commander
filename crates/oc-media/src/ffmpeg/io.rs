@@ -1,7 +1,8 @@
 //! Opening media for FFmpeg: local files directly, everything else through a
 //! custom AVIOContext over a `Read + Seek` stream (`ui/media_stream.py` in
 //! 1.x). Reads are served from a read-ahead block so FFmpeg's small requests
-//! don't each cost a server round trip. Unseekable streams get no seek
+//! don't each cost a server round trip; a block that arrives slowly is cut
+//! short ([`FILL_PATIENCE`]) so playback goes on. Unseekable streams get no seek
 //! callback: they play from the start, without seeking.
 //!
 //! Every open input has an abort flag, checked by FFmpeg's interrupt callback
@@ -18,6 +19,7 @@ use std::path::Path;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use super::ff;
 use super::ff::ffi;
@@ -28,6 +30,11 @@ use crate::{MediaError, MediaSource};
 pub(crate) const READ_AHEAD: usize = 1024 * 1024;
 /// FFmpeg's own I/O buffer.
 const IO_BUFFER: usize = 64 * 1024;
+/// A read-ahead block that takes longer than this to fill is cut short at
+/// what has arrived: on a slow server, waiting for a whole 1 MiB block would
+/// outlast the audio buffered ahead and playback would stutter (a 320 kbit/s
+/// MP3 over 80 KB/s would stop for ~10 s every block).
+const FILL_PATIENCE: Duration = Duration::from_millis(150);
 
 struct IoState<R> {
     reader: R,
@@ -114,9 +121,13 @@ impl<R: Read + Seek> IoState<R> {
         let target = self.read_ahead.max(want);
         self.block.resize(target, 0);
         let mut filled = 0;
+        let started = Instant::now();
         while filled < target {
             if self.aborted() {
                 return Err(ffi::AVERROR_EXIT);
+            }
+            if filled > 0 && started.elapsed() >= FILL_PATIENCE {
+                break; // a slow source: hand on what's there
             }
             match self.reader.read(&mut self.block[filled..]) {
                 Ok(0) => break,
@@ -430,6 +441,52 @@ mod tests {
         assert_eq!(&buf[..], &data[1_500_000..1_500_010]);
         s.pos = 5; // back, before the block
         assert!(s.read(&mut buf).is_err());
+    }
+
+    /// A source that delivers 16 KiB per read, slowly.
+    struct Trickle(Cursor<Vec<u8>>);
+
+    impl Read for Trickle {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            std::thread::sleep(Duration::from_millis(40));
+            let n = buf.len().min(16 * 1024);
+            self.0.read(&mut buf[..n])
+        }
+    }
+
+    impl Seek for Trickle {
+        fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+            self.0.seek(pos)
+        }
+    }
+
+    #[test]
+    fn slow_sources_are_not_waited_for_a_whole_block() {
+        let data: Vec<u8> = (0..2_000_000u32).map(|i| (i % 13) as u8).collect();
+        let mut s = IoState {
+            reader: Trickle(Cursor::new(data.clone())),
+            pos: 0,
+            size: Some(data.len() as u64),
+            seekable: true,
+            block: Vec::new(),
+            block_start: 0,
+            reader_pos: None,
+            abort: Arc::new(AtomicBool::new(false)),
+            read_ahead: READ_AHEAD,
+        };
+        let mut buf = vec![0u8; 64 * 1024];
+        let t = Instant::now();
+        let n = s.read(&mut buf).unwrap();
+        // 1 MiB at 16 KiB per 40 ms would take 2.6 s.
+        assert!(t.elapsed() < Duration::from_millis(600), "{:?}", t.elapsed());
+        assert!(n > 0 && buf[..n] == data[..n]);
+        // Reading on continues seamlessly from the short block.
+        let mut all = buf[..n].to_vec();
+        while all.len() < 300_000 {
+            let n = s.read(&mut buf).unwrap();
+            all.extend_from_slice(&buf[..n]);
+        }
+        assert_eq!(all[..], data[..all.len()]);
     }
 
     #[test]

@@ -192,6 +192,8 @@ fn probing_streams_reads_little() {
     let mut s = Counting(std::io::Cursor::new(garbage), read.clone());
     assert!(probe_stream(&mut s, Some(8_000_000), "huge.mp4").is_err());
     assert!(read.load(Ordering::Relaxed) <= oc_media::PROBE_BUDGET, "{} bytes", read.load(Ordering::Relaxed));
+    // Rewound all the same: the player gets the stream next.
+    assert_eq!(std::io::Seek::stream_position(&mut s).unwrap(), 0);
 }
 
 #[test]

@@ -1,5 +1,14 @@
 //! Time readouts.
 
+use std::time::Duration;
+
+/// Seconds as a Duration, never panicking: negative and NaN read as zero,
+/// absurdly large values (hostile timestamps) as [`Duration::MAX`].
+#[cfg_attr(not(feature = "ffmpeg"), allow(dead_code))]
+pub(crate) fn secs(s: f64) -> Duration {
+    if s.is_nan() || s <= 0.0 { Duration::ZERO } else { Duration::try_from_secs_f64(s).unwrap_or(Duration::MAX) }
+}
+
 /// "01:23", or "1:02:03" from an hour on (negative times read as zero).
 pub fn format_time(ms: i64) -> String {
     let s = ms.max(0) / 1000;
@@ -19,5 +28,14 @@ mod tests {
         assert_eq!(format_time(83_000), "01:23");
         assert_eq!(format_time(83_999), "01:23");
         assert_eq!(format_time(3_723_000), "1:02:03");
+    }
+
+    #[test]
+    fn seconds_never_panic() {
+        assert_eq!(secs(1.5), Duration::from_millis(1500));
+        assert_eq!(secs(-3.0), Duration::ZERO);
+        assert_eq!(secs(f64::NAN), Duration::ZERO);
+        assert_eq!(secs(1e30), Duration::MAX);
+        assert_eq!(secs(f64::INFINITY), Duration::MAX);
     }
 }

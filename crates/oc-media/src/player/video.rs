@@ -98,7 +98,7 @@ impl FrameQueue {
             self.recycle(old);
         }
         self.serial += 1;
-        let frame = VideoFrame { width, height, rgba, pts: Duration::from_secs_f64(pts.max(0.0)), serial: self.serial };
+        let frame = VideoFrame { width, height, rgba, pts: crate::time::secs(pts), serial: self.serial };
         self.pending.push_back(Arc::new(frame));
         self.preroll
     }
@@ -136,15 +136,18 @@ impl FrameQueue {
     }
 }
 
+/// Frames are never bigger than this on their longer side (an 8K video, or
+/// a file claiming 10:1 pixels, would otherwise queue ~130 MB–1.3 GB frames).
+pub(crate) const MAX_SIDE: u32 = 4096;
+
 /// The size frames are scaled to: the display size (pixel aspect applied),
-/// shrunk to fit `target` but never enlarged.
+/// shrunk to fit `target` (and [`MAX_SIDE`]) but never enlarged.
 pub(crate) fn fit_size(width: u32, height: u32, sar: Option<f64>, target: Option<(u32, u32)>) -> (u32, u32) {
     let sar = sar.filter(|r| r.is_finite() && (0.1..=10.0).contains(r)).unwrap_or(1.0);
     let (dw, dh) = if sar >= 1.0 { (width as f64 * sar, height as f64) } else { (width as f64, height as f64 / sar) };
-    let scale = match target {
-        Some((tw, th)) if dw > 0.0 && dh > 0.0 => (tw as f64 / dw).min(th as f64 / dh).min(1.0),
-        _ => 1.0,
-    };
+    let (tw, th) = target.unwrap_or((MAX_SIDE, MAX_SIDE));
+    let (tw, th) = (tw.min(MAX_SIDE) as f64, th.min(MAX_SIDE) as f64);
+    let scale = if dw > 0.0 && dh > 0.0 { (tw / dw).min(th / dh).min(1.0) } else { 1.0 };
     (((dw * scale).round() as u32).max(1), ((dh * scale).round() as u32).max(1))
 }
 
@@ -232,5 +235,9 @@ mod tests {
         assert_eq!(fit_size(160, 90, None, Some((1000, 1000))), (160, 90));
         assert_eq!(fit_size(720, 576, Some(16.0 / 15.0), None), (768, 576)); // PAL 4:3
         assert_eq!(fit_size(100, 100, Some(0.5), Some((50, 400))), (50, 100));
+        // Huge: capped, also when the UI asks for more.
+        assert_eq!(fit_size(7680, 4320, None, None), (4096, 2304));
+        assert_eq!(fit_size(7680, 4320, None, Some((10_000, 10_000))), (4096, 2304));
+        assert_eq!(fit_size(4000, 100, Some(10.0), None), (4096, 10));
     }
 }

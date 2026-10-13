@@ -11,6 +11,8 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 #[cfg(feature = "output")]
+use std::sync::atomic::AtomicU8;
+#[cfg(feature = "output")]
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -36,6 +38,13 @@ const NULL_FORMAT: (u32, u16) = (48000, 2);
 const OPEN_TIMEOUT: Duration = Duration::from_secs(3);
 #[cfg(feature = "output")]
 const FOLLOW_EVERY: Duration = Duration::from_millis(1500);
+/// The device handshake (see [`start`]).
+#[cfg(feature = "output")]
+const WAITING: u8 = 0;
+#[cfg(feature = "output")]
+const ACCEPTED: u8 = 1;
+#[cfg(feature = "output")]
+const CANCELLED: u8 = 2;
 
 /// Consumes audio at the real-time rate without a device.
 struct NullSink {
@@ -83,23 +92,27 @@ pub(crate) fn start(kind: AudioOutput, audio: &Arc<AudioShared>, watch: &Shutdow
     if kind == AudioOutput::Default {
         let (tx, rx) = mpsc::sync_channel(1);
         let a = audio.clone();
-        // Set when we stop waiting: a device opening late must not play
-        // alongside the silent sink that replaces it.
-        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let c = cancel.clone();
+        // Whoever moves it from WAITING first wins: the device thread when
+        // its device is open (ACCEPTED), or we when we stop waiting
+        // (CANCELLED). So a device opening late never plays alongside the
+        // silent sink that replaced it.
+        let handshake = Arc::new(AtomicU8::new(WAITING));
+        let h = handshake.clone();
         let spawned = watch.spawn("oc-media audio", move || {
             a.set_output_thread(Some(thread::current()));
-            device::run(&a, &c, tx);
+            device::run(&a, &h, tx);
         });
-        match spawned.map_err(|e| e.to_string()).and_then(|()| rx.recv_timeout(OPEN_TIMEOUT).map_err(|e| e.to_string())) {
+        let mut answer = spawned.map_err(|e| e.to_string()).and_then(|()| rx.recv_timeout(OPEN_TIMEOUT).map_err(|e| e.to_string()));
+        if answer.is_err() && handshake.compare_exchange(WAITING, CANCELLED, Ordering::AcqRel, Ordering::Acquire).is_err() {
+            // The device opened just now: its answer is on the way.
+            answer = rx.recv_timeout(Duration::from_secs(1)).map_err(|e| e.to_string());
+        }
+        match answer {
             Ok(Ok(format)) => {
                 audio.set_format(format.0, format.1);
                 return format;
             }
-            Ok(Err(e)) | Err(e) => {
-                log::info!("no audio device ({e}): playing silently");
-                cancel.store(true, Ordering::Release);
-            }
+            Ok(Err(e)) | Err(e) => log::info!("no audio device ({e}): playing silently"),
         }
     }
     let _ = kind;
@@ -124,7 +137,7 @@ mod device {
     use super::*;
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::{AtomicBool, AtomicU8};
 
     struct Open {
         stream: Stream,
@@ -198,13 +211,14 @@ mod device {
         host.default_output_device().and_then(|d| d.id().ok()).map(|id| id.to_string())
     }
 
-    pub(super) fn run(audio: &Arc<AudioShared>, cancel: &AtomicBool, ready: mpsc::SyncSender<Result<(u32, u16), String>>) {
+    pub(super) fn run(audio: &Arc<AudioShared>, handshake: &AtomicU8, ready: mpsc::SyncSender<Result<(u32, u16), String>>) {
         let host = cpal::default_host();
         let mut current = match open(&host, audio) {
             Ok(o) => {
-                if ready.send(Ok(o.format)).is_err() {
-                    return; // the player gave up waiting
+                if handshake.compare_exchange(WAITING, ACCEPTED, Ordering::AcqRel, Ordering::Acquire).is_err() {
+                    return; // the player gave up waiting and plays silently
                 }
+                let _ = ready.send(Ok(o.format));
                 Some(o)
             }
             Err(e) => {
@@ -214,7 +228,7 @@ mod device {
         };
         let mut null = NullSink::new(NULL_FORMAT);
         let mut last_check = Instant::now();
-        while !audio.stop.load(Ordering::Acquire) && !cancel.load(Ordering::Acquire) {
+        while !audio.stop.load(Ordering::Acquire) {
             let playing = audio.playing.load(Ordering::Acquire);
             let due = last_check.elapsed() >= FOLLOW_EVERY;
             let rebuild = match &current {

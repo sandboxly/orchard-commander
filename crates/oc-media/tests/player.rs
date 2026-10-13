@@ -330,6 +330,53 @@ fn wakes_the_ui() {
 }
 
 #[test]
+fn a_waker_may_take_the_uis_lock() {
+    // Like egui: the UI holds its context lock while it reads and drives the
+    // player, and the waker (request_repaint) takes that lock too. Wake-ups
+    // from inside oc-media's locks, or from the UI's own calls, deadlocked.
+    let ui = Arc::new(std::sync::Mutex::new(()));
+    let u = ui.clone();
+    let waker: oc_media::Waker = Arc::new(move || drop(u.lock().unwrap_or_else(|e| e.into_inner())));
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let p = Player::open(clip(), PlayerOptions { waker: Some(waker), ..playing() });
+        let mut finished = 0;
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while finished < 3 && Instant::now() < deadline {
+            let frame = ui.lock().unwrap(); // a UI frame, its lock held throughout
+            std::thread::sleep(Duration::from_millis(20));
+            let _ = (p.state(), p.position(), p.video_frame());
+            while let Some(e) = p.poll_event() {
+                match e {
+                    Event::Loaded(_) => p.seek(Duration::from_millis(1700)),
+                    Event::Finished => {
+                        finished += 1;
+                        p.seek(Duration::from_millis(1700));
+                        p.toggle_play();
+                    }
+                    _ => {}
+                }
+            }
+            drop(frame);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let _ = tx.send(finished);
+    });
+    let finished = rx.recv_timeout(Duration::from_secs(15)).expect("deadlocked");
+    assert_eq!(finished, 3);
+}
+
+#[test]
+fn an_ended_unseekable_stream_does_not_finish_again() {
+    let bytes = std::fs::read(data("tone-then-silence.mp3")).unwrap();
+    let p = Player::open(MediaSource::stream(Box::new(Unseekable(std::io::Cursor::new(bytes))), None, "a.mp3"), playing());
+    assert!(wait_for_event(&p, Duration::from_secs(5), |e| *e == Event::Finished).is_some());
+    p.play(); // can't go back to the start: nothing to play
+    assert!(wait_for_event(&p, Duration::from_millis(300), |e| *e == Event::Finished).is_none());
+    assert_eq!((p.state(), p.status()), (PlaybackState::Stopped, MediaStatus::Ended));
+}
+
+#[test]
 fn dropping_never_stalls() {
     // While playing.
     let p = Player::open(clip(), playing());

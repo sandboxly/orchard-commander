@@ -38,6 +38,10 @@ required-features = ["ffmpeg"]
 name = "waveform"
 required-features = ["ffmpeg"]
 
+[[test]]
+name = "http"
+required-features = ["ffmpeg"]
+
 [[example]]
 name = "play"
 required-features = ["ffmpeg"]

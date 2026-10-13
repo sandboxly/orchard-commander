@@ -56,13 +56,14 @@ pub fn probe_stream(stream: &mut dyn ReadStream, size: Option<u64>, name: &str) 
     let info = {
         let budget = Budget { inner: &mut *stream, left: PROBE_BUDGET };
         let options = io::ReadOptions { read_ahead: 64 * 1024, probesize: Some(PROBE_BUDGET as i64 / 2) };
-        let input = io::open_reader(budget, seekable, size, name, Arc::new(AtomicBool::new(false)), options)?;
-        info_from(&input, seekable)
+        let input = io::open_reader(budget, seekable, size, name, Arc::new(AtomicBool::new(false)), options);
+        input.map(|input| info_from(&input, seekable))
     };
+    // Rewind also when probing failed: the stream is handed on either way.
     if seekable {
         stream.seek(SeekFrom::Start(0))?;
     }
-    Ok(info)
+    info
 }
 
 /// The streams the player uses: the best audio stream, and the best video
@@ -102,7 +103,7 @@ pub(crate) fn info_from(input: &ff::format::context::Input, seekable: bool) -> M
             .filter_map(|s| (s.duration() > 0).then(|| super::seconds(s.duration(), s.time_base())))
             .filter(|s| s.is_finite() && *s > 0.0)
             .fold(None, |a: Option<f64>, b| Some(a.map_or(b, |a| a.max(b))))
-            .map(Duration::from_secs_f64)
+            .map(crate::time::secs)
     };
     let video = video.and_then(|i| input.stream(i)).map(|s| {
         // SAFETY: codecpar of a stream of an open input is valid.

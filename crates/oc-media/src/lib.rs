@@ -71,9 +71,12 @@ pub use player::{AudioOutput, Event, MediaStatus, PlaybackState, Player, PlayerO
 
 use std::sync::Arc;
 
-/// Called (from any thread) when something changed that the UI should look
-/// at: an event was queued, a waveform grew, the first frame arrived. Use it
-/// to wake the UI's event loop (e.g. `ctx.request_repaint()`); keep it cheap.
+/// Called from the player's and analyzer's threads when something changed
+/// that the UI should look at: an event was queued, a waveform grew, the
+/// first frame arrived. Use it to wake the UI's event loop (e.g.
+/// `ctx.request_repaint()`); keep it cheap. It is never called with one of
+/// oc-media's locks held, nor from calls the UI makes ([`Player::play`] & co.
+/// only queue their events), so it may take the UI's own locks.
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Debug, thiserror::Error)]

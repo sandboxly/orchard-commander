@@ -67,7 +67,8 @@ pub struct PlayerOptions {
     pub volume: f32,
     /// Repeat at the end instead of finishing (see [`crate::should_loop`]).
     pub looping: bool,
-    /// Scale video to fit this size (physical pixels); None: the video's own size.
+    /// Scale video to fit this size (physical pixels); None: the video's own
+    /// size. Frames are at most 4096 px on their longer side either way.
     pub video_size: Option<(u32, u32)>,
     pub waker: Option<Waker>,
 }
@@ -159,6 +160,11 @@ impl Shared {
         self.wake();
     }
 
+    /// Queue an event without waking the UI (see [`Shared::set_state`]).
+    fn queue(&self, e: Event) {
+        let _ = self.events.send(e);
+    }
+
     pub(crate) fn aborted(&self) -> bool {
         self.abort.load(Ordering::Acquire)
     }
@@ -187,11 +193,15 @@ impl Shared {
         self.audio.kick_output();
     }
 
+    /// Change the state. The event is only queued: the player's own
+    /// threads wake the UI after releasing the lock; calls from the UI
+    /// (play, pause, …) don't wake it at all — it is awake, and a waker
+    /// called inside the UI's own frame could deadlock on the UI's locks.
     pub(crate) fn set_state(&self, st: &mut Status, state: PlaybackState) {
         self.set_running(st, state == PlaybackState::Playing);
         if st.state != state {
             st.state = state;
-            self.emit(Event::StateChanged(state));
+            self.queue(Event::StateChanged(state));
         }
     }
 
@@ -201,7 +211,7 @@ impl Shared {
         st.error = Some(message.clone());
         self.set_state(&mut st, PlaybackState::Stopped);
         drop(st);
-        self.emit(Event::Error(message));
+        self.emit(Event::Error(message)); // wakes the UI for both
     }
 }
 
@@ -289,11 +299,11 @@ impl Player {
     }
 
     pub fn duration(&self) -> Option<Duration> {
-        self.shared.status().duration.map(Duration::from_secs_f64)
+        self.shared.status().duration.map(crate::time::secs)
     }
 
     pub fn position(&self) -> Duration {
-        Duration::from_secs_f64(self.shared.position())
+        crate::time::secs(self.shared.position())
     }
 
     /// Whether seeking works (false for unseekable streams; true while loading).
@@ -309,6 +319,9 @@ impl Player {
         let mut st = self.shared.status();
         match st.media {
             MediaStatus::Invalid => return,
+            // Played to the end of a stream that can't go back to the start:
+            // nothing to play (rather than "finishing" again at once).
+            MediaStatus::Ended if st.info.as_ref().is_some_and(|i| !i.seekable) => return,
             MediaStatus::Ended => {
                 st.media = MediaStatus::Ready;
                 self.seek_locked(&mut st, 0.0);
@@ -413,7 +426,7 @@ impl Player {
     /// How long until the next frame is due (schedule the next redraw).
     pub fn next_frame_in(&self) -> Option<Duration> {
         let pos = self.shared.position();
-        self.shared.frames().next_due(pos).map(Duration::from_secs_f64)
+        self.shared.frames().next_due(pos).map(crate::time::secs)
     }
 
     /// Scale video to fit this size (physical pixels) from now on.

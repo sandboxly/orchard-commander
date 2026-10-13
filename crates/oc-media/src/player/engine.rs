@@ -412,7 +412,7 @@ impl<'s> Engine<'s> {
                 self.last_tick = Instant::now();
                 if (pos - self.last_reported).abs() > 0.0005 {
                     self.last_reported = pos;
-                    self.shared.emit(Event::Position(Duration::from_secs_f64(pos)));
+                    self.shared.emit(Event::Position(crate::time::secs(pos)));
                 }
             }
             let idle = Some(Duration::from_millis(if playing { 10 } else { 50 }));
@@ -579,8 +579,8 @@ impl<'s> Engine<'s> {
         st.media = MediaStatus::Ended;
         self.shared.set_state(&mut st, PlaybackState::Stopped);
         let end = self.shared.position_in(&st);
-        drop(st);
-        self.shared.emit(Event::Position(Duration::from_secs_f64(end)));
+        drop(st); // the events below wake the UI
+        self.shared.emit(Event::Position(crate::time::secs(end)));
         self.shared.emit(Event::Finished);
     }
 
@@ -619,6 +619,6 @@ impl<'s> Engine<'s> {
         let now = self.shared.position_in(&st);
         drop(st);
         self.last_reported = now;
-        self.shared.emit(Event::Position(Duration::from_secs_f64(now)));
+        self.shared.emit(Event::Position(crate::time::secs(now)));
     }
 }
