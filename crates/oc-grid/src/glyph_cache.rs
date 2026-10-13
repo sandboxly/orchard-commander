@@ -3,6 +3,9 @@
 //! Lookups are the hot path of every frame (one per non-blank cell), so
 //! printable ASCII goes through a flat table and everything else through an
 //! Fx hash map; rasterization happens once per (character, style).
+//!
+//! Runs of ASCII punctuation are also shaped as a whole, so programming
+//! fonts show their ligatures (`->`, `!=`, `=>`…) as Qt's text drawing did.
 
 use rustc_hash::FxHashMap;
 use swash::scale::{Render, ScaleContext, Source, StrikeWith};
@@ -17,6 +20,17 @@ use crate::special;
 /// Hinting sharpens stems at small sizes on Windows/Linux; macOS renders
 /// unhinted, and so do we there, to look like the native apps.
 const HINT: bool = !cfg!(target_os = "macos");
+
+/// Ligature runs longer than this are shaped in pieces (and not cached whole).
+pub(crate) const MAX_LIGATURE_RUN: usize = 32;
+/// Shaped runs kept before the cache starts over (their glyphs stay).
+const MAX_LIGATURE_RUNS: usize = 4096;
+
+/// A glyph of a shaped run and the cell (offset in the run) it is drawn from.
+pub(crate) type RunGlyph = (u16, AtlasGlyph);
+
+/// A punctuation run → its shaped glyphs (`None`: nothing to shape).
+type LigatureMap = FxHashMap<Box<str>, Option<Box<[RunGlyph]>>>;
 
 /// Italic synthesized by shearing, like CoreText/Qt do for fonts without an italic.
 const SYNTH_ITALIC_DEGREES: f32 = 14.0;
@@ -52,6 +66,11 @@ pub(crate) struct GlyphCache {
     chars: FxHashMap<(char, StyleBits), Option<AtlasGlyph>>,
     /// Per style, so lookups borrow the `&str` instead of allocating a key.
     clusters: [FxHashMap<Box<str>, Box<[AtlasGlyph]>>; 4],
+    /// Shaped punctuation runs per style; `None`: the font changes nothing
+    /// (drawn cell by cell).
+    ligatures: [LigatureMap; 4],
+    /// Glyphs of shaped runs by (face, glyph, style, offset), shared between runs.
+    shaped: FxHashMap<(FaceIdx, u16, StyleBits, i32, i32), Option<AtlasGlyph>>,
 }
 
 impl GlyphCache {
@@ -65,6 +84,8 @@ impl GlyphCache {
             ascii: Box::new([Slot::Unknown; 512]),
             chars: FxHashMap::default(),
             clusters: Default::default(),
+            ligatures: Default::default(),
+            shaped: FxHashMap::default(),
         }
     }
 
@@ -75,6 +96,8 @@ impl GlyphCache {
         self.ascii.fill(Slot::Unknown);
         self.chars.clear();
         self.clusters.iter_mut().for_each(FxHashMap::clear);
+        self.ligatures.iter_mut().for_each(FxHashMap::clear);
+        self.shaped.clear();
     }
 
     pub fn replace_fonts(&mut self, fonts: FontSet) {
@@ -123,6 +146,68 @@ impl GlyphCache {
             .get(text)
             .map(|g| &**g)
             .unwrap_or(&[]))
+    }
+
+    /// A run of ASCII punctuation (two or more cells, one style) shaped
+    /// together: its glyphs with the cell each is drawn from, or `None` when
+    /// shaping changes nothing (no ligatures in this font for it).
+    pub fn ligature(&mut self, text: &str, style: StyleBits) -> Result<Option<&[RunGlyph]>, AtlasFull> {
+        let style = style & 3;
+        let map = &mut self.ligatures[style as usize];
+        if !map.contains_key(text) {
+            if map.len() >= MAX_LIGATURE_RUNS {
+                map.clear();
+            }
+            let glyphs = self.shape_run(text, style)?;
+            self.ligatures[style as usize].insert(text.into(), glyphs);
+        }
+        Ok(self.ligatures[style as usize].get(text).and_then(|g| g.as_deref()))
+    }
+
+    fn shape_run(&mut self, text: &str, style: StyleBits) -> Result<Option<Box<[RunGlyph]>>, AtlasFull> {
+        let face = self.fonts.primary(style);
+        let loaded = &self.fonts.faces[face as usize];
+        let cmap: Vec<u16> = text.chars().map(|c| loaded.glyph(c)).collect();
+        if cmap.contains(&0) {
+            return Ok(None); // the font lacks one: per character, with fallback
+        }
+        // (cell, glyph, x from the cell's left edge, y)
+        let mut placed: Vec<(usize, u16, f32, f32)> = Vec::new();
+        {
+            let font = loaded.font();
+            let mut shaper = self.shape.builder(font).size(self.fonts.metrics.font_px).build();
+            shaper.add_str(text);
+            let mut pen = 0.0;
+            shaper.shape_with(|cluster| {
+                let start = pen;
+                for g in cluster.glyphs {
+                    // ASCII: the byte offset is the cell.
+                    placed.push((cluster.source.start as usize, g.id, pen - start + g.x, g.y));
+                    pen += g.advance;
+                }
+            });
+        }
+        let unchanged = placed.len() == cmap.len()
+            && placed.iter().enumerate().all(|(i, &(cell, gid, x, y))| cell == i && gid == cmap[i] && x.abs() < 0.5 && y.abs() < 0.5);
+        if unchanged {
+            return Ok(None);
+        }
+        let mut out = Vec::with_capacity(placed.len());
+        for (cell, gid, x, y) in placed {
+            let key = (face, gid, style, x.round() as i32, y.round() as i32);
+            let g = match self.shaped.get(&key) {
+                Some(&g) => g,
+                None => {
+                    let g = self.rasterize_glyph(face, gid, style, 1, x.round(), y.round())?;
+                    self.shaped.insert(key, g);
+                    g
+                }
+            };
+            if let Some(g) = g {
+                out.push((cell as u16, g));
+            }
+        }
+        Ok(Some(out.into_boxed_slice()))
     }
 
     fn rasterize_char(
@@ -388,6 +473,28 @@ mod tests {
         let upright = centre(&regular, w, 1) - centre(&regular, w, h - 2);
         assert!(upright.abs() < 1.0, "{upright}");
         assert!(lean > 2.0, "synthesized italic leans right ({lean})");
+    }
+
+    /// Fira Code (if installed): `->` and `!=` become ligatures, `.,` stays as is.
+    #[test]
+    fn programming_ligatures() {
+        let Some(home) = std::env::var_os("HOME") else { return };
+        let path = std::path::Path::new(&home).join("Library/Fonts/FiraCode-Regular.ttf");
+        let mut db = fontdb::Database::new();
+        if db.load_font_file(&path).is_err() {
+            return;
+        }
+        let lib = Arc::new(FontLibrary::from_database(db));
+        let Some(fonts) = crate::fonts::FontSet::new(lib, &FontConfig::new("Fira Code", 24.0), 1.0) else { return };
+        let mut cache = GlyphCache::new(fonts, 1024, 256);
+        for text in ["->", "!=", "=>", "==="] {
+            let run = cache.ligature(text, 0).unwrap().map(<[_]>::to_vec);
+            let run = run.unwrap_or_else(|| panic!("{text} is a ligature in Fira Code"));
+            assert!(!run.is_empty());
+            assert!(run.iter().all(|(cell, _)| (*cell as usize) < text.len()));
+        }
+        assert!(cache.ligature(".,", 0).unwrap().is_none(), "no ligature: drawn per cell");
+        assert!(cache.ligature("->", 0).unwrap().is_some(), "cached");
     }
 
     #[test]

@@ -15,8 +15,8 @@ use crate::GridError;
 use crate::atlas::AtlasFull;
 use crate::color::Rgba;
 use crate::fonts::{BOLD, CellMetrics, FontConfig, FontLibrary, FontSet, ITALIC, STRONG, StyleBits};
-use crate::frame::{Area, CellRect, CursorShape, Flags, Frame, ImageId, Layer, PxRect};
-use crate::glyph_cache::GlyphCache;
+use crate::frame::{Area, Cell, CellRect, CursorShape, Flags, Frame, ImageId, Layer, PxRect};
+use crate::glyph_cache::{AtlasGlyph, GlyphCache, MAX_LIGATURE_RUN};
 
 const INITIAL_MASK_ATLAS: u32 = 1024;
 const INITIAL_COLOR_ATLAS: u32 = 512;
@@ -145,6 +145,10 @@ pub struct GridRenderer {
     glyphs: Vec<GlyphInstance>,
     image_instances: Vec<ImageInstance>,
     image_draws: Vec<u64>,
+    /// One row's ligature glyphs (cell, glyph) and the cells they replace.
+    row_ligatures: Vec<(u16, AtlasGlyph)>,
+    ligature_cells: Vec<bool>,
+    run_text: String,
     below_count: u32,
     clear: Rgba,
     viewport: (u32, u32),
@@ -326,6 +330,9 @@ impl GridRenderer {
             quads: Vec::new(),
             above: Vec::new(),
             glyphs: Vec::new(),
+            row_ligatures: Vec::new(),
+            ligature_cells: Vec::new(),
+            run_text: String::new(),
             image_instances: Vec::new(),
             image_draws: Vec::new(),
             below_count: 0,
@@ -722,6 +729,8 @@ impl GridRenderer {
         // Glyphs and decorations.
         for row in 0..frame.rows() {
             let y = row as f32 * ch;
+            self.shape_ligatures(frame.row(row), tolerate_full)?;
+            let mut next_ligature = 0;
             for (col, cell) in frame.row(row).iter().enumerate() {
                 let x = col as f32 * cw;
                 let flags = cell.flags;
@@ -779,17 +788,19 @@ impl GridRenderer {
                 if cell.is_blank() {
                     continue;
                 }
-                let style: StyleBits = (if flags.contains(Flags::BOLD) { BOLD } else { 0 })
-                    | (if flags.contains(Flags::ITALIC) {
-                        ITALIC
-                    } else {
-                        0
-                    })
-                    | (if flags.contains(Flags::STRONG) {
-                        STRONG
-                    } else {
-                        0
-                    });
+                if self.ligature_cells.get(col).copied().unwrap_or(false) {
+                    // Part of a shaped run: its glyphs that start in this cell, in its color.
+                    while let Some(&(c, g)) = self.row_ligatures.get(next_ligature)
+                        && c as usize <= col
+                    {
+                        if c as usize == col {
+                            push_glyph(&mut self.glyphs, x, y, &g, fg);
+                        }
+                        next_ligature += 1;
+                    }
+                    continue;
+                }
+                let style = style_bits(flags);
                 match frame.cluster_str(cell) {
                     None => match self.cache.glyph(cell.ch, style) {
                         Ok(Some(g)) => push_glyph(&mut self.glyphs, x, y, &g, fg),
@@ -834,6 +845,48 @@ impl GridRenderer {
 
         self.below_count = self.quads.len() as u32;
         self.quads.append(&mut self.above);
+        Ok(())
+    }
+
+    /// Find the row's runs of ASCII punctuation in one style and shape them
+    /// (programming ligatures): fills `row_ligatures` and `ligature_cells`.
+    fn shape_ligatures(&mut self, cells: &[Cell], tolerate_full: bool) -> Result<(), AtlasFull> {
+        let candidate = |c: &Cell| !c.has_cluster() && c.ch.is_ascii_punctuation();
+        self.row_ligatures.clear();
+        self.ligature_cells.clear();
+        self.ligature_cells.resize(cells.len(), false);
+        let mut col = 0;
+        while col < cells.len() {
+            if !candidate(&cells[col]) {
+                col += 1;
+                continue;
+            }
+            let start = col;
+            let style = style_bits(cells[col].flags) & 3;
+            while col < cells.len()
+                && col - start < MAX_LIGATURE_RUN
+                && candidate(&cells[col])
+                && style_bits(cells[col].flags) & 3 == style
+            {
+                col += 1;
+            }
+            if col - start < 2 {
+                continue;
+            }
+            self.run_text.clear();
+            self.run_text.extend(cells[start..col].iter().map(|c| c.ch));
+            match self.cache.ligature(&self.run_text, style) {
+                Ok(Some(glyphs)) => {
+                    self.row_ligatures.extend(glyphs.iter().map(|&(off, g)| (start as u16 + off, g)));
+                    self.ligature_cells[start..col].fill(true);
+                }
+                Ok(None) => {}
+                Err(e) if !tolerate_full => return Err(e),
+                Err(_) => {}
+            }
+        }
+        // Drawn cell by cell: each cell's glyphs together, in its color.
+        self.row_ligatures.sort_by_key(|&(c, _)| c);
         Ok(())
     }
 
@@ -914,6 +967,12 @@ fn push_quad(list: &mut Vec<QuadInstance>, x: f32, y: f32, w: f32, h: f32, color
 }
 
 #[inline]
+fn style_bits(flags: Flags) -> StyleBits {
+    (if flags.contains(Flags::BOLD) { BOLD } else { 0 })
+        | (if flags.contains(Flags::ITALIC) { ITALIC } else { 0 })
+        | (if flags.contains(Flags::STRONG) { STRONG } else { 0 })
+}
+
 fn push_glyph(
     list: &mut Vec<GlyphInstance>,
     x: f32,
