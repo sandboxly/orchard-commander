@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use common::*;
 use oc_archive::{
-    Archive, ArchiveFS, ArchiveKind, extract_cached, is_archive, open_archive, open_archive_file,
+    Archive, ArchiveFS, extract_cached, is_archive, open_archive, open_archive_file,
 };
 use oc_vfs::{ListOptions, VfsError};
 
@@ -282,6 +282,7 @@ fn corrupt_archives_raise_archive_error() {
         "bad.tar",
         "bad.tar.gz",
         "bad.7z",
+        #[cfg(feature = "rar")]
         "bad.rar",
         "bad.gz",
         "bad.bz2",
@@ -305,6 +306,7 @@ fn corrupt_archives_raise_archive_error() {
     assert!(open_archive_file(&tmp.path().join("missing.zip")).is_err());
 }
 
+#[cfg(feature = "rar")]
 #[test]
 fn rar_listing() {
     let archive = Archive::open(&data("rar3-solid.rar")).unwrap();
@@ -312,10 +314,11 @@ fn rar_listing() {
         names(&archive.list_dir("", ListOptions::default()).unwrap()),
         ["stest1.txt", "stest2.txt"]
     );
-    assert_eq!(archive.kind(), ArchiveKind::Rar);
+    assert_eq!(archive.kind(), oc_archive::ArchiveKind::Rar);
     assert_eq!(archive.member("stest1.txt").unwrap().size, 2048);
 }
 
+#[cfg(feature = "rar")]
 #[test]
 fn rar_extract() {
     for name in ["rar5-solid.rar", "seektest.rar", "rar3-solid.rar"] {
@@ -335,6 +338,7 @@ fn rar_extract() {
     }
 }
 
+#[cfg(feature = "rar")]
 #[test]
 fn rar_streams_are_seekable() {
     let archive = Archive::open(&data("rar5-solid.rar")).unwrap();
@@ -344,6 +348,29 @@ fn rar_streams_are_seekable() {
     let mut buf = [0u8; 4];
     r.read_exact(&mut buf).unwrap();
     assert_eq!(&buf, b"001\n");
+}
+
+#[cfg(not(feature = "rar"))]
+#[test]
+fn without_the_rar_feature_rar_files_are_plain_files() {
+    assert!(!oc_archive::is_archive_name("x.rar"));
+    assert!(open_archive_file(&data("rar5-solid.rar")).is_err());
+}
+
+#[test]
+fn register_plugs_archives_into_oc_vfs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = make("zip", &content(tmp.path()), tmp.path());
+    oc_archive::register();
+    assert!(oc_vfs::is_archive_name("x.zip"));
+    let root = oc_vfs::open_archive(&local(&path)).unwrap().unwrap();
+    assert!(root.child(&["top.txt"]).exists());
+    assert!(oc_vfs::open_archive(&local(&tmp.path().join("plain.txt"))).is_none());
+    // Members materialize through the archive's own extraction cache.
+    let cache = tempfile::tempdir().unwrap();
+    let real = oc_vfs::ops::materialize(&root.child(&["top.txt"]), cache.path()).unwrap();
+    assert_eq!(std::fs::read(&real).unwrap(), b"top");
+    assert!(!real.starts_with(cache.path()));
 }
 
 // -- ArchiveFS ---------------------------------------------------------------

@@ -119,7 +119,7 @@ impl Plan {
 
 /// Whether names in this folder are case-insensitive (typical for macOS and Windows disks).
 fn folds_case(location: &VPath) -> bool {
-    cfg!(any(target_os = "macos", windows)) && location.local_path().is_some()
+    cfg!(any(target_os = "macos", windows)) && location.is_local()
 }
 
 /// How names compare in a folder: folded where the disk ignores case.

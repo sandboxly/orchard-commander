@@ -359,7 +359,8 @@ pub fn measure_cancellable(paths: &[VPath], is_cancelled: &dyn Fn() -> bool) -> 
 // ---------------------------------------------------------------------------
 
 /// A real file with this item's contents: its local path if it has one,
-/// otherwise a copy cached under `cache_root/vfs/<key>/<name>`. The key
+/// else whatever the file system makes itself ([`FileSystem::materialize`](crate::FileSystem::materialize),
+/// e.g. an archive's extraction cache), otherwise a copy cached under `cache_root/vfs/<key>/<name>`. The key
 /// covers display path, size and mtime, so a changed file gets a fresh copy
 /// while repeated previews of the same one are free.
 pub fn materialize(vpath: &VPath, cache_root: &Path) -> Result<PathBuf> {
@@ -370,6 +371,9 @@ pub fn materialize(vpath: &VPath, cache_root: &Path) -> Result<PathBuf> {
 pub fn materialize_cancellable(vpath: &VPath, cache_root: &Path, is_cancelled: &dyn Fn() -> bool) -> Result<PathBuf> {
     if let Some(local) = vpath.local_path() {
         return Ok(local);
+    }
+    if let Some(own) = vpath.fs.materialize(&vpath.path, cache_root) {
+        return own;
     }
     let entry = vpath.stat()?;
     if entry.is_dir {

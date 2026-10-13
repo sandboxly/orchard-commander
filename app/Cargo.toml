@@ -3,6 +3,38 @@ name = "orchard-commander"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version = "1.90"
+description = "A two-panel file manager in the spirit of Norton and Total Commander"
+
+[[bin]]
+name = "orchard-commander"
+path = "src/main.rs"
+
+[features]
+default = ["rar"]
+# RAR archives (vendored UnRAR, see licenses/UnRAR.txt).
+rar = ["oc-archive/rar"]
 
 [dependencies]
 oc-vfs.workspace = true
+oc-local.workspace = true
+oc-archive = { path = "../crates/oc-archive", default-features = false }
+oc-config.workspace = true
+oc-grid.workspace = true
+oc-preview.workspace = true
+oc-ui.workspace = true
+log = "0.4"
+serde_json = "1.0"
+tempfile.workspace = true
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+png = "0.18"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.21", default-features = false }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData", "NSString"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder", "NSRunningApplication"] }
+
+[dev-dependencies]
+tempfile.workspace = true

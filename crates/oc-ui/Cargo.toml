@@ -6,3 +6,16 @@ license.workspace = true
 
 [dependencies]
 oc-vfs.workspace = true
+oc-local.workspace = true
+oc-config.workspace = true
+oc-grid.workspace = true
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+arboard = { version = "3.6", default-features = false }
+log = "0.4"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"
+
+[dev-dependencies]
+tempfile.workspace = true
+oc-archive.workspace = true

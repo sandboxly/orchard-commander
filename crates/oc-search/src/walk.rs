@@ -85,7 +85,7 @@ pub(crate) fn run_compiled(
         progress,
         stop: &stop,
         tx,
-        opener: if query.search_archives { query.archive_opener.as_deref() } else { None },
+        opener: if query.search_archives { query.effective_opener() } else { None },
         pool: OnceLock::new(),
     };
     std::thread::scope(|s| {

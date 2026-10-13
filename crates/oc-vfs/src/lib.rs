@@ -260,6 +260,13 @@ pub trait FileSystem: Send + Sync {
         None
     }
 
+    /// Whether this is the local disk: paths are absolute OS paths and
+    /// native operations (renames, fast copies, opening with the default
+    /// app, watching) apply. Only `oc_local::LocalFS` says yes.
+    fn is_local(&self) -> bool {
+        false
+    }
+
     /// Two handles to the same file system compare equal through this
     /// (e.g. two ArchiveFS opened on the same file). Default: object identity.
     fn identity(&self) -> String {
@@ -300,6 +307,14 @@ pub trait FileSystem: Send + Sync {
 
     /// A real path for this item if one exists without copying.
     fn local_path(&self, _path: &str) -> Option<PathBuf> {
+        None
+    }
+
+    /// A real file with this item's contents made the file system's own way
+    /// (an archive extracts into its extraction cache), or `None` to let
+    /// [`ops::materialize`] stream a copy under `cache_root`. Called before
+    /// the generic copy, after [`local_path`](Self::local_path).
+    fn materialize(&self, _path: &str, _cache_root: &std::path::Path) -> Option<Result<PathBuf>> {
         None
     }
 
@@ -365,6 +380,53 @@ pub trait FileSystem: Send + Sync {
 
     /// Release connections etc.
     fn close(&self) {}
+}
+
+// ---------------------------------------------------------------------------
+// Archive opener hook
+// ---------------------------------------------------------------------------
+
+/// Opens an archive file as a browsable file system: `None` if the file
+/// isn't an archive the opener handles, else the archive's root (or why it
+/// can't be opened). See [`set_archive_opener`].
+pub type ArchiveOpenerFn = dyn Fn(&VPath) -> Option<Result<VPath>> + Send + Sync;
+
+static ARCHIVE_OPENER: std::sync::RwLock<Option<Arc<ArchiveOpenerFn>>> = std::sync::RwLock::new(None);
+
+/// Register the process-wide archive opener. The app does this once at
+/// start with the archive back ends (`oc_archive::register`), so panels,
+/// previews and searches can enter archives without depending on them.
+/// A later call replaces the opener.
+pub fn set_archive_opener(opener: Arc<ArchiveOpenerFn>) {
+    *ARCHIVE_OPENER.write().unwrap_or_else(|p| p.into_inner()) = Some(opener);
+}
+
+/// The registered opener, if any.
+pub fn archive_opener() -> Option<Arc<ArchiveOpenerFn>> {
+    ARCHIVE_OPENER.read().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+/// Open `file` as an archive with the registered opener. `None` when no
+/// opener is registered or `file` isn't an archive it knows (by name).
+pub fn open_archive(file: &VPath) -> Option<Result<VPath>> {
+    archive_opener().and_then(|open| open(file))
+}
+
+/// Whether a file of this name is an archive the registered back ends can
+/// enter (by name only; cheap enough for every row of a listing). False
+/// until [`set_archive_name_test`] was called.
+pub fn is_archive_name(name: &str) -> bool {
+    ARCHIVE_NAMES.read().unwrap_or_else(|p| p.into_inner()).as_ref().is_some_and(|f| f(name))
+}
+
+/// Name test that goes with the opener (see [`set_archive_name_test`]).
+pub type ArchiveNameFn = dyn Fn(&str) -> bool + Send + Sync;
+
+static ARCHIVE_NAMES: std::sync::RwLock<Option<Arc<ArchiveNameFn>>> = std::sync::RwLock::new(None);
+
+/// Register which file names count as archives (panels decide Enter by name).
+pub fn set_archive_name_test(test: Arc<ArchiveNameFn>) {
+    *ARCHIVE_NAMES.write().unwrap_or_else(|p| p.into_inner()) = Some(test);
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +500,11 @@ impl VPath {
         self.fs.local_path(&self.path)
     }
 
+    /// On the local disk (see [`FileSystem::is_local`]).
+    pub fn is_local(&self) -> bool {
+        self.fs.is_local()
+    }
+
     pub fn open_read(&self) -> Result<Box<dyn ReadStream>> {
         self.fs.open_read(&self.path)
     }
@@ -496,6 +563,23 @@ mod tests {
         assert_eq!(names(sort_entries(es.clone(), ListOptions::default())), ["adir", "Zdir", "A.md", "b.txt"]);
         let rev = ListOptions { reverse: true, sort_key: SortKey::Size, show_hidden: true };
         assert_eq!(names(sort_entries(es, rev)), ["Zdir", "adir", "A.md", "b.txt", ".hidden"]);
+    }
+
+    #[test]
+    fn archive_hooks() {
+        use crate::testing::MemFS;
+        let fs = MemFS::new();
+        fs.add_file("a.zip", b"x".to_vec());
+        let root = fs.root();
+        let file = root.child(&["a.zip"]);
+        assert!(!root.is_local());
+        set_archive_name_test(Arc::new(|n: &str| n.ends_with(".zip")));
+        set_archive_opener(Arc::new(|f: &VPath| {
+            f.name().ends_with(".zip").then(|| Ok(f.parent().expect("has parent")))
+        }));
+        assert!(is_archive_name("b.zip") && !is_archive_name("b.txt"));
+        assert_eq!(open_archive(&file).unwrap().unwrap(), root);
+        assert!(open_archive(&root.child(&["x.txt"])).is_none());
     }
 
     #[test]

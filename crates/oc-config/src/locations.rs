@@ -301,8 +301,11 @@ pub fn is_valid(value: &Value) -> bool {
 
 /// What the app knows about its file systems that [`FileSystem`] doesn't say.
 pub trait SpecContext {
-    /// Whether this is the local disk (paths are OS paths).
-    fn is_local(&self, fs: &dyn FileSystem) -> bool;
+    /// Whether this is the local disk (paths are OS paths). Default: what
+    /// the file system says ([`FileSystem::is_local`]).
+    fn is_local(&self, fs: &dyn FileSystem) -> bool {
+        fs.is_local()
+    }
     /// The connection account of a server file system, if it is one the app
     /// knows (and can therefore reconnect to).
     fn account_of(&self, fs: &dyn FileSystem) -> Option<String>;
@@ -637,6 +640,9 @@ mod tests {
         fn display(&self, path: &str) -> String {
             path.into()
         }
+        fn is_local(&self) -> bool {
+            self.name == "local"
+        }
         fn open_read(&self, p: &str) -> oc_vfs::Result<Box<dyn ReadStream>> {
             Err(oc_vfs::VfsError::NotFound(p.into()))
         }
@@ -652,9 +658,6 @@ mod tests {
     struct Ctx(Option<&'static str>);
 
     impl SpecContext for Ctx {
-        fn is_local(&self, fs: &dyn FileSystem) -> bool {
-            fs.type_name() == "local"
-        }
         fn account_of(&self, _: &dyn FileSystem) -> Option<String> {
             self.0.map(String::from)
         }

@@ -208,10 +208,10 @@ pub fn split_server_url(url: &str, scheme: &str) -> Result<(Params, Vec<String>)
     }
     let mut params = Params::new();
     params.insert("host".into(), Value::String(host.to_lowercase()));
-    if let Some(user) = userinfo.map(|u| u.split(':').next().unwrap_or("")) {
-        if !user.is_empty() {
-            params.insert("username".into(), Value::String(unquote(user)));
-        }
+    if let Some(user) = userinfo.map(|u| u.split(':').next().unwrap_or(""))
+        && !user.is_empty()
+    {
+        params.insert("username".into(), Value::String(unquote(user)));
     }
     if let Some(p) = port.filter(|p| !p.is_empty()) {
         let n: u16 = p.parse().map_err(|_| format!("Port could not be cast to integer value as '{p}'"))?;

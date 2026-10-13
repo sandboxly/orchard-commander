@@ -99,8 +99,37 @@ pub struct Query {
     pub search_archives: bool,
     /// Content search downloads cloud placeholders only if true.
     pub include_online_only: bool,
-    /// Needed for `search_archives`; without one archives stay closed.
+    /// For `search_archives`; None: the process-wide opener registered with
+    /// [`oc_vfs::set_archive_opener`] ([`VfsArchiveOpener`]). Without
+    /// either, archives stay closed.
     pub archive_opener: Option<Arc<dyn ArchiveOpener>>,
+}
+
+/// [`ArchiveOpener`] over the hooks the app registered with `oc_vfs`
+/// ([`oc_vfs::set_archive_opener`], [`oc_vfs::set_archive_name_test`]).
+pub struct VfsArchiveOpener;
+
+impl ArchiveOpener for VfsArchiveOpener {
+    fn is_archive(&self, name: &str) -> bool {
+        oc_vfs::is_archive_name(name)
+    }
+
+    fn open(&self, file: &VPath) -> oc_vfs::Result<VPath> {
+        oc_vfs::open_archive(file).unwrap_or_else(|| {
+            Err(oc_vfs::VfsError::Operation(format!("{} is not a supported archive", file.name())))
+        })
+    }
+}
+
+impl Query {
+    /// The opener a search uses: the query's own, else the registered one.
+    pub(crate) fn effective_opener(&self) -> Option<&dyn ArchiveOpener> {
+        static HOOK: VfsArchiveOpener = VfsArchiveOpener;
+        match self.archive_opener.as_deref() {
+            Some(own) => Some(own),
+            None => oc_vfs::archive_opener().is_some().then_some(&HOOK as &dyn ArchiveOpener),
+        }
+    }
 }
 
 impl Default for Query {

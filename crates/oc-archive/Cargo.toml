@@ -4,6 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["rar"]
+# RAR archives through the vendored UnRAR library (RARLAB's UnRAR license:
+# freeware, not open source; see licenses/UnRAR.txt). Without this feature
+# .rar files are ordinary files.
+rar = ["dep:unrar"]
+
 [dependencies]
 oc-vfs.workspace = true
 thiserror.workspace = true
@@ -14,5 +21,5 @@ flate2 = "1.1"
 bzip2 = "0.6"
 liblzma = "0.4"
 sevenz-rust2 = "0.24"
-unrar = "0.5.8"
+unrar = { version = "0.5.8", optional = true }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }

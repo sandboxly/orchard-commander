@@ -1,8 +1,13 @@
 //! Read-only access to archives as if they were directories.
 //!
 //! Supported: zip, tar (plain/gz/bz2/xz), single-file gzip/bzip2/xz, 7z and
-//! rar — all in-process (the RAR decoder is the vendored unrar library), so,
-//! unlike the Python version, no external extraction tool is needed.
+//! rar — all in-process (the RAR decoder is the vendored unrar library, behind
+//! the default `rar` cargo feature), so, unlike the Python version, no
+//! external extraction tool is needed.
+//!
+//! Call [`register`] once at app start: it plugs [`open_archive`] into
+//! [`oc_vfs::open_archive`] so panels, previews and searches can enter
+//! archives without depending on this crate.
 //!
 //! Inside an archive, paths are POSIX strings relative to the archive root,
 //! with "" meaning the root. An [`Archive`] is shared between the UI and
@@ -21,6 +26,7 @@ use oc_vfs::VfsError;
 mod archive;
 mod fs;
 mod io;
+#[cfg(feature = "rar")]
 mod rar;
 mod sevenz;
 mod single;
@@ -29,6 +35,18 @@ mod zip;
 
 pub use archive::{Archive, Member};
 pub use fs::{ArchiveFS, is_archive, open_archive};
+
+/// Register the archive back ends with `oc_vfs` (see [`oc_vfs::set_archive_opener`]
+/// and [`oc_vfs::set_archive_name_test`]). Idempotent; call once at start.
+pub fn register() {
+    oc_vfs::set_archive_name_test(std::sync::Arc::new(is_archive_name));
+    oc_vfs::set_archive_opener(std::sync::Arc::new(|file: &oc_vfs::VPath| {
+        if !is_archive_name(&file.name()) {
+            return None;
+        }
+        Some(open_archive(file).map_err(VfsError::from))
+    }));
+}
 
 /// What kind of archive a file name says it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -72,6 +90,7 @@ const SUFFIXES: &[(&str, ArchiveKind)] = &[
     (".tar", ArchiveKind::Tar),
     (".zip", ArchiveKind::Zip),
     (".7z", ArchiveKind::SevenZ),
+    #[cfg(feature = "rar")]
     (".rar", ArchiveKind::Rar),
     (".gz", ArchiveKind::Gz),
     (".bz2", ArchiveKind::Bz2),
@@ -177,6 +196,7 @@ pub(crate) fn local_time_to_epoch(y: i32, mo: u32, d: u32, h: u32, mi: u32, s: u
 }
 
 /// An MS-DOS date/time (zip, RAR) in local time as seconds since the epoch.
+#[cfg_attr(not(feature = "rar"), allow(dead_code))]
 pub(crate) fn dos_time_to_epoch(dos: u32) -> f64 {
     let (date, time) = (dos >> 16, dos & 0xFFFF);
     local_time_to_epoch(
@@ -309,7 +329,10 @@ mod tests {
         assert_eq!(archive_type("x.txz"), Some(ArchiveKind::Tar));
         assert_eq!(archive_type("x.lzma"), Some(ArchiveKind::Xz));
         assert_eq!(archive_type("x.7Z"), Some(ArchiveKind::SevenZ));
+        #[cfg(feature = "rar")]
         assert_eq!(archive_type("x.rar"), Some(ArchiveKind::Rar));
+        #[cfg(not(feature = "rar"))]
+        assert_eq!(archive_type("x.rar"), None);
         assert_eq!(archive_type(".zip"), None);
         assert_eq!(archive_type(".tar.gz"), Some(ArchiveKind::Gz)); // like Python: ".tar" + ".gz"
         assert_eq!(archive_type("x.txt"), None);

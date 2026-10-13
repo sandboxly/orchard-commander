@@ -191,7 +191,9 @@ pub struct LoadContext {
     /// for previewers that bake colors into their data. The built-ins don't:
     /// they emit theme roles (see [`crate::Color`]) that the UI resolves.
     pub syntax_style: String,
-    /// Lists archives for the listing previewer; None: archives get a hex dump.
+    /// Lists archives for the listing previewer; None: the process-wide
+    /// opener registered with [`oc_vfs::set_archive_opener`] (if none is
+    /// registered either, archives get a hex dump).
     pub open_archive: Option<ArchiveOpener>,
     /// Where copies of files from other file systems go (see
     /// [`PreviewSource::local_file`]); None: a folder in the system temp dir.

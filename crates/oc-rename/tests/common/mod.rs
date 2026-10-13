@@ -34,6 +34,10 @@ impl FileSystem for LocalFs {
         "local".into()
     }
 
+    fn is_local(&self) -> bool {
+        true
+    }
+
     fn list_dir(&self, path: &str, opts: ListOptions) -> Result<Vec<Entry>> {
         let entries = std::fs::read_dir(path)?.map(|e| entry(&e?.path())).collect::<Result<Vec<_>>>()?;
         Ok(sort_entries(entries, opts))
@@ -125,6 +129,9 @@ impl FileSystem for Flaky {
     }
     fn local_path(&self, path: &str) -> Option<PathBuf> {
         self.inner.local_path(path)
+    }
+    fn is_local(&self) -> bool {
+        self.inner.is_local()
     }
     fn rename(&self, src: &str, dst: &str) -> Result<()> {
         if self.calls.fetch_add(1, Ordering::SeqCst) + 1 == self.fail_on {

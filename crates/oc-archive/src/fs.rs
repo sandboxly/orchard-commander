@@ -45,7 +45,8 @@ impl ArchiveFS {
     }
 
     /// A real file with this member's contents, extracted to the temp cache
-    /// once (the trait has no hook for this yet; see `oc_vfs::ops::materialize`).
+    /// once. `oc_vfs::ops::materialize` gets here through
+    /// [`FileSystem::materialize`].
     pub fn materialize(&self, path: &str) -> Result<PathBuf> {
         extract_cached(&self.archive, path)
     }
@@ -66,6 +67,15 @@ impl FileSystem for ArchiveFS {
 
     fn identity(&self) -> String {
         self.identity.clone()
+    }
+
+    /// Members come from the extraction cache (one extraction per member,
+    /// shared by previews and "open with"), not `cache_root`.
+    fn materialize(&self, path: &str, _cache_root: &std::path::Path) -> Option<Result<PathBuf>> {
+        if self.archive.is_dir(path) {
+            return None; // ops::materialize reports directories itself
+        }
+        Some(extract_cached(&self.archive, path))
     }
 
     fn list_dir(&self, path: &str, opts: ListOptions) -> Result<Vec<Entry>> {

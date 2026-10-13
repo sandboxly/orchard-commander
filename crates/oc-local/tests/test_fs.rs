@@ -479,6 +479,7 @@ fn local_fs_paths() {
     assert_eq!(lfs.type_name(), "local disk");
     let caps = lfs.capabilities();
     assert!(caps.writable && caps.can_trash && caps.can_rename && caps.watchable);
+    assert!(lfs.is_local() && local("/").is_local());
     #[cfg(unix)]
     {
         assert_eq!(lfs.basename("/a/b.txt"), "b.txt");

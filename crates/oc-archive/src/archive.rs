@@ -47,6 +47,7 @@ pub(crate) enum Source {
     /// Index into the 7z file list.
     SevenZ(usize),
     /// Matched by normalized name while scanning the RAR headers.
+    #[cfg(feature = "rar")]
     Rar,
 }
 
@@ -157,7 +158,12 @@ impl Archive {
             ArchiveKind::Zip => crate::zip::list(path),
             ArchiveKind::Tar => crate::tar::list(path),
             ArchiveKind::SevenZ => crate::sevenz::list(path),
+            #[cfg(feature = "rar")]
             ArchiveKind::Rar => crate::rar::list(path),
+            #[cfg(not(feature = "rar"))]
+            ArchiveKind::Rar => Err(ListError::User(format!(
+                "RAR support is not included in this build: {display_name}"
+            ))),
             ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => {
                 crate::single::list(path, kind, &meta)
             }

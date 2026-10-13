@@ -75,6 +75,10 @@ impl FileSystem for LocalFS {
         LOCAL_IDENTITY.to_string()
     }
 
+    fn is_local(&self) -> bool {
+        true
+    }
+
     fn list_dir(&self, path: &str, opts: ListOptions) -> Result<Vec<Entry>> {
         let p = Path::new(path);
         list_dir(p, opts).at(p)
@@ -265,9 +269,10 @@ pub fn local(path: impl AsRef<Path>) -> VPath {
     VPath::new(local_fs(), path_string(absolute(path.as_ref())))
 }
 
-/// Whether `v` is on the local disk (any [`LocalFS`] instance).
+/// Whether `v` is on the local disk (any [`LocalFS`] instance); same as
+/// [`VPath::is_local`].
 pub fn is_local(v: &VPath) -> bool {
-    v.fs.identity() == LOCAL_IDENTITY
+    v.fs.is_local()
 }
 
 /// Copy (or move) `sources` to `target` across any file systems. Target
