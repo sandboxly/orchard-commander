@@ -4,11 +4,12 @@
 //! russh-sftp multiplexes requests by id, so threads don't wait for each
 //! other's round trips. Streams (downloads, uploads) take a channel of their
 //! own from a small pool, so a long transfer never delays a listing behind
-//! megabytes of queued file data.
+//! megabytes of queued file data. When the server allows no more channels
+//! (OpenSSH: `MaxSessions`), streams share one.
 
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
 use oc_vfs::VfsError;
@@ -44,6 +45,10 @@ pub(crate) struct Sftp {
     pub posix_rename: bool,
     pub read_chunk: u32,
     pub write_chunk: u32,
+    /// A stream channel (pooled when idle), not the metadata channel.
+    stream: bool,
+    /// Streams using this channel (more than one when channels ran out).
+    users: AtomicUsize,
     dead: AtomicBool,
 }
 
@@ -68,8 +73,10 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Open an SFTP channel on `ssh` and negotiate the protocol.
-pub(crate) async fn open_sftp(ssh: &Ssh, timeout: Duration, request_timeout_secs: u64) -> Result<Sftp, String> {
+/// Open an SFTP channel on `ssh` and negotiate the protocol: the metadata
+/// channel, or (`stream`) one for a download or upload.
+pub(crate) async fn open_sftp(ssh: &Ssh, timeout: Duration, stream: bool) -> Result<Sftp, String> {
+    let request_timeout_secs = if stream { STREAM_REQUEST_TIMEOUT_SECS } else { REQUEST_TIMEOUT_SECS };
     let channel = tokio::time::timeout(timeout, ssh.channel_open_session())
         .await
         .map_err(|_| "timed out opening an SFTP channel".to_string())?
@@ -105,6 +112,8 @@ pub(crate) async fn open_sftp(ssh: &Ssh, timeout: Duration, request_timeout_secs
         posix_rename: has("posix-rename@openssh.com"),
         read_chunk,
         write_chunk,
+        stream,
+        users: AtomicUsize::new(0),
         dead: AtomicBool::new(false),
     })
 }
@@ -117,6 +126,8 @@ pub(crate) struct Conn {
     timeout: Duration,
     control: Mutex<Option<Arc<Sftp>>>,
     pool: Mutex<Vec<Arc<Sftp>>>,
+    /// Every stream channel opened, to share one when the server allows no more.
+    streams: Mutex<Vec<Weak<Sftp>>>,
     closed: AtomicBool,
 }
 
@@ -129,6 +140,7 @@ impl Conn {
             timeout,
             control: Mutex::new(None),
             pool: Mutex::new(Vec::new()),
+            streams: Mutex::new(Vec::new()),
             closed: AtomicBool::new(false),
         }
     }
@@ -145,12 +157,12 @@ impl Conn {
         VfsError::Io(io::Error::new(io::ErrorKind::NotConnected, format!("Connection to {} was lost", self.label)))
     }
 
-    fn open(&self, request_timeout_secs: u64) -> Result<Arc<Sftp>, VfsError> {
+    fn open(&self, stream: bool) -> Result<Arc<Sftp>, VfsError> {
         if !self.is_connected() {
             return Err(self.lost());
         }
         let (ssh, timeout) = (self.ssh.clone(), self.timeout);
-        match block_on(async move { open_sftp(&ssh, timeout, request_timeout_secs).await }) {
+        match block_on(async move { open_sftp(&ssh, timeout, stream).await }) {
             Ok(Ok(sftp)) => Ok(Arc::new(sftp)),
             _ if !self.is_connected() => Err(self.lost()),
             Ok(Err(e)) => Err(VfsError::Io(io::Error::other(format!("{}: {e}", self.type_name)))),
@@ -164,27 +176,64 @@ impl Conn {
         if let Some(s) = control.as_ref().filter(|s| !s.is_dead()) {
             return Ok(s.clone());
         }
-        let fresh = self.open(REQUEST_TIMEOUT_SECS)?;
+        let fresh = self.open(false)?;
         *control = Some(fresh.clone());
         Ok(fresh)
     }
 
     /// A channel for a stream; give it back with [`Conn::checkin`].
+    ///
+    /// Servers limit the channels per connection (OpenSSH: `MaxSessions`,
+    /// 10 by default), so when no further one can be opened, the stream
+    /// shares the least busy stream channel (requests are multiplexed by id).
     pub fn checkout(&self) -> Result<Arc<Sftp>, VfsError> {
+        let sftp = self.find_channel()?;
+        sftp.users.fetch_add(1, Ordering::Relaxed);
+        Ok(sftp)
+    }
+
+    fn find_channel(&self) -> Result<Arc<Sftp>, VfsError> {
         while let Some(s) = lock(&self.pool).pop() {
             if !s.is_dead() {
                 return Ok(s);
             }
         }
-        self.open(STREAM_REQUEST_TIMEOUT_SECS)
+        let error = match self.open(true) {
+            Ok(sftp) => {
+                let mut streams = lock(&self.streams);
+                streams.retain(|w| w.strong_count() > 0);
+                streams.push(Arc::downgrade(&sftp));
+                return Ok(sftp);
+            }
+            Err(e) => e,
+        };
+        if !self.is_connected() {
+            return Err(error);
+        }
+        let shared = lock(&self.streams)
+            .iter()
+            .filter_map(Weak::upgrade)
+            .filter(|s| !s.is_dead())
+            .min_by_key(|s| s.users.load(Ordering::Relaxed));
+        match shared {
+            Some(sftp) => Ok(sftp),
+            None => {
+                log::debug!("{}: a stream shares the metadata channel ({error})", self.label);
+                self.control().map_err(|_| error)
+            }
+        }
     }
 
+    /// Give back a stream's channel: kept for reuse unless it broke or
+    /// another stream still uses it.
     pub fn checkin(&self, sftp: Arc<Sftp>) {
-        if sftp.is_dead() || !self.is_connected() {
+        let before = sftp.users.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| Some(n.saturating_sub(1)));
+        let left = before.unwrap_or(0).saturating_sub(1);
+        if left > 0 || !sftp.stream || sftp.is_dead() || !self.is_connected() {
             return;
         }
         let mut pool = lock(&self.pool);
-        if pool.len() < POOL_MAX {
+        if pool.len() < POOL_MAX && !pool.iter().any(|p| Arc::ptr_eq(p, &sftp)) {
             pool.push(sftp);
         }
     }

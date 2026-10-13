@@ -18,7 +18,7 @@ use russh::{MethodKind, cipher, kex, mac};
 use crate::fs::SftpFileSystem;
 use crate::known_hosts;
 use crate::runtime::block_on;
-use crate::session::{Conn, REQUEST_TIMEOUT_SECS, open_sftp};
+use crate::session::{Conn, open_sftp};
 
 pub const DEFAULT_PORT: u16 = 22;
 pub(crate) const APP_NAME: &str = "Orchard Commander";
@@ -605,7 +605,7 @@ pub fn connect(
     let ssh = Arc::new(handle);
     let first = {
         let ssh = ssh.clone();
-        block_on(async move { open_sftp(&ssh, timeout, REQUEST_TIMEOUT_SECS).await }).map_err(|e| fail(&e, false))?
+        block_on(async move { open_sftp(&ssh, timeout, false).await }).map_err(|e| fail(&e, false))?
     };
     let sftp = first.map_err(|e| fail(&e, false))?;
     let conn = Arc::new(Conn::new(ssh, label, timeout));

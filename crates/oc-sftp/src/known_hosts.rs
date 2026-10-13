@@ -117,6 +117,26 @@ mod tests {
     }
 
     #[test]
+    fn rsa_and_ecdsa_like_openssh() {
+        // Lines and fingerprints from ssh-keygen.
+        let rsa = "AAAAB3NzaC1yc2EAAAADAQABAAAAgQC8b7RLyXMw5twBpgCAzMtwIQV9oQgVwnKaJgRNvc3LdTuPuQ11TmEclg8VUEdDi2EEqHedhQDfJA2L7H/RbDxh8g93cXK24wpsOxZgrIDLG9hP3V4Yo2qF11G7zsZA2CUfuNMohNNDoU4NFYWoSgOmBtx3Yl7jX5wc91VVOCHfCw==";
+        let ec = "AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBOZDXZo9VY1NT+HZaxcYd+pmT8EqCR8KFBEdhZKxEq9AXc4A+N9JG3PQYdIbcvavukhV2C0WV/6WJDU6R8LdGbA=";
+        let cases = [
+            (rsa, "ssh-rsa", "SHA256:OteGhprKEXjWqF/R0Qgp5W4IPo27bN+8T6WDnA7Cr9A"),
+            (ec, "ecdsa-sha2-nistp256", "SHA256:3EZMIknK96owwVFctlIXnYiL0t6V7LMQD/6fPq0A9uk"),
+        ];
+        for (blob, kind, fp) in cases {
+            let key = russh::keys::parse_public_key_base64(blob).unwrap();
+            assert_eq!(key_type(&key), kind);
+            assert_eq!(fingerprint(&key), fp);
+            assert_eq!(entry_line("h", &key).unwrap(), format!("h {kind} {blob}\n"));
+            let text = format!("h,[h]:2222 {kind} {blob}\n");
+            assert_eq!(lookup_in(&text, "[h]:2222"), vec![key.clone()]);
+            assert_eq!(lookup_in(&text, "h"), vec![key]);
+        }
+    }
+
+    #[test]
     fn hashed_entries() {
         // `ssh-keygen -H` style: |1|base64(salt)|base64(HMAC-SHA1(salt, name))
         let salt = [7u8; 20];

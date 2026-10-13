@@ -48,6 +48,11 @@ pub struct ServerOptions {
     pub posix_rename: bool,
     /// The host key; None: a fresh Ed25519 key.
     pub host_key: Option<PrivateKey>,
+    /// Refuse channels beyond this many open at once (OpenSSH's MaxSessions).
+    pub max_sessions: Option<usize>,
+    /// Extra directory entries every listing returns (a broken or hostile
+    /// server: "", "../x", "a/b"…), listed as folders.
+    pub bogus_names: Vec<String>,
 }
 
 impl Default for ServerOptions {
@@ -61,6 +66,8 @@ impl Default for ServerOptions {
             limits: None,
             posix_rename: true,
             host_key: None,
+            max_sessions: None,
+            bogus_names: Vec::new(),
         }
     }
 }
@@ -236,13 +243,14 @@ impl russh::server::Server for Server {
     type Handler = SshSession;
 
     fn new_client(&mut self, _: Option<SocketAddr>) -> SshSession {
-        SshSession { shared: self.shared.clone(), channels: HashMap::new() }
+        SshSession { shared: self.shared.clone(), channels: HashMap::new(), open_channels: 0 }
     }
 }
 
 struct SshSession {
     shared: Arc<Shared>,
     channels: HashMap<ChannelId, Channel<Msg>>,
+    open_channels: usize,
 }
 
 impl SshSession {
@@ -302,8 +310,18 @@ impl russh::server::Handler for SshSession {
         reply: ChannelOpenHandle,
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if self.shared.opts.max_sessions.is_some_and(|max| self.open_channels >= max) {
+            drop(reply); // refused (administratively prohibited)
+            return Ok(());
+        }
+        self.open_channels += 1;
         self.channels.insert(channel.id(), channel);
         reply.accept().await;
+        Ok(())
+    }
+
+    async fn channel_close(&mut self, _channel: ChannelId, _session: &mut Session) -> Result<(), Self::Error> {
+        self.open_channels = self.open_channels.saturating_sub(1);
         Ok(())
     }
 
@@ -539,6 +557,11 @@ impl russh_sftp::server::Handler for SftpHandler {
             let item = item.map_err(fail)?;
             let meta = fs::symlink_metadata(item.path()).map_err(fail)?;
             files.push(File::new(item.file_name().to_string_lossy(), attrs(&meta)));
+        }
+        if let Ok(meta) = fs::metadata(&dir) {
+            for name in &self.shared.opts.bogus_names {
+                files.push(File::new(name.as_str(), attrs(&meta)));
+            }
         }
         Ok(Handle { id, handle: self.add(Open::Dir(Some(files))) })
     }

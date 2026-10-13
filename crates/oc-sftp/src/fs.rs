@@ -35,6 +35,13 @@ fn is_link_mode(mode: u32) -> bool {
     mode & S_IFMT == S_IFLNK
 }
 
+/// Whether a name from a listing names a child: not ".", "..", empty or a
+/// path ("a/b", "../x"), which a broken or hostile server could send to make
+/// a download write outside its target folder or a recursive remove loop.
+fn is_plain_name(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains('/') && !name.contains('\0')
+}
+
 /// An entry from a listing's (lstat) attributes and, for a symlink, its
 /// target's attributes (None if dangling). Port of `SFTPFileSystem._entry`.
 fn make_entry(name: &str, attrs: &FileAttributes, target: Option<&FileAttributes>) -> Entry {
@@ -159,14 +166,18 @@ impl SftpFileSystem {
             let mut files = Vec::new();
             let listed = loop {
                 match s.raw.readdir(handle.clone()).await {
-                    Ok(name) => {
-                        files.extend(name.files.into_iter().filter(|f| f.filename != "." && f.filename != ".."))
-                    }
+                    // A server that never says EOF but runs out of names is done too.
+                    Ok(name) if name.files.is_empty() => break Ok(()),
+                    Ok(name) => files.extend(name.files.into_iter().filter(|f| is_plain_name(&f.filename))),
                     Err(e) if is_eof(&e) => break Ok(()),
                     Err(e) => break Err(e),
                 }
             };
-            let _ = s.raw.close(handle).await;
+            // Closed in the background: one round trip less for a listing.
+            let closer = s.clone();
+            tokio::spawn(async move {
+                let _ = closer.raw.close(handle).await;
+            });
             listed?;
             // Follow symlinks, pipelined rather than one round trip each.
             let lookups: Vec<_> = files

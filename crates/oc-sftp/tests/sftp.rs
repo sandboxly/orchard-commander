@@ -505,3 +505,116 @@ fn home_and_start_path() {
     assert_eq!(remote.label(), format!("{USER}@127.0.0.1:{}", f.server.port));
     remote.close();
 }
+
+#[test]
+fn streams_share_channels_when_the_server_allows_no_more() {
+    // OpenSSH refuses more than MaxSessions (10) channels per connection;
+    // here 3: the metadata channel and two for streams.
+    let f = fixture_with(ServerOptions { max_sessions: Some(3), ..Default::default() });
+    let expected = fs::read(f.server.root.join("big.bin")).unwrap();
+    let remote = f.connect();
+    let mut readers: Vec<_> = (0..6).map(|i| remote.open_read("/big.bin").unwrap_or_else(|e| panic!("{i}: {e}"))).collect();
+    let mut writers: Vec<_> =
+        (0..3).map(|i| remote.open_write(&format!("/w{i}.bin")).unwrap_or_else(|e| panic!("w{i}: {e}"))).collect();
+    let mut got = vec![Vec::new(); readers.len()];
+    let mut buf = vec![0u8; 50_000];
+    let mut rounds = 0u64;
+    // Interleaved, so requests of several streams are in flight on a shared channel.
+    loop {
+        let mut progressed = false;
+        for (r, out) in readers.iter_mut().zip(got.iter_mut()) {
+            let n = r.read(&mut buf).unwrap();
+            out.extend_from_slice(&buf[..n]);
+            progressed |= n > 0;
+        }
+        for w in &mut writers {
+            w.write_all(&expected[..20_000]).unwrap();
+        }
+        rounds += 1;
+        if !progressed {
+            break;
+        }
+    }
+    assert!(got.iter().all(|g| *g == expected));
+    for w in writers {
+        w.finish().unwrap();
+    }
+    drop(readers);
+    assert_eq!(fs::metadata(f.server.root.join("w0.bin")).unwrap().len(), 20_000 * rounds);
+    assert!(remote.list_dir("/", ListOptions::default()).is_ok());
+    let mut again = Vec::new();
+    remote.open_read("/docs/readme.txt").unwrap().read_to_end(&mut again).unwrap();
+    assert_eq!(again, b"hello from sftp");
+    remote.close();
+
+    // A server allowing a single channel: streams share the metadata channel.
+    let f = fixture_with(ServerOptions { max_sessions: Some(1), ..Default::default() });
+    let remote = f.connect();
+    let mut a = remote.open_read("/big.bin").unwrap();
+    let mut b = remote.open_read("/big.bin").unwrap();
+    let mut w = remote.open_write("/one.bin").unwrap();
+    w.write_all(&expected[..100_000]).unwrap();
+    let (mut da, mut db) = (Vec::new(), Vec::new());
+    a.read_to_end(&mut da).unwrap();
+    assert_eq!(remote.list_dir("/docs", ListOptions::default()).unwrap().len(), 1);
+    b.read_to_end(&mut db).unwrap();
+    w.finish().unwrap();
+    assert!(da == expected && db == expected);
+    assert_eq!(fs::read(f.server.root.join("one.bin")).unwrap(), &expected[..100_000]);
+    drop((a, b));
+    assert!(remote.list_dir("/", ListOptions::default()).is_ok());
+    remote.close();
+}
+
+#[test]
+fn bogus_names_from_the_server_are_skipped() {
+    // A broken or hostile server must not make a download write outside its
+    // target ("../x"), nor walks and recursive removes loop ("", ".").
+    let f = fixture_with(ServerOptions {
+        bogus_names: ["", ".", "..", "../escape", "a/b", "/abs"].map(String::from).to_vec(),
+        ..Default::default()
+    });
+    let remote = f.connect();
+    let all = remote.list_dir("/", ListOptions { show_hidden: true, ..Default::default() }).unwrap();
+    assert_eq!(names(&all), ["docs", ".profile", "big.bin"].map(String::from));
+    let walked: Vec<_> = remote.walk("/docs").unwrap().map(|r| r.unwrap().0.join("/")).collect();
+    assert_eq!(walked, ["", "readme.txt"]);
+    remote.remove("/docs").unwrap();
+    assert!(!f.server.root.join("docs").exists());
+    remote.close();
+}
+
+#[test]
+fn a_dropped_writer_has_closed_its_file() {
+    let f = fixture();
+    let remote = f.connect();
+    let mut w = remote.open_write("/partial.bin").unwrap();
+    w.write_all(&vec![1u8; 3_000_000]).unwrap();
+    drop(w);
+    // Everything sent has landed and the handle is closed by now (the
+    // in-process server uses 32 KiB chunks; the unsent rest is dropped).
+    let len = fs::metadata(f.server.root.join("partial.bin")).unwrap().len();
+    assert_eq!(len, 3_000_000 / 32_768 * 32_768);
+    remote.remove("/partial.bin").unwrap();
+    // The channel went back to the pool in working order.
+    let mut w = remote.open_write("/partial.bin").unwrap();
+    w.write_all(b"fresh").unwrap();
+    w.finish().unwrap();
+    assert_eq!(fs::read(f.server.root.join("partial.bin")).unwrap(), b"fresh");
+    remote.close();
+}
+
+#[test]
+fn local_network_hint_on_macos() {
+    use oc_sftp::describe_connect_error;
+    let hint = |host: &str, unreachable: bool| {
+        describe_connect_error(host, 22, &"[Errno 65] No route to host", unreachable).contains("Local Network")
+    };
+    assert_eq!(hint("192.168.1.20", true), cfg!(target_os = "macos"));
+    assert!(!hint("8.8.8.8", true));
+    assert!(!hint("192.168.1.2", false));
+    assert_eq!(
+        describe_connect_error("h", 2222, &"[Errno 61] Connection refused", false),
+        "Cannot connect to h:2222: [Errno 61] Connection refused"
+    );
+}

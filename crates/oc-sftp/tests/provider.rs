@@ -161,3 +161,52 @@ fn connect_through_the_provider() {
     let ctx3 = Ctx { dir: tmp.join("other-config"), asked: Mutex::default(), answer: false };
     assert!(matches!(p.connect(&conn, Some(PASSWORD), &ctx3), Err(oc_provider::ConnectError::Cancelled)));
 }
+
+#[test]
+fn edge_case_strings_match_python() {
+    // Expected values printed by the Python 1.x SFTPProvider.
+    let p = SftpProvider;
+    let cases = [
+        (json!({"host": "h", "port": "22"}), "sftp://h", "sftp://h", "h"),
+        (json!({"host": "h", "port": 0}), "sftp://h", "sftp://h", "h"),
+        (json!({"host": "h", "port": null, "username": "a b"}), "sftp://a%20b@h", "sftp://a%20b@h", "a b@h"),
+        (
+            json!({"host": "h", "username": "jürgen", "path": "/srv/ä ö/#x?y"}),
+            "sftp://j%C3%BCrgen@h",
+            "sftp://j%C3%BCrgen@h/srv/%C3%A4%20%C3%B6/%23x%3Fy",
+            "jürgen@h",
+        ),
+        (json!({"host": "h", "path": "rel/dir/"}), "sftp://h", "sftp://h/~/rel/dir", "h"),
+        (json!({"host": "h", "path": "~/x"}), "sftp://h", "sftp://h/~/~/x", "h"),
+        (
+            json!({"host": "H.Example", "port": 2222, "path": "/a+b&c=d"}),
+            "sftp://H.Example:2222",
+            "sftp://H.Example:2222/a%2Bb%26c%3Dd",
+            "H.Example",
+        ),
+        (json!({"host": "::1", "port": 2222}), "sftp://::1:2222", "sftp://::1:2222", "::1"),
+        (json!({"host": "h", "username": "u:p", "path": "/~"}), "sftp://u%3Ap@h", "sftp://u%3Ap@h/~", "u:p@h"),
+    ];
+    for (c, account, url, describe) in cases {
+        let c = params(c);
+        assert_eq!(p.account(&c), account, "{c:?}");
+        assert_eq!(p.format_url(&c), url, "{c:?}");
+        assert_eq!(p.describe(&c), describe, "{c:?}");
+    }
+    let parsed = [
+        ("sftp://u@[::1]:2222/x", json!({"host": "::1", "username": "u", "port": 2222, "path": "/x"})),
+        ("sftp://U%40c@h/~", json!({"host": "h", "username": "U@c", "path": ""})),
+        ("sftp://h:22/a%2Fb/c", json!({"host": "h", "port": 22, "path": "/a/b/c"})),
+        ("SFTP://h//x//y/", json!({"host": "h", "path": "/x/y"})),
+    ];
+    for (url, expected) in parsed {
+        let got = p.parse_url(url).unwrap_or_else(|e| panic!("{url}: {e}"));
+        for (key, value) in expected.as_object().unwrap() {
+            match value {
+                Value::Number(n) => assert_eq!(param_int(&got, key), n.as_i64(), "{url}: {key}"),
+                Value::String(s) => assert_eq!(&param_str(&got, key), s, "{url}: {key}"),
+                _ => unreachable!(),
+            }
+        }
+    }
+}

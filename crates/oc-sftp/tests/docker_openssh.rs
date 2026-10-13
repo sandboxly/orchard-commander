@@ -142,6 +142,20 @@ fn real_openssh_server() {
     let provider = oc_sftp::SftpProvider;
     let params = oc_provider::Params::from_iter([("path".to_string(), serde_json::json!("contract/../x"))]);
     assert_eq!(oc_provider::FileSystemProvider::start_path(&provider, &params, &remote), "/config/x");
+
+    // More streams open at once than OpenSSH's MaxSessions (10) allows channels.
+    let mut w = remote.open_write("/config/small.bin").unwrap();
+    w.write_all(&data[..300_000]).unwrap();
+    w.finish().unwrap();
+    let mut readers: Vec<_> =
+        (0..14).map(|i| remote.open_read("/config/small.bin").unwrap_or_else(|e| panic!("reader {i}: {e}"))).collect();
+    for r in &mut readers {
+        let mut all = Vec::new();
+        r.read_to_end(&mut all).unwrap();
+        assert!(all == data[..300_000]);
+    }
+    drop(readers);
+    assert!(remote.list_dir("/config", ListOptions::default()).is_ok());
     remote.close();
 
     // MaxAuthTries (6 here): an agent with 8 keys must not lock out a password login…

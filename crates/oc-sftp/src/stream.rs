@@ -8,10 +8,17 @@
 //! most `STALL_TIMEOUT` for any reply, however slow the link otherwise is.
 //! Writes are pipelined the same way: requests are sent without waiting for
 //! each acknowledgement; errors surface on a later write or on `finish`.
+//!
+//! What a stream keeps in flight is also bounded by time ([`Rate`]): about
+//! a second's worth at the measured speed. More doesn't make a transfer
+//! faster, but everything else on the connection (listings, other streams)
+//! waits behind it: on a slow link, 8 MiB would hold a listing back for
+//! a minute.
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use oc_vfs::{ReadStream, Result, VfsError, WriteStream};
 use russh_sftp::client::error::Error as SftpError;
@@ -25,7 +32,36 @@ use crate::session::{Conn, STALL_TIMEOUT, Sftp, is_eof};
 const START_LEN: u32 = 32 * 1024;
 /// Bytes requested but not yet consumed, at most.
 const MAX_IN_FLIGHT: u64 = 8 * 1024 * 1024;
+/// Bytes in flight allowed whatever the measured speed.
+const MIN_IN_FLIGHT: u64 = 256 * 1024;
+/// At most this much transfer time in flight.
+const IN_FLIGHT_SECS: f64 = 1.0;
 const MAX_REQUESTS: u64 = 256;
+/// How long dropping an unfinished writer waits for its file to be closed.
+const DROP_CLOSE_WAIT: Duration = Duration::from_secs(15);
+
+/// A stream's speed since it started (or last seeked), which bounds what
+/// it keeps in flight.
+struct Rate {
+    since: Instant,
+    bytes: u64,
+}
+
+impl Rate {
+    fn new() -> Self {
+        Rate { since: Instant::now(), bytes: 0 }
+    }
+
+    fn add(&mut self, n: u64) {
+        self.bytes = self.bytes.saturating_add(n);
+    }
+
+    /// Bytes to keep in flight: [`IN_FLIGHT_SECS`] at the measured speed.
+    fn in_flight(&self) -> u64 {
+        let secs = self.since.elapsed().as_secs_f64().max(0.001);
+        ((self.bytes as f64 / secs * IN_FLIGHT_SECS) as u64).clamp(MIN_IN_FLIGHT, MAX_IN_FLIGHT)
+    }
+}
 
 pub(crate) fn to_io(err: VfsError) -> io::Error {
     match err {
@@ -59,6 +95,7 @@ pub(crate) struct SftpReader {
     next_off: u64,
     /// Sequential replies since opening/seeking: grows request size and window.
     level: u32,
+    rate: Rate,
     eof: bool,
 }
 
@@ -94,6 +131,7 @@ impl SftpReader {
             pending: VecDeque::new(),
             next_off: 0,
             level: 0,
+            rate: Rate::new(),
             eof: false,
         })
     }
@@ -103,7 +141,7 @@ impl SftpReader {
     }
 
     fn window(&self) -> usize {
-        let max = (MAX_IN_FLIGHT / u64::from(self.sftp.read_chunk.max(1))).clamp(1, MAX_REQUESTS);
+        let max = (self.rate.in_flight() / u64::from(self.request_len())).clamp(1, MAX_REQUESTS);
         1u64.checked_shl(self.level).unwrap_or(u64::MAX).min(max) as usize
     }
 
@@ -124,7 +162,7 @@ impl SftpReader {
             };
             let p = self.issue(self.next_off, len);
             self.pending.push_back(p);
-            self.next_off += u64::from(len);
+            self.next_off = self.next_off.saturating_add(u64::from(len));
         }
     }
 
@@ -172,19 +210,22 @@ impl SftpReader {
             };
             data.truncate(p.len as usize); // never trust a server to send only what was asked
             let got = data.len() as u64;
+            self.rate.add(got);
             if got == 0 {
                 self.eof = true;
                 self.cancel();
                 return Ok(false);
             }
             if got < u64::from(p.len) {
-                if self.size.is_some_and(|size| p.off + got >= size) {
+                let end = p.off.saturating_add(got);
+                if self.size.is_some_and(|size| end >= size) {
                     self.cancel(); // the file shrank: nothing after this
-                    self.next_off = p.off + got;
-                    self.size = Some(p.off + got);
+                    self.next_off = end;
+                    self.size = Some(end);
                 } else {
-                    // A short read (server-side limit): ask for the rest first.
-                    let rest = self.issue(p.off + got, p.len - got as u32);
+                    // A short read (server-side limit, or the file shrank:
+                    // then the rest is answered with EOF): ask for the rest first.
+                    let rest = self.issue(end, p.len - got as u32);
                     self.pending.push_front(rest);
                 }
             } else if self.level < 16 {
@@ -216,7 +257,7 @@ impl Read for SftpReader {
         let n = out.len().min(self.buf.len() - self.buf_pos);
         out[..n].copy_from_slice(&self.buf[self.buf_pos..self.buf_pos + n]);
         self.buf_pos += n;
-        self.pos += n as u64;
+        self.pos = self.pos.saturating_add(n as u64);
         Ok(n)
     }
 }
@@ -248,12 +289,12 @@ impl Seek for SftpReader {
         }
         let buffered = (self.buf.len() - self.buf_pos) as u64;
         let buf_start = self.pos - self.buf_pos as u64;
-        if !self.buf.is_empty() && target >= buf_start && target <= self.pos + buffered {
+        if !self.buf.is_empty() && target >= buf_start && target <= self.pos.saturating_add(buffered) {
             self.buf_pos = (target - buf_start) as usize;
             self.pos = target;
             return Ok(target);
         }
-        let ahead_start = self.pos + buffered;
+        let ahead_start = self.pos.saturating_add(buffered);
         if target > ahead_start && target < self.next_off && target - ahead_start <= MAX_IN_FLIGHT {
             // Forward within what's already requested: drop replies wholly before
             // the target and skip into the first one that holds it.
@@ -280,6 +321,7 @@ impl Seek for SftpReader {
         self.pos = target;
         self.next_off = target;
         self.level = 0;
+        self.rate = Rate::new();
         self.eof = false;
         Ok(target)
     }
@@ -309,7 +351,9 @@ pub(crate) struct SftpWriter {
     display: String,
     off: u64,
     buf: Vec<u8>,
-    inflight: VecDeque<JoinHandle<std::result::Result<(), SftpError>>>,
+    /// Writes sent and not yet acknowledged, with their lengths.
+    inflight: VecDeque<(u64, JoinHandle<std::result::Result<(), SftpError>>)>,
+    rate: Rate,
     failed: Option<(io::ErrorKind, String)>,
     done: bool,
 }
@@ -338,6 +382,7 @@ impl SftpWriter {
             off: 0,
             buf: Vec::with_capacity(chunk),
             inflight: VecDeque::new(),
+            rate: Rate::new(),
             failed: None,
             done: false,
         })
@@ -348,7 +393,7 @@ impl SftpWriter {
     }
 
     fn max_inflight(&self) -> usize {
-        (MAX_IN_FLIGHT / self.sftp.write_chunk.max(1) as u64).clamp(1, MAX_REQUESTS) as usize
+        (self.rate.in_flight() / u64::from(self.sftp.write_chunk.max(1))).clamp(1, MAX_REQUESTS) as usize
     }
 
     fn check(&self) -> io::Result<()> {
@@ -364,7 +409,8 @@ impl SftpWriter {
     }
 
     fn wait_one(&mut self) -> io::Result<()> {
-        let Some(task) = self.inflight.pop_front() else { return Ok(()) };
+        let Some((len, task)) = self.inflight.pop_front() else { return Ok(()) };
+        self.rate.add(len);
         match join_within(task, STALL_TIMEOUT) {
             Ok(None) => {
                 self.sftp.mark_dead();
@@ -388,8 +434,9 @@ impl SftpWriter {
         let chunk = self.chunk();
         let data = std::mem::replace(&mut self.buf, Vec::with_capacity(chunk));
         let (s, h, off) = (self.sftp.clone(), self.handle.clone(), self.off);
-        self.off += data.len() as u64;
-        self.inflight.push_back(runtime().spawn(async move { s.raw.write(h, off, data).await.map(|_| ()) }));
+        let len = data.len() as u64;
+        self.off += len;
+        self.inflight.push_back((len, runtime().spawn(async move { s.raw.write(h, off, data).await.map(|_| ()) })));
         while self.inflight.len() > self.max_inflight() {
             self.wait_one()?;
         }
@@ -430,6 +477,7 @@ impl WriteStream for SftpWriter {
             }
             Err(e) => {
                 self.sftp.note(&e);
+                self.conn.checkin(self.sftp.clone());
                 Err(self.conn.error(e, &self.display))
             }
         }
@@ -442,15 +490,31 @@ impl Drop for SftpWriter {
             return;
         }
         // Not finished (an error or a cancelled copy): let what's in flight
-        // land, close the handle; the caller removes the partial file.
-        let inflight: Vec<_> = self.inflight.drain(..).collect();
+        // land and close the handle before returning, as Python's `close()`
+        // did. The caller then removes the partial file, which servers on
+        // Windows refuse while it's open, and no late write can reach a file
+        // opened again under the same name.
+        let inflight: Vec<_> = self.inflight.drain(..).map(|(_, task)| task).collect();
         let (conn, sftp, handle) = (self.conn.clone(), self.sftp.clone(), std::mem::take(&mut self.handle));
-        spawn(async move {
+        let cleanup = async move {
             for t in inflight {
                 let _ = t.await;
             }
-            let _ = sftp.raw.close(handle).await;
+            let closed = sftp.raw.close(handle).await;
+            if closed.is_err() {
+                sftp.mark_dead(); // the handle may still be open: don't reuse the channel
+            }
             conn.checkin(sftp);
-        });
+        };
+        if tokio::runtime::Handle::try_current().is_ok() {
+            spawn(cleanup); // never block inside an async runtime
+            return;
+        }
+        let task = runtime().spawn(cleanup);
+        if !matches!(join_within(task, DROP_CLOSE_WAIT), Ok(Some(()))) {
+            // Gave up waiting (the task is aborted): close the channel, and with it the file.
+            self.sftp.mark_dead();
+            self.conn.checkin(self.sftp.clone());
+        }
     }
 }
