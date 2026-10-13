@@ -27,7 +27,8 @@ pub fn register(reg: &mut Registry) {
         Command::new("nav.goto", "Go to path", goto_path)
             .help("Type a directory or a server address")
             .keys(&["Primary+G", "Primary+Shift+G"])
-            .menu(Menu::Commands, "navigate"),
+            // One group with the bookmark commands, as in 1.x (registered first).
+            .menu(Menu::Commands, "bookmarks"),
     );
     reg.add(
         Command::new("panel.swap", "Swap panels", swap_panels)

@@ -45,7 +45,7 @@ impl Menu {
         match self {
             Menu::Left | Menu::Right => &["mode", "location"],
             Menu::Files => &["select", "ops", "rename", "find", "quit"],
-            Menu::Commands => &["palette", "preview", "navigate", "bookmarks", "servers", "panels", "terminal"],
+            Menu::Commands => &["palette", "preview", "bookmarks", "servers", "panels", "terminal"],
             Menu::Options => &["settings", "view", "zoom"],
         }
     }
