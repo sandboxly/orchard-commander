@@ -297,6 +297,8 @@ pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::m
         Err(e) => app.notify(e.to_string(), Severity::Error),
     }
     app.main.sides[side].panel.set_all_marks(false);
+    // Out of the terminal first: it reports the focus loss to the side it was on.
+    crate::features::terminal::focus_panels(app);
     app.main.active = side;
     for s in 0..2 {
         panel::reload(app, s);

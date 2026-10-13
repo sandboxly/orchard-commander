@@ -417,17 +417,28 @@ pub fn local_anchor(v: &VPath) -> Option<PathBuf> {
 }
 
 /// Just the OS's reason for an error, like 1.x's `exc.strerror`: "Permission
-/// denied" from "[Errno 13] Permission denied: '/x'". Errors without an
-/// errno keep their whole text.
+/// denied" from "[Errno 13] Permission denied: '/x'". "Not found" and
+/// "already exists" are 1.x's `FileNotFoundError` / `FileExistsError`
+/// (e.g. an SFTP mkdir). Other errors keep their whole text.
 pub fn error_reason(e: &oc_vfs::VfsError) -> String {
+    use oc_vfs::VfsError;
     let text = e.to_string();
-    if let oc_vfs::VfsError::Io(_) = e
-        && let Some(rest) = text.strip_prefix("[Errno ")
+    match e {
+        VfsError::NotFound(_) => return "No such file or directory".into(),
+        VfsError::AlreadyExists(_) => return "File exists".into(),
+        VfsError::Io(_) => {}
+        _ => return text,
+    }
+    if let Some(rest) = text.strip_prefix("[Errno ")
         && let Some((_, reason)) = rest.split_once("] ")
     {
         return reason.split_once(": '").map_or(reason, |(r, _)| r).to_owned();
     }
-    text
+    // A bare std error: "Permission denied (os error 13)".
+    match text.rfind(" (os error ") {
+        Some(i) => text[..i].to_owned(),
+        None => text,
+    }
 }
 
 // ---------------------------------------------------------------------------

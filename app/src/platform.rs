@@ -440,6 +440,19 @@ impl Platform {
     }
 }
 
+/// Whether the title bar of a window at `pos` (logical, frame) would be on
+/// one of the screens. Without a list of screens: assume so.
+fn on_a_screen(el: &ActiveEventLoop, pos: LogicalPosition<f64>, size: LogicalSize<f64>) -> bool {
+    let (x, y) = (pos.x + size.width.min(200.0) / 2.0, pos.y + 10.0);
+    let mut monitors = el.available_monitors().peekable();
+    monitors.peek().is_none()
+        || monitors.any(|m| {
+            let scale = m.scale_factor();
+            let (at, extent) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
+            (at.x..at.x + extent.width).contains(&x) && (at.y..at.y + extent.height).contains(&y)
+        })
+}
+
 impl ApplicationHandler<AppEvent> for Platform {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.app.is_some() {
@@ -451,6 +464,8 @@ impl ApplicationHandler<AppEvent> for Platform {
         let app = self.create_app();
         self.app = Some(app);
         let (size, pos, maximized, full_screen) = self.saved_geometry();
+        // Like Qt's restoreGeometry: not off screen (e.g. a monitor since unplugged).
+        let pos = pos.filter(|&p| on_a_screen(el, p, size));
         self.open_window(el, MAIN_WINDOW, oc_config::APP_NAME, size, pos);
         if let Some(k) = self.win_for(MAIN_WINDOW) {
             let w = &self.windows[&k].window;
