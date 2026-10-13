@@ -3,7 +3,7 @@
 //! the cursor, the scrollbar and the find bar. Only visible lines are
 //! touched, and of those only the visible columns.
 
-use oc_grid::{Cursor, CursorShape, Flags, Frame, Rgba, Style};
+use oc_grid::{Cursor, CursorShape, Flags, Frame, Layer, PxRect, Rgba, Style};
 use oc_preview::data::SyntaxRole;
 use oc_preview::highlight::palette;
 
@@ -143,6 +143,28 @@ fn draw_text(w: &EditorWindow, f: &mut Frame, l: &super::window::Layout, ctx: &D
         }
     }
     Scrollbar { total: lines, visible: code.h as usize, top: w.top }.draw(f, Rect::new(code.x, code.y, code.w + 1, code.h), ctx);
+    if let Some(r) = l.hbar {
+        fill(f, Rect::new(l.gutter.x, r.y, r.right().saturating_sub(l.gutter.x) + 1, 1), c.surface);
+        draw_hbar(f, r, w.content_width(), code.w as usize, w.left, ctx);
+    }
+}
+
+/// The horizontal scrollbar: like [`Scrollbar`], over the lower half of the row.
+fn draw_hbar(f: &mut Frame, r: Rect, total: usize, visible: usize, left: usize, ctx: &DrawCtx) {
+    let bar = Scrollbar { total, visible, top: left.min(total.saturating_sub(visible)) };
+    if !bar.needed() || r.is_empty() {
+        return;
+    }
+    let (cw, ch) = ctx.cell_px;
+    let h = (ch / 2.0).round().max(2.0);
+    let y = (r.y + 1) as f32 * ch - h;
+    let (x0, w) = (r.x as f32 * cw, r.w as f32 * cw);
+    let (start, len) = bar.thumb();
+    let thumb_w = (len * w).max(cw);
+    let travel = if len < 1.0 { start / (1.0 - len) } else { 0.0 };
+    let x = x0 + travel * (w - thumb_w);
+    f.add_rect(PxRect::new(x0, y, w, h), ctx.theme.colors.surface, Layer::AboveText);
+    f.add_rect(PxRect::new(x, y, thumb_w, h), ctx.theme.colors.border, Layer::AboveText);
 }
 
 fn draw_bar(w: &EditorWindow, f: &mut Frame, bar: Rect, ctx: &DrawCtx) {

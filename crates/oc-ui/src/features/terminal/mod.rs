@@ -737,7 +737,7 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
         if pressed {
             set_focus(app, true);
         }
-        return if m.kind == MouseKind::Move { Outcome::Ignored } else { Outcome::Consumed };
+        return if matches!(m.kind, MouseKind::Move | MouseKind::HScroll(_)) { Outcome::Ignored } else { Outcome::Consumed };
     }
     let side = app.main.active;
     let Some(s) = session(app, side) else {
@@ -779,8 +779,9 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
         MouseAction::Redraw => app.redraw(),
         MouseAction::Paste => paste(app),
     }
-    // Hovering (or motion reported to a program) changes nothing on screen: no redraw.
-    if m.kind == MouseKind::Move && !redraw { Outcome::Ignored } else { Outcome::Consumed }
+    // Hovering (or motion reported to a program) and sideways scrolling
+    // change nothing on screen: no redraw.
+    if matches!(m.kind, MouseKind::Move | MouseKind::HScroll(_)) && !redraw { Outcome::Ignored } else { Outcome::Consumed }
 }
 
 #[cfg(test)]

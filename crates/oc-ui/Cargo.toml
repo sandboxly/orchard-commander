@@ -25,7 +25,11 @@ log = "0.4"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
 # The F4 editor: rope buffer (text files and highlighting come from oc-preview).
-ropey = "1.6"
+# Lines break only at "\n", like 1.x's QPlainTextEdit (the default
+# `unicode_lines` also breaks at form feed, NEL, U+2028…).
+ropey = { version = "1.6", default-features = false, features = ["simd"] }
+# The editor's language detection (ports of Pygments' `analyse_text`).
+regex = "1.13"
 tempfile.workspace = true
 
 [dev-dependencies]

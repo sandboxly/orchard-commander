@@ -681,6 +681,9 @@ impl ApplicationHandler<AppEvent> for Platform {
                 if cols != 0.0 && cols.abs() > lines.abs() {
                     self.mouse(key, MouseKind::HScroll(cols));
                 }
+                if cols != 0.0 {
+                    self.mouse(key, MouseKind::HScroll(cols));
+                }
             }
             WindowEvent::Focused(f) => self.send(key, Event::Focus(f)),
             WindowEvent::ThemeChanged(t) => self.app().set_system_dark(t == winit::window::Theme::Dark),

@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 use oc_config::Settings;
 use oc_grid::{Flags, Frame, Style};
-use oc_vfs::{SortKey, VPath};
+use oc_vfs::VPath;
 
 use crate::app::{App, MAIN_WINDOW, Outcome, Severity};
 use crate::commands::{Command, CommandId, Registry};
@@ -77,13 +77,8 @@ impl MainWindow {
         };
         let hidden = settings.hidden_visible();
         let make = |i: usize, path: PathBuf| {
-            let mut p = FilePanel::new(i, oc_local::local(path), hidden);
-            let name = SIDE_NAMES[i];
-            if let Some(key) = settings.extra.get(&format!("{name}_sort")).and_then(|v| v.as_str()).and_then(SortKey::parse) {
-                p.sort = key;
-            }
-            p.reverse = settings.extra.get(&format!("{name}_sort_reverse")).and_then(|v| v.as_bool()).unwrap_or(false);
-            Side::new(name, p, &registry.side_views)
+            let p = FilePanel::new(i, oc_local::local(path), hidden);
+            Side::new(SIDE_NAMES[i], p, &registry.side_views)
         };
         MainWindow { sides: [make(0, left), make(1, right)], active: 0, bottom_rows: 0, startup_fallback, view_drag: None }
     }
@@ -531,7 +526,8 @@ fn panel_mouse(app: &mut App, side: usize, frame: Rect, m: &crate::input::MouseE
             let Some(row) = p.list.hit(pl.rows, m.col, m.row) else {
                 return Outcome::Consumed;
             };
-            let mark = button == MouseButton::Right || (button == MouseButton::Left && m.mods.has_primary());
+            // 1.x: Control or Meta, i.e. ⌘ and ⌃ on macOS.
+            let mark = button == MouseButton::Right || (button == MouseButton::Left && (m.mods.ctrl || m.mods.logo));
             p.list.cursor = row;
             if mark {
                 p.toggle_mark_at(row);

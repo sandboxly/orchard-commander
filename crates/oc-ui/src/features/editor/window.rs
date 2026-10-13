@@ -14,16 +14,16 @@ use oc_preview::highlight::{self as syn, LineHighlighter};
 use oc_preview::textfile::{Encoding, TextFile};
 use oc_vfs::VPath;
 
-use super::buffer::Buffer;
+use super::buffer::{Buffer, Change, line_width, line_widths};
 use super::highlight::{Highlight, MAX_HIGHLIGHT_CHARS};
 use super::io::{self, Loaded};
 use super::{EditorState, find};
 use crate::app::{App, Outcome, PlatformRequest, Severity, UiWindow, WinId, WindowMenu, WindowMenuItem};
-use crate::dialogs::{InputBox, MessageBox};
+use crate::dialogs::{InputBox, MessageBox, PopupMenu};
 use crate::geom::Rect;
 use crate::input::{Event, Key, KeyEvent, MouseButton, MouseKind};
 use crate::shortcut::Shortcut;
-use crate::widgets::{Checkbox, DrawCtx, TextInput};
+use crate::widgets::{Checkbox, DrawCtx, MenuEntry, Scrollbar, TextInput};
 
 /// Debounce for outside changes (1.x: 300 ms).
 const RELOAD_DELAY: Duration = Duration::from_millis(300);
@@ -230,7 +230,41 @@ pub struct Layout {
     pub frame: Rect,
     pub gutter: Rect,
     pub code: Rect,
+    /// The vertical scrollbar's column, right of `code`.
+    pub vbar: Rect,
+    /// The horizontal scrollbar's row below `code`, when a line is wider
+    /// than the view (1.x: as needed, no wrapping).
+    pub hbar: Option<Rect>,
     pub bar: Option<Rect>,
+}
+
+/// What a left-button drag moves.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Drag {
+    None,
+    /// Selecting text.
+    Text,
+    /// A scrollbar's thumb, grabbed `grab` cells from its start.
+    VBar { grab: f32 },
+    HBar { grab: f32 },
+}
+
+/// A scrollbar's thumb in cells along a `track` cells long track: (start,
+/// length), placed as `Scrollbar::draw` places it.
+fn thumb(total: usize, visible: usize, pos: usize, track: u16) -> (f32, f32) {
+    let (start, len) = Scrollbar { total, visible, top: pos }.thumb();
+    let track = track as f32;
+    let len_cells = (len * track).max(1.0).min(track);
+    let travel = if len < 1.0 { start / (1.0 - len) } else { 0.0 };
+    (travel * (track - len_cells), len_cells)
+}
+
+/// The scroll position for a thumb starting `start` cells into the track.
+fn pos_for_thumb(total: usize, visible: usize, start: f32, track: u16) -> usize {
+    let (_, len) = thumb(total, visible, 0, track);
+    let room = track as f32 - len;
+    let max = total.saturating_sub(visible);
+    if room <= 0.0 { 0 } else { ((start / room).clamp(0.0, 1.0) * max as f32).round() as usize }
 }
 
 /// The find bar's parts.
@@ -265,7 +299,11 @@ pub struct EditorWindow {
     pub focus: Focus,
     pub bar: FindBar,
     pub preedit: String,
-    dragging: bool,
+    drag: Drag,
+    /// Each line's width in columns (tabs expanded) and the widest, for
+    /// the horizontal scrollbar; kept up to date from the buffer's changes.
+    widths: Vec<u32>,
+    max_width: usize,
     /// Keep the cursor in view after this event.
     follow: bool,
     /// The user chose "Don't save": close without asking again.
@@ -312,7 +350,9 @@ impl EditorWindow {
             focus: Focus::Text,
             bar: FindBar::default(),
             preedit: String::new(),
-            dragging: false,
+            drag: Drag::None,
+            widths: vec![0],
+            max_width: 0,
             follow: false,
             discard: false,
             close_after_save: false,
@@ -379,10 +419,50 @@ impl EditorWindow {
         };
         let digits = self.buf.len_lines().to_string().len().max(3) as u16;
         let gw = (digits + 2).min(text.w / 2);
-        let (gutter, rest) = text.split_left(gw);
+        let (mut gutter, rest) = text.split_left(gw);
         // The last column is the scrollbar's.
-        let code = Rect::new(rest.x, rest.y, rest.w.saturating_sub(1), rest.h);
-        Layout { frame: screen, gutter, code, bar }
+        let mut code = Rect::new(rest.x, rest.y, rest.w.saturating_sub(1), rest.h);
+        let hbar = (self.max_width + 1 > code.w as usize && code.h > 1).then(|| {
+            code.h -= 1;
+            gutter.h -= 1;
+            Rect::new(code.x, code.bottom(), code.w, 1)
+        });
+        let vbar = Rect::new(code.right(), code.y, rest.w.min(1), code.h);
+        Layout { frame: screen, gutter, code, vbar, hbar, bar }
+    }
+
+    /// The widest line's columns plus one for the cursor after it.
+    pub fn content_width(&self) -> usize {
+        self.max_width + 1
+    }
+
+    /// Bring `widths` up to date after edits (`Reset`s come with new widths).
+    fn update_widths(&mut self, changes: &[Change]) {
+        const DIRTY: u32 = u32::MAX;
+        for c in changes {
+            if let Change::Lines { line, old_end, new_end } = *c {
+                let end = (old_end + 1).min(self.widths.len());
+                let start = line.min(end);
+                self.widths.splice(start..end, std::iter::repeat_n(DIRTY, new_end + 1 - line));
+            }
+        }
+        if self.widths.len() != self.buf.len_lines() {
+            self.widths = line_widths(self.buf.rope());
+        }
+        let rope = self.buf.rope();
+        let mut max = 0;
+        for (i, w) in self.widths.iter_mut().enumerate() {
+            if *w == DIRTY {
+                *w = line_width(rope.line(i)).min(DIRTY as usize - 1) as u32;
+            }
+            max = max.max(*w);
+        }
+        self.max_width = max as usize;
+    }
+
+    fn set_widths(&mut self, widths: Vec<u32>) {
+        self.max_width = widths.iter().copied().max().unwrap_or(0) as usize;
+        self.widths = widths;
     }
 
     pub fn bar_layout(&self, bar: Rect) -> BarLayout {
@@ -418,6 +498,7 @@ impl EditorWindow {
         let changes = self.buf.take_changes();
         if !changes.is_empty() {
             self.hl.apply_changes(&changes, self.buf.len_lines());
+            self.update_widths(&changes);
         }
         self.kick_highlighting(app, id);
         if std::mem::take(&mut self.follow) {
@@ -503,9 +584,10 @@ impl EditorWindow {
         let name = self.name();
         self.note = None;
         match loaded {
-            Prepared::Text { file, rope, language, hl } => {
+            Prepared::Text { file, rope, language, hl, widths } => {
                 let first = !self.loaded;
                 self.buf.set_rope(rope);
+                self.set_widths(widths);
                 if first {
                     self.language = language;
                     self.hl = Highlight::new(hl, self.buf.len_lines());
@@ -528,6 +610,7 @@ impl EditorWindow {
     fn failed(&mut self, text: String) {
         self.buf.set_text(&text);
         self.buf.take_changes();
+        self.set_widths(line_widths(self.buf.rope()));
         self.hl = Highlight::new(None, self.buf.len_lines());
         self.read_only = true;
         self.load_failed = true;
@@ -554,7 +637,10 @@ impl EditorWindow {
             Ok(d) => d,
             Err(e) => {
                 let enc = self.file.encoding.display_name();
-                let msg = format!("Some characters can't be written as {enc} ('{}').\n\nSave the file as UTF-8 instead?", e.ch);
+                let msg = format!(
+                    "Some characters can't be written as {enc} ({}).\n\nSave the file as UTF-8 instead?",
+                    py_repr(&unencodable_run(&self.file, &text, e.ch))
+                );
                 let mb = MessageBox::new("Save as UTF-8", &msg, &["Save", "Cancel"], 0).width(60).on_choice(move |app, choice| {
                     with_editor(app, id, |w, app| {
                         if choice == Some(0) {
@@ -922,6 +1008,50 @@ impl EditorWindow {
         Outcome::Ignored
     }
 
+    /// PageUp/PageDown (negative `rows`: up).
+    fn page(&mut self, rows: isize, extend: bool) {
+        self.buf.move_lines(rows, extend);
+        self.top = self.top.saturating_add_signed(rows);
+    }
+
+    /// macOS's text keys with Control and Option that Qt (1.x) has besides
+    /// the arrows: Control is Qt's Meta there. None if `k` isn't one.
+    fn mac_text_key(&mut self, k: &KeyEvent, rows: isize) -> Option<()> {
+        let m = k.mods;
+        let edit = !self.read_only;
+        let b = &mut self.buf;
+        let line = b.line_of(b.cursor);
+        if m.alt && !m.ctrl && !m.logo {
+            // ⌥↑ / ⌥↓: the start / end of the paragraph (the line: no wrapping).
+            match k.key {
+                Key::Up => b.move_to(b.line_start(line), m.shift),
+                Key::Down => b.move_to(b.line_end(line), m.shift),
+                _ => return None,
+            }
+            return Some(());
+        }
+        if !m.ctrl || m.alt || m.logo {
+            return None;
+        }
+        match (k.key, m.shift) {
+            (Key::Char('a') | Key::Left, _) => b.move_to(b.line_start(line), m.shift),
+            (Key::Char('e') | Key::Right, _) => b.move_to(b.line_end(line), m.shift),
+            (Key::Char('p'), false) => b.move_lines(-1, false),
+            (Key::Char('n'), false) => b.move_lines(1, false),
+            (Key::Char('b'), false) => b.move_to(b.prev_pos(b.cursor), false),
+            (Key::Char('f'), false) => b.move_to(b.next_pos(b.cursor), false),
+            (Key::Char('h'), false) if edit => b.backspace(false),
+            (Key::Char('d'), false) if edit => b.delete_forward(false),
+            // A line separator (Qt's InsertLineSeparator, saved as "\n").
+            (Key::Char('o') | Key::Enter, false) if edit => b.insert("\n", true),
+            (Key::Up | Key::PageUp, false) => self.page(-rows, false),
+            (Key::Char('v') | Key::Down | Key::PageDown, false) => self.page(rows, false),
+            (Key::Char('h' | 'd' | 'o') | Key::Enter, false) => {}
+            _ => return None,
+        }
+        Some(())
+    }
+
     fn text_key(&mut self, app: &mut App, id: WinId, k: &KeyEvent) -> Outcome {
         let mac = cfg!(target_os = "macos");
         let alias = if mac { mac_text_alias(k) } else { None };
@@ -932,6 +1062,10 @@ impl EditorWindow {
         let doc_mod = if mac { m.logo } else { m.ctrl };
         let rows = self.layout(app.screen(id)).code.h.max(1) as isize;
         let edit = !self.read_only;
+        if mac && self.mac_text_key(k, rows).is_some() {
+            self.follow = true;
+            return Outcome::Consumed;
+        }
         let b = &mut self.buf;
         match k.key {
             Key::Left => {
@@ -966,18 +1100,13 @@ impl EditorWindow {
             Key::Down if doc_mod => b.move_to(b.len_chars(), m.shift),
             Key::Up => b.move_lines(-1, m.shift),
             Key::Down => b.move_lines(1, m.shift),
-            Key::Home if doc_mod => b.move_to(0, m.shift),
-            Key::End if doc_mod => b.move_to(b.len_chars(), m.shift),
+            // On macOS Home/End go to the start/end of the text (Qt's Cocoa keys).
+            Key::Home if doc_mod || mac => b.move_to(0, m.shift),
+            Key::End if doc_mod || mac => b.move_to(b.len_chars(), m.shift),
             Key::Home => b.move_to(b.line_start(b.line_of(b.cursor)), m.shift),
             Key::End => b.move_to(b.line_end(b.line_of(b.cursor)), m.shift),
-            Key::PageUp => {
-                b.move_lines(-rows, m.shift);
-                self.top = self.top.saturating_sub(rows as usize);
-            }
-            Key::PageDown => {
-                b.move_lines(rows, m.shift);
-                self.top += rows as usize;
-            }
+            Key::PageUp => self.page(-rows, m.shift),
+            Key::PageDown => self.page(rows, m.shift),
             Key::Backspace if edit => {
                 if line_mod {
                     b.backspace_line();
@@ -1035,25 +1164,82 @@ impl EditorWindow {
             return Outcome::Consumed;
         }
         let text_area = Rect::new(l.gutter.x, l.code.y, l.gutter.w + l.code.w, l.code.h);
+        let (lines, rows) = (self.buf.len_lines(), l.code.h as usize);
+        let (width, cols) = (self.content_width(), l.code.w as usize);
+        let press = matches!(m.kind, MouseKind::Down(MouseButton::Left) | MouseKind::DoubleClick(MouseButton::Left));
         match m.kind {
             MouseKind::Scroll(lines) => {
-                let delta = (-lines * 3.0).round() as isize;
+                let (delta, before) = ((-lines * 3.0).round() as isize, self.top);
                 self.top = (self.top as isize + delta).max(0) as usize;
                 self.clamp_scroll(app.screen(id));
+                if self.top == before {
+                    return Outcome::Ignored;
+                }
+            }
+            MouseKind::HScroll(n) => {
+                let max = width.saturating_sub(cols);
+                let left = (self.left as isize - (n * 3.0).round() as isize).clamp(0, max as isize) as usize;
+                if left == self.left {
+                    return Outcome::Ignored;
+                }
+                self.left = left;
+            }
+            // The scrollbars: drag the thumb, click beside it for a page.
+            _ if press && l.vbar.contains(m.col, m.row) => {
+                let (start, len) = thumb(lines, rows, self.top, l.vbar.h);
+                let at = (m.row - l.vbar.y) as f32;
+                if at < start {
+                    self.top = self.top.saturating_sub(rows);
+                } else if at >= start + len {
+                    self.top += rows;
+                    self.clamp_scroll(app.screen(id));
+                } else {
+                    self.drag = Drag::VBar { grab: at - start };
+                }
+            }
+            _ if press && l.hbar.is_some_and(|r| r.contains(m.col, m.row)) => {
+                let track = l.hbar.unwrap_or_default();
+                let (start, len) = thumb(width, cols, self.left, track.w);
+                let at = (m.col - track.x) as f32;
+                if at < start {
+                    self.left = self.left.saturating_sub(cols);
+                } else if at >= start + len {
+                    self.left = (self.left + cols).min(width.saturating_sub(cols));
+                } else {
+                    self.drag = Drag::HBar { grab: at - start };
+                }
+            }
+            MouseKind::Move if matches!(self.drag, Drag::VBar { .. }) => {
+                let Drag::VBar { grab } = self.drag else { return Outcome::Ignored };
+                let start = m.row as f32 - l.vbar.y as f32 - grab;
+                let top = pos_for_thumb(lines, rows, start, l.vbar.h);
+                if top == self.top {
+                    return Outcome::Ignored;
+                }
+                self.top = top;
+            }
+            MouseKind::Move if matches!(self.drag, Drag::HBar { .. }) => {
+                let (Drag::HBar { grab }, Some(track)) = (self.drag, l.hbar) else { return Outcome::Ignored };
+                let start = m.col as f32 - track.x as f32 - grab;
+                let left = pos_for_thumb(width, cols, start, track.w);
+                if left == self.left {
+                    return Outcome::Ignored;
+                }
+                self.left = left;
             }
             MouseKind::Down(MouseButton::Left) if text_area.contains(m.col, m.row) => {
                 self.focus = Focus::Text;
                 let pos = self.pos_at(&l, m.col.max(l.code.x), m.row);
                 self.buf.move_to(pos, m.mods.shift);
-                self.dragging = true;
+                self.drag = Drag::Text;
             }
             MouseKind::DoubleClick(MouseButton::Left) if l.code.contains(m.col, m.row) => {
                 let pos = self.pos_at(&l, m.col, m.row);
                 let word = self.buf.word_at(pos);
                 self.buf.select(word);
-                self.dragging = false;
+                self.drag = Drag::None;
             }
-            MouseKind::Move if self.dragging => {
+            MouseKind::Move if self.drag == Drag::Text => {
                 if m.row < l.code.y {
                     self.top = self.top.saturating_sub(1);
                 } else if m.row >= l.code.bottom() {
@@ -1064,10 +1250,75 @@ impl EditorWindow {
                 let pos = self.pos_at(&l, m.col.max(l.code.x), row);
                 self.buf.move_to(pos, true);
             }
-            MouseKind::Up(MouseButton::Left) => self.dragging = false,
+            MouseKind::Up(MouseButton::Left) => self.drag = Drag::None,
+            // Not on the line numbers: 1.x's gutter had no menu.
+            MouseKind::Down(MouseButton::Right) | MouseKind::DoubleClick(MouseButton::Right) if l.code.contains(m.col, m.row) => {
+                // Like Qt, a right click doesn't move the cursor.
+                self.focus = Focus::Text;
+                self.context_menu(app, id, m.col, m.row);
+            }
             _ => return Outcome::Ignored,
         }
         Outcome::Consumed
+    }
+
+    /// QPlainTextEdit's standard context menu (1.x): Undo, Redo, Cut, Copy,
+    /// Paste, Delete, Select All; Copy and Select All when read-only.
+    fn context_menu(&mut self, app: &mut App, id: WinId, col: u16, row: u16) {
+        #[derive(Clone, Copy)]
+        enum Item {
+            Action(Action),
+            Delete,
+        }
+        let selected = self.buf.selection().is_some();
+        let editable = !self.read_only;
+        let can_paste = editable && app.clipboard.get_text().is_some_and(|t| !t.is_empty());
+        // (label, item, enabled); None: a separator.
+        let mut spec: Vec<Option<(&str, Item, bool)>> = Vec::new();
+        if editable {
+            spec.push(Some(("&Undo", Item::Action(Action::Undo), self.buf.can_undo())));
+            spec.push(Some(("&Redo", Item::Action(Action::Redo), self.buf.can_redo())));
+            spec.push(None);
+            spec.push(Some(("Cu&t", Item::Action(Action::Cut), selected)));
+        }
+        spec.push(Some(("&Copy", Item::Action(Action::Copy), selected)));
+        if editable {
+            spec.push(Some(("&Paste", Item::Action(Action::Paste), can_paste)));
+            spec.push(Some(("Delete", Item::Delete, selected)));
+        }
+        spec.push(None);
+        spec.push(Some(("Select All", Item::Action(Action::SelectAll), self.buf.len_chars() > 0)));
+        let entries = spec
+            .iter()
+            .map(|e| match *e {
+                None => MenuEntry::Separator,
+                Some((label, item, enabled)) => {
+                    let shortcut = match item {
+                        Item::Action(a) => a.shortcuts().first().map(Shortcut::display).unwrap_or_default(),
+                        Item::Delete => String::new(),
+                    };
+                    MenuEntry::Item { label: label.into(), shortcut, checked: None, enabled }
+                }
+            })
+            .collect();
+        let items: Vec<Option<Item>> = spec.iter().map(|e| e.map(|(_, item, _)| item)).collect();
+        let menu = PopupMenu::new(entries, col, row, move |app, choice| {
+            let Some(Some(item)) = items.get(choice).copied() else { return };
+            with_editor(app, id, |w, app| {
+                w.focus = Focus::Text;
+                match item {
+                    Item::Action(a) => w.run(app, id, a),
+                    Item::Delete => {
+                        if !w.read_only && w.buf.selection().is_some() {
+                            w.buf.insert("", false);
+                            w.follow = true;
+                        }
+                    }
+                }
+                w.settle(app, id);
+            });
+        });
+        app.push_modal(id, Box::new(menu));
     }
 }
 
@@ -1210,7 +1461,7 @@ impl UiWindow for EditorWindow {
 /// language and its highlighter (loading syntaxes takes a moment the first
 /// time), so the UI thread only swaps them in.
 pub enum Prepared {
-    Text { file: TextFile, rope: ropey::Rope, language: String, hl: Option<LineHighlighter> },
+    Text { file: TextFile, rope: ropey::Rope, language: String, hl: Option<LineHighlighter>, widths: Vec<u32> },
     Binary,
     Failed(String),
 }
@@ -1219,14 +1470,14 @@ fn prepare(location: &VPath, loaded: Loaded) -> Prepared {
     match loaded {
         Loaded::Text(mut file) => {
             let text = std::mem::take(&mut file.text);
-            let name = location.name();
-            let syntax = syn::syntax_for_file(&name)
-                .or_else(|| text.starts_with("#!").then(|| syn::syntax_for_first_line(text.lines().next().unwrap_or(""))).flatten());
-            let language = syntax.map_or_else(|| "Plain text".to_owned(), |s| s.name.clone());
+            let (language, syntax_name) = super::language::language_for(&location.name(), &text);
+            let syntax = syntax_name.and_then(|n| syn::syntax_set().syntaxes().iter().find(|s| s.name.eq_ignore_ascii_case(n)));
             // Like 1.x, very large texts stay plain (counted in characters).
             let big = text.len() > MAX_HIGHLIGHT_CHARS && text.chars().nth(MAX_HIGHLIGHT_CHARS).is_some();
             let hl = syntax.filter(|_| !big).map(LineHighlighter::new);
-            Prepared::Text { file, rope: ropey::Rope::from_str(&text), language, hl }
+            let rope = ropey::Rope::from_str(&text);
+            let widths = line_widths(&rope);
+            Prepared::Text { file, rope, language, hl, widths }
         }
         Loaded::Binary => Prepared::Binary,
         Loaded::Failed(e) => Prepared::Failed(e),
@@ -1251,6 +1502,56 @@ pub fn close_window(app: &mut App, id: WinId) {
             app.later(App::quit);
         }
     });
+}
+
+/// The run of characters from the first `first` on that `file`'s encoding
+/// can't store: what Python's encode error reported (1.x quoted it).
+fn unencodable_run(file: &TextFile, text: &str, first: char) -> String {
+    let fails = |c: char| file.encode(Some(c.encode_utf8(&mut [0; 4]))).is_err();
+    let start = text.find(first).unwrap_or(0);
+    let run: String = text[start..].chars().take_while(|c| fails(*c)).collect();
+    if run.is_empty() { first.to_string() } else { run }
+}
+
+/// Python's `repr` of a string ('日本', ' '), as 1.x showed it.
+pub fn py_repr(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let mut out = String::from(quote);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if !py_printable(c) => {
+                let n = c as u32;
+                out.push_str(&if n < 0x100 {
+                    format!("\\x{n:02x}")
+                } else if n < 0x10000 {
+                    format!("\\u{n:04x}")
+                } else {
+                    format!("\\U{n:08x}")
+                });
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}
+
+/// Python's `str.isprintable` for one char, roughly: not a control, format,
+/// separator (other than space), surrogate or private-use character.
+fn py_printable(c: char) -> bool {
+    let n = c as u32;
+    let format = matches!(n, 0xad | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x180e | 0x200b..=0x200f | 0x202a..=0x202e
+        | 0x2060..=0x2064 | 0x2066..=0x206f | 0xfeff | 0xfff9..=0xfffb | 0x110bd | 0x1d173..=0x1d17a | 0xe0001 | 0xe0020..=0xe007f);
+    let private = matches!(n, 0xe000..=0xf8ff | 0xf0000..);
+    !(c.is_control() || format || private || (c.is_whitespace() && c != ' '))
 }
 
 /// ⌘L: ask for a line number.
