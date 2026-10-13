@@ -218,8 +218,15 @@ impl Modal for Picker {
             Event::Key(k) => match k.key {
                 Key::Escape => return self.choose(app, false),
                 Key::Enter => return self.choose(app, true),
-                Key::Up | Key::Down | Key::PageUp | Key::PageDown if k.mods.is_empty() => {
-                    self.list.handle_key(k, visible);
+                // With any modifiers, and pages of 10 entries (1.x).
+                Key::Up | Key::Down | Key::PageUp | Key::PageDown => {
+                    let step = match k.key {
+                        Key::Up => -1,
+                        Key::Down => 1,
+                        Key::PageUp => -10,
+                        _ => 10,
+                    };
+                    self.list.move_by(step, visible);
                     ModalOutcome::Consumed
                 }
                 _ => {

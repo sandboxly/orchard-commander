@@ -306,9 +306,15 @@ impl FilePanel {
                 self.toggle_mark();
                 PanelAction::Consumed
             }
-            Key::Up | Key::Down | Key::PageUp | Key::PageDown | Key::Home | Key::End if plain => {
+            // Like 1.x's table view: arrows and paging move the cursor with
+            // any modifiers (Shift doesn't extend a selection; marks are
+            // separate); Home / End plain or with Primary (⌘Home: first row).
+            // Modifier combos bound to window commands never get here.
+            Key::Up | Key::Down | Key::PageUp | Key::PageDown | Key::Home | Key::End
+                if !matches!(ev.key, Key::Home | Key::End) || plain || m.has_primary() =>
+            {
                 self.quick = None;
-                self.list.handle_key(ev, self.rows);
+                self.list.handle_key(&KeyEvent::plain(ev.key), self.rows);
                 PanelAction::Consumed
             }
             _ => {

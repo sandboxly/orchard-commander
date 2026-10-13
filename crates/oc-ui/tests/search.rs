@@ -380,6 +380,23 @@ fn esc_stops_a_running_search() {
 }
 
 #[test]
+fn esc_stops_a_running_search_from_a_preview_side_too() {
+    let e = env();
+    let mut app = app(&e);
+    let mut q = Query::new(vec![VPath::new(Arc::new(Endless), "")]);
+    q.max_depth = Some(1_000_000);
+    let results = search::start_search(&mut app, q, 0);
+    wait_until(&mut app, "progress", Duration::from_secs(10), |_| results.progress().folders() > 3);
+    // The active side shows a preview (1.x: Esc is a window shortcut).
+    app.run_command("right.preview");
+    app.main.active = 1;
+    assert!(app.main.sides[1].mode != oc_ui::main_window::SideMode::Files);
+    press(&mut app, Key::Escape);
+    wait_until(&mut app, "the search to stop", Duration::from_secs(10), |_| !results.is_running());
+    assert!(results.was_cancelled());
+}
+
+#[test]
 fn last_results_without_a_search_and_relocation() {
     let e = env();
     let mut app = app(&e);
