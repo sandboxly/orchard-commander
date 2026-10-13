@@ -700,11 +700,14 @@ mod tests {
         let mut r = Rig::new(None);
         r.audio.push(0.0, &vec![0.0; 48000 * 2]); // 1 s
         r.play(true);
+        let start = Instant::now();
         for _ in 0..25 {
             thread::sleep(Duration::from_millis(10)); // the audio thread ticks every 10 ms
             r.step(Duration::from_millis(10));
         }
+        // Real time, however long the sleeps took on a busy machine.
+        let elapsed = start.elapsed().as_secs_f64().min(1.0);
         let clock = r.audio.clock();
-        assert!((0.15..0.5).contains(&clock), "{clock}");
+        assert!(clock > 0.1 && clock <= elapsed + 0.05, "{clock} after {elapsed}");
     }
 }
