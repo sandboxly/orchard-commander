@@ -320,8 +320,10 @@ impl<'s> Engine<'s> {
             starved_since: None,
         };
         if let Some(a) = &mut engine.audio {
-            a.out = output::start(opts.output, &shared.audio, watch);
+            output::start(opts.output, &shared.audio, watch);
+            // Generation first: a device switch after these reads bumps it again.
             a.generation = shared.audio.generation();
+            a.out = shared.audio.format();
         }
         let mut st = shared.status();
         st.duration = info.duration.map(|d| d.as_secs_f64());
