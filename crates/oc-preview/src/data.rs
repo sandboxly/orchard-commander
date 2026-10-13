@@ -516,17 +516,45 @@ pub struct MediaData {
     pub source: DocumentSource,
     /// Audio from a stream: a second stream for the waveform (small files only).
     pub waveform_stream: Option<Box<dyn ReadStream>>,
+    /// Tags, duration, video size and codecs; None if FFmpeg can't read the
+    /// file (the player then reports why).
+    #[cfg(feature = "media")]
+    pub info: Option<Box<oc_media::MediaInfo>>,
+}
+
+#[cfg(feature = "media")]
+impl MediaData {
+    /// What oc-media plays, and what its waveform reads: the same file for
+    /// local audio, the second stream for small audio on servers, None for
+    /// video and for large audio on servers (show
+    /// [`oc_media::waveform::REMOTE_NOTE`] then).
+    pub fn into_sources(self) -> (oc_media::MediaSource, Option<oc_media::MediaSource>) {
+        use oc_media::MediaSource;
+        let size = Some(self.size);
+        match self.source {
+            DocumentSource::Path(p) => {
+                let waveform = (!self.video).then(|| MediaSource::Path(p.clone()));
+                (MediaSource::Path(p), waveform)
+            }
+            DocumentSource::Stream(stream) => {
+                let waveform = self.waveform_stream.map(|w| MediaSource::stream(w, size, self.name.clone()));
+                (MediaSource::stream(stream, size, self.name), waveform)
+            }
+        }
+    }
 }
 
 impl fmt::Debug for MediaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MediaData")
-            .field("video", &self.video)
+        let mut d = f.debug_struct("MediaData");
+        d.field("video", &self.video)
             .field("name", &self.name)
             .field("size", &self.size)
             .field("source", &self.source)
-            .field("waveform_stream", &self.waveform_stream.is_some())
-            .finish()
+            .field("waveform_stream", &self.waveform_stream.is_some());
+        #[cfg(feature = "media")]
+        d.field("info", &self.info);
+        d.finish()
     }
 }
 

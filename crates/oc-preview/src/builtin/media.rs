@@ -18,6 +18,17 @@ fn seekable_stream(src: &PreviewSource) -> Result<Option<Box<dyn ReadStream>>, P
     Ok(stream.seekable().then_some(stream))
 }
 
+/// Tags and stream facts for the player, read on the loader's thread
+/// (streams are rewound for the player).
+#[cfg(feature = "media")]
+fn probe(source: &mut DocumentSource, src: &PreviewSource) -> Option<Box<oc_media::MediaInfo>> {
+    let result = match source {
+        DocumentSource::Path(p) => oc_media::probe(p),
+        DocumentSource::Stream(s) => oc_media::probe_stream(&mut **s, Some(src.size()), src.name()),
+    };
+    result.map(Box::new).map_err(|e| log::debug!("media info of {}: {e}", src.name())).ok()
+}
+
 pub struct MediaPreviewer;
 
 impl Previewer for MediaPreviewer {
@@ -49,10 +60,13 @@ impl Previewer for MediaPreviewer {
         let video = VIDEO_EXTS.contains(&ext_for_name(src.name()).as_str());
         let kind = if video { "video" } else { "audio" };
         let size = human_size(src.size());
-        let media = |source, waveform_stream| MediaData {
+        #[cfg_attr(not(feature = "media"), allow(unused_mut))]
+        let media = |mut source, waveform_stream| MediaData {
             video,
             name: src.name().to_string(),
             size: src.size(),
+            #[cfg(feature = "media")]
+            info: probe(&mut source, src),
             source,
             waveform_stream,
         };
