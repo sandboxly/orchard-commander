@@ -9,7 +9,8 @@
 //! started. A timer refreshes the panels showing running results (new hits,
 //! the "searching…" counters); Esc stops the search; ⇧⌘F shows the last
 //! results again. After file operations the hits whose files are gone are
-//! dropped ([`Registry::on_files_changed`]); renames call [`relocate`].
+//! dropped ([`Registry::on_files_changed`]); renamed ones follow
+//! ([`Registry::on_files_moved`] → [`relocate`]).
 
 pub mod dialog;
 
@@ -53,6 +54,7 @@ pub fn register(reg: &mut Registry) {
             .enabled(|app| is_running(app) && app.main.sides[app.main.active].mode == SideMode::Files),
     );
     reg.on_files_changed(prune_then_reload);
+    reg.on_files_moved(relocate);
 }
 
 /// A search the app knows about: the last one and any shown in a panel.
