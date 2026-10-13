@@ -882,7 +882,10 @@ impl RenameDialog {
             Field::Case => match k.key {
                 Key::Up if m.is_empty() => self.set_case(app, self.case.saturating_sub(1)),
                 Key::Down if m.is_empty() => self.set_case(app, (self.case + 1).min(CASES.len() - 1)),
-                Key::Space if m.is_empty() => self.open_case_menu(screen),
+                // The rest of a Qt combo box's keys (PageUp/PageDown scroll the table here).
+                Key::Home if m.is_empty() => self.set_case(app, 0),
+                Key::End if m.is_empty() => self.set_case(app, CASES.len() - 1),
+                Key::Space | Key::F(4) if m.is_empty() => self.open_case_menu(screen),
                 _ => {}
             },
             Field::Start | Field::Step | Field::Digits => {

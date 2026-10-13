@@ -6,7 +6,8 @@
 //! "1.5G" limits, modification presets). The entries are kept for the
 //! session ([`Form`]). Keys: Tab / Shift+Tab or ↑/↓ move between fields,
 //! except that ↑/↓ change a choice (combo boxes in 1.x); Space toggles a
-//! checkbox or opens a choice, Enter searches, Esc cancels.
+//! checkbox or opens a choice (so do F4 and Alt+↓), Enter searches, Esc
+//! cancels.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -642,7 +643,7 @@ impl FindFilesDialog {
                 Key::Down | Key::PageDown if plain => c.index = (c.index + 1).min(last),
                 Key::Home if plain => c.index = 0,
                 Key::End if plain => c.index = last,
-                Key::Space if plain => self.open_popup(focus, content),
+                Key::Space | Key::F(4) if plain => self.open_popup(focus, content),
                 _ => {}
             }
             return ModalOutcome::Consumed;

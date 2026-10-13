@@ -230,6 +230,14 @@ fn search_replace_case_and_counter_fields() {
     press(&mut app, Key::Down);
     press(&mut app, Key::Enter);
     assert_eq!(new_names(&app), ["Holiday my photo.jpg"], "First letter uppercase");
+    // Home / End / F4 as in a Qt combo box.
+    press(&mut app, Key::Home);
+    assert_eq!(new_names(&app), ["Holiday My photo.JPG"], "Unchanged");
+    press(&mut app, Key::End);
+    press(&mut app, Key::F(4));
+    press(&mut app, Key::Up);
+    press(&mut app, Key::Enter);
+    assert_eq!(new_names(&app), ["Holiday my photo.jpg"], "one above Every Word Uppercase");
     // Counter fields: typed and stepped with ↑/↓, used by [C].
     rename::with_open_dialog(&mut app, |d, app| {
         d.name_mask.set_text("[C]");

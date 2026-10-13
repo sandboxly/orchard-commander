@@ -182,7 +182,12 @@ fn dialog_options_build_the_query() {
     for _ in 0..4 {
         press(&mut app, Key::Tab);
     }
-    press(&mut app, Key::Up); // back to All subfolders
+    press(&mut app, Key::End);
+    press(&mut app, Key::Home); // back to All subfolders
+    press(&mut app, Key::F(4)); // opens the list…
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Escape); // …which Esc closes without picking
+    assert_eq!(app.modal_titles(), ["Find files"], "F4 opened the list, Esc closed only it");
     for _ in 0..4 {
         press(&mut app, Key::Tab);
     }
