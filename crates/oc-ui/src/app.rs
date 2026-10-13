@@ -601,9 +601,18 @@ impl App {
             return m.modal.as_ref().is_some_and(|d| d.wants_text_input());
         }
         if win == MAIN_WINDOW {
-            return false;
+            // The terminal takes composed text (dead keys, accents, CJK) for the shell.
+            return crate::features::terminal::has_focus(self);
         }
         self.windows.iter().find(|(id, _)| *id == win).and_then(|(_, w)| w.as_ref()).is_some_and(|w| w.wants_text_input())
+    }
+
+    /// The mouse pointer's shape for `win` (the platform sets it when it changes).
+    pub fn pointer(&self, win: WinId) -> crate::input::Pointer {
+        if win != MAIN_WINDOW || self.has_modal(win) {
+            return crate::input::Pointer::Default;
+        }
+        crate::features::terminal::pointer(self)
     }
 
     // -- windows --------------------------------------------------------------

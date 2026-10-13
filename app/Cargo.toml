@@ -30,6 +30,7 @@ oc-provider = { path = "../crates/oc-provider" }
 oc-remote-http = { path = "../crates/oc-remote-http" }
 oc-sftp = { path = "../crates/oc-sftp" }
 oc-smb = { path = "../crates/oc-smb" }
+base64 = "0.22.1"
 log = "0.4"
 serde_json = "1.0"
 tempfile.workspace = true

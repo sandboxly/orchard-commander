@@ -485,8 +485,10 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
   `show_hidden`, `font_size` (zoom; reset → `null`), `color_scheme` /
   `light_scheme` / `dark_scheme`, `extra.left_mode` / `extra.right_mode`.
   New in 2.x (ignored by 1.x): `extra.left_sort`, `extra.left_sort_reverse`
-  (and `right_…`), `extra.window_geometry` (logical `width`, `height`, `x`,
-  `y`; 1.x's Qt `geometry` blob is left alone).
+  (and `right_…`). The window's size, position and maximized / full-screen
+  state go in 1.x's `extra.geometry` (Qt `saveGeometry()` base64, written
+  and read by `app/src/geometry.rs`, clamped onto a connected screen);
+  2.0 betas' `extra.window_geometry` is read only when it is missing.
 * `app.theme` (`Theme`) = scheme colors + `BoxStyle` + `FontConfig` (family,
   style, size, line spacing). `update_settings` re-resolves it when the
   appearance changes and emits `PlatformRequest::ThemeChanged`; the binary
