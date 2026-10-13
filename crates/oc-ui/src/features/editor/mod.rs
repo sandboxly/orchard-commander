@@ -7,6 +7,7 @@
 //! * [`highlight`] — incremental syntect highlighting on a worker.
 //! * [`find`] — search (case-insensitive unless Match case).
 //! * [`io`] — reading/decoding, atomic local saves, `open_write` elsewhere.
+//! * `language` — the status line's language, picked like 1.x's Pygments lexer.
 //! * [`window`] — keys, find bar, load/save/watch, the unsaved-changes question.
 //! * [`draw`] — drawing it.
 //!
@@ -18,6 +19,8 @@ pub mod draw;
 pub mod find;
 pub mod highlight;
 pub mod io;
+mod language;
+mod language_table;
 pub mod window;
 
 use oc_vfs::VPath;

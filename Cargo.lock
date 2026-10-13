@@ -3891,6 +3891,7 @@ dependencies = [
  "oc-smb",
  "oc-term",
  "oc-vfs",
+ "regex",
  "ropey",
  "serde_json",
  "tempfile",

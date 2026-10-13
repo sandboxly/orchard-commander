@@ -493,14 +493,44 @@ fn characters_the_encoding_cant_store_offer_utf8() {
     open_editor(&mut app, oc_local::local(&path));
     let id = editor_for(&mut app, "old.txt");
     assert!(ed(&app, id).status().contains("Windows-1252"));
-    app.handle_event(id, Event::Commit("日".into()));
+    app.handle_event(id, Event::Commit("日本".into()));
     key(&mut app, id, Key::Char('s'), primary());
     assert_eq!(app.modal_titles(), ["Save as UTF-8"]);
-    assert!(app.top_modal_text().unwrap().contains("Windows-1252"));
+    // 1.x quotes the whole run with Python's repr.
+    let msg = app.top_modal_text().unwrap();
+    assert!(msg.contains("written as Windows-1252 ('日本')."), "{msg}");
     key(&mut app, id, Key::Enter, Mods::NONE);
     wait_saved(&mut app, id);
-    assert_eq!(fs::read_to_string(&path).unwrap(), "日café\n");
+    assert_eq!(fs::read_to_string(&path).unwrap(), "日本café\n");
     assert!(ed(&app, id).status().contains("UTF-8"));
+}
+
+#[test]
+fn only_newlines_start_lines() {
+    // 1.x (QPlainTextEdit): a form feed stays inside its line, so line
+    // numbers match compilers and Go to line.
+    let e = env();
+    let path = e.left.join("ff.c");
+    fs::write(&path, "first\x0csecond\nthird\nfourth\n").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "ff.c");
+    assert_eq!(ed(&app, id).buf.len_lines(), 4);
+    key(&mut app, id, Key::Down, Mods::NONE);
+    assert!(ed(&app, id).status().starts_with("Ln 2, Col 1"), "{}", ed(&app, id).status());
+    assert_eq!(ed(&app, id).buf.line(1).to_string(), "third");
+}
+
+#[test]
+fn unencodable_characters_are_quoted_like_python() {
+    use oc_ui::features::editor::window::py_repr;
+    assert_eq!(py_repr("日本"), "'日本'");
+    let bs = '\\';
+    assert_eq!(py_repr("\u{2028}"), format!("'{bs}u2028'"));
+    assert_eq!(py_repr("\u{81}"), format!("'{bs}x81'"));
+    assert_eq!(py_repr("\u{1f600}\u{e000}"), format!("'\u{1f600}{bs}ue000'"));
+    assert_eq!(py_repr("it's"), "\"it's\"");
+    assert_eq!(py_repr(r"a\b"), r"'a\\b'");
 }
 
 #[test]

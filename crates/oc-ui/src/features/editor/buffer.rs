@@ -746,4 +746,14 @@ mod tests {
         assert_eq!(b.pos_at_col(0, 999_999, false), end);
         assert_eq!(b.scan(0, usize::MAX, 300_002), (300_000, 300_000), "stops before the tab");
     }
+
+    #[test]
+    fn only_newline_breaks_lines() {
+        // 1.x (QPlainTextEdit): form feed, VT, NEL and U+2028 stay inside the line.
+        let b = Buffer::new("a\x0cb\u{2028}c\u{85}d\x0be\nf\n");
+        assert_eq!(b.len_lines(), 3);
+        assert_eq!(b.line(0).to_string(), "a\x0cb\u{2028}c\u{85}d\x0be");
+        assert_eq!(b.line_end(0), 9);
+        assert_eq!(b.line_of(b.line_start(1)), 1);
+    }
 }

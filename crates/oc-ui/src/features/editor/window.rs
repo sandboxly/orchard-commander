@@ -500,7 +500,10 @@ impl EditorWindow {
             Ok(d) => d,
             Err(e) => {
                 let enc = self.file.encoding.display_name();
-                let msg = format!("Some characters can't be written as {enc} ('{}').\n\nSave the file as UTF-8 instead?", e.ch);
+                let msg = format!(
+                    "Some characters can't be written as {enc} ({}).\n\nSave the file as UTF-8 instead?",
+                    py_repr(&unencodable_run(&self.file, &text, e.ch))
+                );
                 let mb = MessageBox::new("Save as UTF-8", &msg, &["Save", "Cancel"], 0).width(60).on_choice(move |app, choice| {
                     with_editor(app, id, |w, app| {
                         if choice == Some(0) {
@@ -1161,10 +1164,8 @@ fn prepare(location: &VPath, loaded: Loaded) -> Prepared {
     match loaded {
         Loaded::Text(mut file) => {
             let text = std::mem::take(&mut file.text);
-            let name = location.name();
-            let syntax = syn::syntax_for_file(&name)
-                .or_else(|| text.starts_with("#!").then(|| syn::syntax_for_first_line(text.lines().next().unwrap_or(""))).flatten());
-            let language = syntax.map_or_else(|| "Plain text".to_owned(), |s| s.name.clone());
+            let (language, syntax_name) = super::language::language_for(&location.name(), &text);
+            let syntax = syntax_name.and_then(|n| syn::syntax_set().syntaxes().iter().find(|s| s.name.eq_ignore_ascii_case(n)));
             // Like 1.x, very large texts stay plain (counted in characters).
             let big = text.len() > MAX_HIGHLIGHT_CHARS && text.chars().nth(MAX_HIGHLIGHT_CHARS).is_some();
             let hl = syntax.filter(|_| !big).map(LineHighlighter::new);
@@ -1193,6 +1194,56 @@ pub fn close_window(app: &mut App, id: WinId) {
             app.later(App::quit);
         }
     });
+}
+
+/// The run of characters from the first `first` on that `file`'s encoding
+/// can't store: what Python's encode error reported (1.x quoted it).
+fn unencodable_run(file: &TextFile, text: &str, first: char) -> String {
+    let fails = |c: char| file.encode(Some(c.encode_utf8(&mut [0; 4]))).is_err();
+    let start = text.find(first).unwrap_or(0);
+    let run: String = text[start..].chars().take_while(|c| fails(*c)).collect();
+    if run.is_empty() { first.to_string() } else { run }
+}
+
+/// Python's `repr` of a string ('日本', ' '), as 1.x showed it.
+pub fn py_repr(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let mut out = String::from(quote);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if !py_printable(c) => {
+                let n = c as u32;
+                out.push_str(&if n < 0x100 {
+                    format!("\\x{n:02x}")
+                } else if n < 0x10000 {
+                    format!("\\u{n:04x}")
+                } else {
+                    format!("\\U{n:08x}")
+                });
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}
+
+/// Python's `str.isprintable` for one char, roughly: not a control, format,
+/// separator (other than space), surrogate or private-use character.
+fn py_printable(c: char) -> bool {
+    let n = c as u32;
+    let format = matches!(n, 0xad | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x180e | 0x200b..=0x200f | 0x202a..=0x202e
+        | 0x2060..=0x2064 | 0x2066..=0x206f | 0xfeff | 0xfff9..=0xfffb | 0x110bd | 0x1d173..=0x1d17a | 0xe0001 | 0xe0020..=0xe007f);
+    let private = matches!(n, 0xe000..=0xf8ff | 0xf0000..);
+    !(c.is_control() || format || private || (c.is_whitespace() && c != ' '))
 }
 
 /// ⌘L: ask for a line number.
