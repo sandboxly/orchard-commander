@@ -46,6 +46,8 @@ enum GroupKind {
 /// One undo step.
 #[derive(Clone, Debug)]
 struct Group {
+    /// Unique in this buffer (never 0, which stands for "no history").
+    id: u64,
     edits: Vec<Edit>,
     kind: GroupKind,
     before: (usize, Option<usize>),
@@ -91,8 +93,12 @@ pub struct Buffer {
     goal: Option<usize>,
     undo: Vec<Group>,
     redo: Vec<Group>,
-    /// `undo.len()` when the text matched the file; None if that state is gone.
-    clean: Option<usize>,
+    /// The id of the newest undo step when the text matched the file (0:
+    /// none). Ids are unique, so once that step is dropped from the history
+    /// (undone and replaced by new edits) the buffer never counts as clean
+    /// again by accident.
+    clean: Option<u64>,
+    last_id: u64,
     /// The last undo group may still take more typing.
     open: bool,
     /// Bumped on every change of the text.
@@ -149,25 +155,35 @@ impl Buffer {
     // -- modification state ---------------------------------------------------
 
     pub fn modified(&self) -> bool {
-        self.clean != Some(self.undo.len())
+        self.clean != Some(self.top_id())
+    }
+
+    /// The id of the newest undo step (0: none).
+    fn top_id(&self) -> u64 {
+        self.undo.last().map_or(0, |g| g.id)
+    }
+
+    fn next_id(&mut self) -> u64 {
+        self.last_id += 1;
+        self.last_id
     }
 
     /// The text now matches the file (saved).
     pub fn mark_clean(&mut self) {
-        self.clean = Some(self.undo.len());
+        self.clean = Some(self.top_id());
         self.open = false;
     }
 
     /// Where the history is now (save started): see [`mark_clean_at`](Self::mark_clean_at).
-    pub fn save_point(&self) -> usize {
-        self.undo.len()
+    pub fn save_point(&self) -> u64 {
+        self.top_id()
     }
 
     /// The text as it was at `point` is on disk (a save finished; the user
     /// may have typed on meanwhile).
-    pub fn mark_clean_at(&mut self, point: usize) {
+    pub fn mark_clean_at(&mut self, point: u64) {
         self.clean = Some(point);
-        if self.undo.len() == point {
+        if self.top_id() == point {
             self.open = false;
         }
     }
@@ -216,7 +232,39 @@ impl Buffer {
     /// The display column of `pos` (tabs expanded, wide chars count two).
     pub fn display_col(&self, pos: usize) -> usize {
         let (line, offset) = self.line_col(pos);
-        self.line(line).chars().take(offset).fold(0, advance)
+        self.scan(line, offset, usize::MAX).1
+    }
+
+    /// Walk `line` from its start, char by char, while the offset stays at
+    /// most `max_offset` and each char ends at most at column `max_col`;
+    /// returns where it stopped as (char offset, display column). Runs of printable ASCII
+    /// without tabs are skipped a chunk at a time, so a cursor at the end of
+    /// a multi-megabyte minified line costs microseconds, not a char walk.
+    pub fn scan(&self, line: usize, max_offset: usize, max_col: usize) -> (usize, usize) {
+        let (mut off, mut col) = (0usize, 0usize);
+        for chunk in self.line(line).chunks() {
+            if off >= max_offset || col >= max_col {
+                break;
+            }
+            if chunk.is_ascii() && !chunk.contains('\t') {
+                let n = chunk.len().min(max_offset - off).min(max_col - col);
+                off += n;
+                col += n;
+                if n < chunk.len() {
+                    break;
+                }
+                continue;
+            }
+            for c in chunk.chars() {
+                let next = advance(col, c);
+                if off >= max_offset || next > max_col {
+                    return (off, col);
+                }
+                off += 1;
+                col = next;
+            }
+        }
+        (off, col)
     }
 
     /// The position in `line` at display column `col` (the char containing
@@ -224,16 +272,14 @@ impl Buffer {
     /// char goes after it.
     pub fn pos_at_col(&self, line: usize, col: usize, round: bool) -> usize {
         let start = self.line_start(line);
-        let mut x = 0;
-        for (i, c) in self.line(line).chars().enumerate() {
-            let next = advance(x, c);
-            if next > col {
-                let after = round && col - x >= (next - x).div_ceil(2);
-                return start + i + usize::from(after);
-            }
-            x = next;
+        let (off, x) = self.scan(line, usize::MAX, col);
+        let line_text = self.line(line);
+        if off >= line_text.len_chars() {
+            return start + off;
         }
-        self.line_end(line)
+        let next = advance(x, line_text.char(off));
+        let after = round && col >= x && col - x >= (next - x).div_ceil(2);
+        start + off + usize::from(after)
     }
 
     // -- selection --------------------------------------------------------------
@@ -386,9 +432,6 @@ impl Buffer {
     }
 
     fn push(&mut self, group: Group) {
-        if self.clean.is_some_and(|c| c > self.undo.len()) {
-            self.clean = None; // the saved state was in the redo history
-        }
         self.undo.push(group);
         self.redo.clear();
     }
@@ -406,7 +449,7 @@ impl Buffer {
             && sel.is_none()
             && self.open
             && !text.contains('\n')
-            && self.clean != Some(self.undo.len())
+            && self.clean != Some(self.top_id())
             && self.undo.last().is_some_and(|g| {
                 g.kind == GroupKind::Typing
                     && g.edits.len() == 1
@@ -425,7 +468,8 @@ impl Buffer {
             self.redo.clear();
         } else {
             let kind = if typing && sel.is_none() { GroupKind::Typing } else { GroupKind::Other };
-            self.push(Group { edits: vec![edit], kind, before, after });
+            let id = self.next_id();
+            self.push(Group { id, edits: vec![edit], kind, before, after });
         }
         self.open = typing && !text.contains('\n');
     }
@@ -439,7 +483,8 @@ impl Buffer {
             self.cursor = sel.start;
             self.anchor = None;
             self.goal = None;
-            self.push(Group { edits: vec![edit], kind: GroupKind::Other, before, after: (self.cursor, None) });
+            let id = self.next_id();
+            self.push(Group { id, edits: vec![edit], kind: GroupKind::Other, before, after: (self.cursor, None) });
             self.open = false;
             return;
         }
@@ -451,7 +496,7 @@ impl Buffer {
         let before = (self.cursor, None);
         let merge = mergeable
             && self.open
-            && self.clean != Some(self.undo.len())
+            && self.clean != Some(self.top_id())
             && self.undo.last().is_some_and(|g| {
                 g.kind == kind
                     && g.edits.len() == 1
@@ -472,7 +517,8 @@ impl Buffer {
             g.after = (self.cursor, None);
             self.redo.clear();
         } else {
-            self.push(Group { edits: vec![edit], kind, before, after: (self.cursor, None) });
+            let id = self.next_id();
+            self.push(Group { id, edits: vec![edit], kind, before, after: (self.cursor, None) });
         }
         self.open = mergeable;
     }
@@ -498,31 +544,32 @@ impl Buffer {
     }
 
     /// Replace several ranges (sorted, not overlapping) as one undo step;
-    /// the cursor ends after the last replacement.
+    /// the cursor ends after the last replacement. The new text is built in
+    /// one pass and swapped in as a single edit (from the first match to the
+    /// last), so replacing 100 000 matches costs about as much as one paste
+    /// — and so do undo and redo.
     pub fn replace_ranges(&mut self, ranges: &[Range<usize>], with: &str) {
-        if ranges.is_empty() {
+        let (Some(first), Some(last)) = (ranges.first(), ranges.last()) else {
             return;
-        }
+        };
         let with = normalize(with);
         let before = (self.cursor, self.anchor);
-        let mut edits = Vec::with_capacity(ranges.len());
-        // From the end, so earlier positions stay put; recorded front to back.
-        for r in ranges.iter().rev() {
-            edits.push(self.splice(r.clone(), &with));
+        let span = first.start..last.end;
+        let mut text = String::with_capacity(self.rope.slice(span.clone()).len_bytes());
+        let mut pos = span.start;
+        for r in ranges {
+            for chunk in self.rope.slice(pos..r.start).chunks() {
+                text.push_str(chunk);
+            }
+            text.push_str(&with);
+            pos = r.end;
         }
-        edits.reverse();
-        // Positions as they are after the earlier replacements (for undo/redo).
-        let delta = with.chars().count() as isize;
-        let mut shift = 0isize;
-        for e in &mut edits {
-            e.at = (e.at as isize + shift) as usize;
-            shift += delta - e.removed.chars().count() as isize;
-        }
-        let last = edits.last().expect("non-empty");
-        self.cursor = last.at + last.inserted.chars().count();
+        let edit = self.splice(span.clone(), &text);
+        self.cursor = span.start + edit.inserted.chars().count();
         self.anchor = None;
         self.goal = None;
-        self.push(Group { edits, kind: GroupKind::Other, before, after: (self.cursor, None) });
+        let id = self.next_id();
+        self.push(Group { id, edits: vec![edit], kind: GroupKind::Other, before, after: (self.cursor, None) });
         self.open = false;
     }
 
@@ -668,5 +715,35 @@ mod tests {
         assert_eq!(b.take_changes(), [Change::Lines { line: 0, old_end: 3, new_end: 0 }]);
         b.insert("\r\n", false);
         assert_eq!(b.text(), "\nc\n", "CRLF pasted as LF");
+    }
+
+    #[test]
+    fn undoing_while_a_save_runs_doesnt_fake_a_clean_state() {
+        let mut b = Buffer::new("");
+        for c in ["a", " ", "b"] {
+            b.insert(c, false);
+        }
+        b.seal();
+        let point = b.save_point(); // "a b" goes to disk…
+        b.undo(); // …meanwhile: "a "
+        b.insert("c", false); // "a c": as many steps as when the save started
+        b.mark_clean_at(point); // the save finishes
+        assert!(b.modified(), "\"a c\" isn't what was saved");
+        b.undo();
+        assert!(b.modified());
+    }
+
+    #[test]
+    fn columns_on_long_and_mixed_lines() {
+        let long = "x".repeat(300_000);
+        let b = Buffer::new(&format!("{long}\tz日本\n"));
+        let end = b.line_end(0);
+        assert_eq!(b.display_col(end), 300_000 + 4 + 1 + 4);
+        assert_eq!(b.pos_at_col(0, 299_999, false), 299_999);
+        assert_eq!(b.pos_at_col(0, 300_002, false), 300_000, "inside the tab");
+        assert_eq!(b.pos_at_col(0, 300_005, false), 300_002, "the left half of 日");
+        assert_eq!(b.pos_at_col(0, 300_006, true), 300_003, "its right half rounds up");
+        assert_eq!(b.pos_at_col(0, 999_999, false), end);
+        assert_eq!(b.scan(0, usize::MAX, 300_002), (300_000, 300_000), "stops before the tab");
     }
 }

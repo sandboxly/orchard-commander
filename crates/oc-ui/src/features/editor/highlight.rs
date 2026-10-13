@@ -86,11 +86,12 @@ impl Highlight {
 
     /// Bring the line bookkeeping up to date with buffer changes.
     pub fn apply_changes(&mut self, changes: &[Change], lines: usize) {
-        for c in changes {
-            match *c {
-                Change::Reset => self.reset(lines),
-                Change::Lines { line, old_end, new_end } => self.lines_changed(line, old_end, new_end),
-            }
+        if changes.contains(&Change::Reset) {
+            self.reset(lines); // everything is redone anyway
+        } else if let Some((line, old_end, new_end)) = compose(changes) {
+            // One pass over the span table and checkpoints, however many
+            // edits happened since the last event.
+            self.lines_changed(line, old_end, new_end);
         }
         // Defensive: the span table always has one entry per line.
         self.spans.resize_with(lines, Vec::new);
@@ -200,6 +201,31 @@ impl Highlight {
     }
 }
 
+/// Several line changes in a row as one: `[line, old_end]` of the text
+/// before all of them became `[line, new_end]` (it may cover unchanged lines
+/// in between; they are just highlighted again).
+fn compose(changes: &[Change]) -> Option<(usize, usize, usize)> {
+    let mut acc: Option<(usize, usize, usize)> = None;
+    for c in changes {
+        let Change::Lines { line, old_end, new_end } = *c else { continue };
+        acc = Some(match acc {
+            None => (line, old_end, new_end),
+            Some((s, oe, ne)) => {
+                let delta = new_end as isize - old_end as isize;
+                let oe2 = if old_end > ne { oe + (old_end - ne) } else { oe };
+                let ne2 = if ne > old_end { ((ne as isize + delta) as usize).max(new_end) } else { new_end };
+                (s.min(line), oe2, ne2)
+            }
+        });
+    }
+    acc
+}
+
+/// Lines longer than this (bytes) are shown plain and leave the parser
+/// state as it was: grammars can take seconds on a megabyte of minified
+/// code, and every keystroke on that line would redo it.
+const LONG_LINE: usize = 20_000;
+
 /// The worker: highlight from `start` until the end, convergence or the time slice.
 fn run(
     hl: &LineHighlighter,
@@ -230,8 +256,14 @@ fn run(
                 checkpoints.push((line, state.clone()));
             }
         }
+        let text = rope.line(line);
+        if text.len_bytes() > LONG_LINE {
+            spans.push(Vec::new());
+            line += 1;
+            continue;
+        }
         buf.clear();
-        for chunk in rope.line(line).chunks() {
+        for chunk in text.chunks() {
             buf.push_str(chunk);
         }
         match hl.line(&mut state, &buf) {
@@ -336,5 +368,58 @@ mod tests {
         finish(&mut h, b.rope());
         assert_eq!(h.spans.len(), b.len_lines());
         assert!(!h.spans(301).is_empty());
+    }
+
+    /// Random edits (with strings opening and closing, line joins and
+    /// splits, several edits per event, results for an older text): the
+    /// incremental result always equals highlighting the text from scratch.
+    #[test]
+    fn incremental_matches_a_full_rehighlight() {
+        let syntax = syntax_for_file("a.py").unwrap();
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut rnd = move |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n as u64) as usize
+        };
+        let base: String = (0..400).map(|i| format!("def f{i}(x):\n    return x + {i}  # c\n")).collect();
+        let mut b = Buffer::new(&base);
+        let mut h = Highlight::new(Some(LineHighlighter::new(syntax)), b.len_lines());
+        finish(&mut h, b.rope());
+        let snippets = ["\"\"\"", "\n", "x", "# ", "'", "\n\n", "def g():\n    pass\n", "\"", ""];
+        for round in 0..60 {
+            // Sometimes a job runs on the text as it is, and arrives after more edits.
+            let stale = (round % 3 == 0).then(|| {
+                let hl = h.hl.clone().unwrap();
+                let idx = h.checkpoints.iter().rposition(|(l, _)| *l <= h.valid).unwrap();
+                let (start, state) = h.checkpoints[idx].clone();
+                h.edited_since_job = usize::MAX;
+                h.job = Some(CancelToken::new());
+                run(&hl, &b.rope().clone(), start, state, &[], h.version, &CancelToken::new())
+            });
+            for _ in 0..1 + rnd(3) {
+                let n = b.len_chars();
+                let at = rnd(n + 1);
+                if rnd(3) == 0 && n > 0 {
+                    let end = (at + rnd(40)).min(n);
+                    b.select(at..end);
+                    b.insert("", false);
+                } else {
+                    b.move_to(at, false);
+                    b.insert(snippets[rnd(snippets.len())], false);
+                }
+            }
+            h.apply_changes(&b.take_changes(), b.len_lines());
+            if let Some(res) = stale {
+                h.apply(res);
+            }
+            finish(&mut h, b.rope());
+            let mut fresh = Highlight::new(Some(LineHighlighter::new(syntax)), b.len_lines());
+            finish(&mut fresh, b.rope());
+            for line in 0..b.len_lines() {
+                assert_eq!(h.spans(line), fresh.spans(line), "round {round}, line {line}: {:?}", b.line(line).to_string());
+            }
+        }
     }
 }

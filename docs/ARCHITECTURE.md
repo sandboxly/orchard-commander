@@ -253,11 +253,15 @@ app.request(PlatformRequest::RaiseWindow(id)) // bring it to the front (already 
 
 F4 / Shift+F4 open an `EditorWindow` per file (`EditorState` lists them).
 `buffer.rs` is a ropey rope with cursor, selection and undo groups (typing
-merges; "modified" = the undo position differs from the saved one).
+merges; each step has a unique id and "modified" = the newest step isn't
+the one that was saved). Columns skip runs of plain ASCII a rope chunk at a
+time and find uses the rope's line iterator + `str` search, so multi-MB
+files and minified one-line files stay fast; Replace all is a single edit.
 `highlight.rs` highlights with syntect on a worker in 30 ms slices on a rope
 snapshot, keeping parser states every 64 lines; after an edit it restarts at
 the edited line and stops when the state at a later checkpoint matches the
-old one (`oc_preview::highlight::LineHighlighter` / `LineState`). Files are
+old one (`oc_preview::highlight::LineHighlighter` / `LineState`); lines over
+20 000 bytes stay plain. Files are
 read, decoded (`oc_preview::textfile`), turned into a rope and given a syntax
 on a worker; local saves are a temp file + atomic rename keeping permissions,
 others `open_write`; local files are watched (folder watch, 300 ms debounce,

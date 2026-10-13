@@ -49,6 +49,13 @@ pub fn save(location: &VPath, data: &[u8]) -> Result<(), String> {
 
 /// Port of 1.x `_write_atomically`: write next to the file, then swap it in.
 pub fn write_atomically(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    // A symlink (dotfiles kept in a repository…): replace the file it points
+    // to, not the link itself.
+    let resolved = std::fs::symlink_metadata(path)
+        .is_ok_and(|m| m.file_type().is_symlink())
+        .then(|| std::fs::canonicalize(path).ok())
+        .flatten();
+    let path = resolved.as_deref().unwrap_or(path);
     let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let perms = std::fs::metadata(path).ok().map(|m| m.permissions());
@@ -90,6 +97,13 @@ mod tests {
         assert_eq!(std::fs::read(&p).unwrap(), b"new");
         assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o7777, 0o640);
         assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1);
+        // Through a symlink: the target changes, the link stays a link.
+        let link = tmp.path().join("link.txt");
+        std::os::unix::fs::symlink(&p, &link).unwrap();
+        write_atomically(&link, b"via link").unwrap();
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read(&p).unwrap(), b"via link");
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
     }
 
     #[test]

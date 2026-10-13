@@ -72,11 +72,14 @@ fn draw_text(w: &EditorWindow, f: &mut Frame, l: &super::window::Layout, ctx: &D
 
         let start = buf.line_start(line);
         let spans = w.hl.spans(line);
-        let mut span = 0;
-        let (mut col, mut byte) = (0usize, 0usize);
-        let mut pos = start;
+        let text = buf.line(line);
+        // Skip what is scrolled off to the left without walking it char by char.
+        let (skip, mut col) = buf.scan(line, usize::MAX, w.left);
+        let mut byte = text.char_to_byte(skip);
+        let mut span = spans.partition_point(|s| s.end as usize <= byte);
+        let mut pos = start + skip;
         let end_col = w.left + width;
-        for ch in buf.line(line).chars() {
+        for ch in text.slice(skip..).chars() {
             if col >= end_col {
                 break;
             }

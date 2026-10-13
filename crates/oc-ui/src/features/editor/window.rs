@@ -203,6 +203,9 @@ pub struct EditorWindow {
     pub saving: bool,
     /// Shown in the status line instead of the position ("loading…").
     pub note: Option<String>,
+    /// The file is gone from the disk (shown in the status line until it is
+    /// back or saved again).
+    pub deleted_on_disk: bool,
     pub top: usize,
     pub left: usize,
     pub focus: Focus,
@@ -213,12 +216,16 @@ pub struct EditorWindow {
     follow: bool,
     /// The user chose "Don't save": close without asking again.
     discard: bool,
+    /// "Save" in the unsaved-changes question while a save was already
+    /// running: close when that one is done.
+    close_after_save: bool,
     /// The unsaved-changes question is open.
     asking: bool,
     /// A changed-on-disk question is open.
     asking_reload: bool,
     title_sent: String,
-    menu_state: (bool, bool, bool),
+    /// What the native menus' enabled states were last built from.
+    menu_state: Vec<bool>,
     /// (mtime, size) after our last load/save, to tell outside changes apart.
     own_signature: Option<(SystemTime, u64)>,
     watch: Option<FileWatch>,
@@ -245,6 +252,7 @@ impl EditorWindow {
             load_failed: false,
             saving: false,
             note: Some("loading…".into()),
+            deleted_on_disk: false,
             top: 0,
             left: 0,
             focus: Focus::Text,
@@ -253,10 +261,11 @@ impl EditorWindow {
             dragging: false,
             follow: false,
             discard: false,
+            close_after_save: false,
             asking: false,
             asking_reload: false,
             title_sent: String::new(),
-            menu_state: (false, false, false),
+            menu_state: Vec::new(),
             own_signature: None,
             watch: None,
             watch_wanted: false,
@@ -299,6 +308,9 @@ impl EditorWindow {
         let mut parts = vec![format!("Ln {}, Col {}", line + 1, col + 1), self.file.description(), self.language.clone()];
         if self.read_only {
             parts.push("read-only".into());
+        }
+        if self.deleted_on_disk {
+            parts.push("deleted on disk".into());
         }
         parts.join(" · ")
     }
@@ -363,7 +375,7 @@ impl EditorWindow {
             self.title_sent = title.clone();
             app.request(PlatformRequest::SetTitle(id, title));
         }
-        let menu_state = (self.buf.can_undo() && !self.read_only, self.buf.can_redo() && !self.read_only, self.buf.selection().is_some());
+        let menu_state: Vec<bool> = Action::ALL.iter().map(|a| self.enabled(*a)).collect();
         if menu_state != self.menu_state {
             self.menu_state = menu_state;
             app.request(PlatformRequest::MenusChanged);
@@ -448,12 +460,14 @@ impl EditorWindow {
                 self.file = file;
                 self.loaded = true;
                 self.load_failed = false;
+                // Again after a failed (re)load, e.g. the file was briefly unreadable.
+                self.read_only = !self.location.fs.capabilities().writable;
                 self.own_signature = sig;
-                self.watch_file(app, id);
             }
             Prepared::Binary => self.failed(format!("Can't open {name}: it isn't a text file (try the hex view, F3)")),
             Prepared::Failed(e) => self.failed(format!("Can't open {name}: {e}")),
         }
+        self.watch_file(app, id);
         app.redraw();
     }
 
@@ -470,7 +484,15 @@ impl EditorWindow {
 
     /// ⌘S. With `then_close`, the window closes once saved (the question).
     pub fn save(&mut self, app: &mut App, id: WinId, then_close: bool) {
-        if self.read_only || self.saving || !self.loaded {
+        if self.saving {
+            // ⌘S, then the close question's "Save" before it finished.
+            self.close_after_save |= then_close;
+            return;
+        }
+        if self.read_only || !self.loaded {
+            if then_close {
+                app.quit_pending = false; // nothing will close: don't quit later by surprise
+            }
             return;
         }
         let text = self.buf.text();
@@ -511,11 +533,17 @@ impl EditorWindow {
                 with_editor(app, id, |w, app| {
                     w.saving = false;
                     w.note = None;
+                    let want_close = then_close || std::mem::take(&mut w.close_after_save);
                     match result {
                         Ok(sig) => {
                             w.own_signature = sig;
+                            w.deleted_on_disk = false;
                             w.buf.mark_clean_at(point);
-                            close = then_close && !w.modified();
+                            close = want_close && !w.modified();
+                            if want_close && !close {
+                                // Typed on while saving: the window stays, so does the app.
+                                app.quit_pending = false;
+                            }
                         }
                         Err(e) => {
                             let text = format!("Couldn't save {}:\n{e}", w.name());
@@ -580,7 +608,8 @@ impl EditorWindow {
         let Some(path) = self.location.local_path() else {
             return;
         };
-        if self.saving || !self.loaded {
+        // A file that failed to load is tried again when it changes.
+        if self.saving || !(self.loaded || self.load_failed) {
             return;
         }
         app.tasks.run_in_background(
@@ -595,15 +624,12 @@ impl EditorWindow {
         if self.saving {
             return;
         }
+        self.deleted_on_disk = sig.is_none();
         let Some(sig) = sig else {
-            self.note = Some("deleted on disk".into());
             return;
         };
         if Some(sig) == self.own_signature {
             return; // our own save, or nothing new
-        }
-        if self.note.as_deref() == Some("deleted on disk") {
-            self.note = None;
         }
         if !self.modified() {
             self.load(app, id);
@@ -781,6 +807,17 @@ impl EditorWindow {
     }
 
     // -- keys ----------------------------------------------------------------------
+
+    /// Whether the menu item for `a` is enabled.
+    fn enabled(&self, a: Action) -> bool {
+        match a {
+            Action::Undo => self.buf.can_undo() && !self.read_only,
+            Action::Redo => self.buf.can_redo() && !self.read_only,
+            Action::Save => !self.read_only && self.loaded,
+            Action::Replace => !self.read_only,
+            _ => true,
+        }
+    }
 
     fn key(&mut self, app: &mut App, id: WinId, k: &KeyEvent) -> Outcome {
         if let Some(action) = Action::for_key(k) {
@@ -1074,13 +1111,7 @@ impl UiWindow for EditorWindow {
 
     fn menus(&self) -> Vec<WindowMenu> {
         let item = |a: Action| {
-            let enabled = match a {
-                Action::Undo => self.buf.can_undo() && !self.read_only,
-                Action::Redo => self.buf.can_redo() && !self.read_only,
-                Action::Save => !self.read_only && self.loaded,
-                Action::Replace => !self.read_only,
-                _ => true,
-            };
+            let enabled = self.enabled(a);
             Some(WindowMenuItem { id: a.id().into(), label: a.title().into(), shortcut: a.shortcuts().first().copied(), enabled })
         };
         use Action::*;
@@ -1199,6 +1230,8 @@ pub fn short_display(location: &VPath) -> String {
 
 fn start_watch(path: PathBuf, tasks: crate::tasks::Tasks, id: WinId) -> Option<FileWatch> {
     use notify::{EventKind, RecursiveMode, Watcher};
+    // A symlink: watch the file it points to (saves write there, too).
+    let path = std::fs::canonicalize(&path).unwrap_or(path);
     let dir = path.parent()?.to_path_buf();
     let name = path.file_name()?.to_os_string();
     let pending = Arc::new(AtomicBool::new(false));

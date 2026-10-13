@@ -347,6 +347,68 @@ fn editing_on_another_file_system() {
 }
 
 #[test]
+fn quitting_while_a_save_runs_finishes_it_first() {
+    let e = env();
+    let path = e.left.join("a.txt");
+    fs::write(&path, "text\n").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.txt");
+    type_in(&mut app, id, "x");
+    key(&mut app, id, Key::Char('s'), primary()); // runs on a worker…
+    assert!(ed(&app, id).saving);
+    press_with(&mut app, Key::Char('q'), Mods::primary()); // …while the app quits
+    assert_eq!(app.modal_titles(), ["Unsaved changes"]);
+    key(&mut app, id, Key::Enter, Mods::NONE); // Save: the running save counts
+    wait_until(&mut app, "quit", Duration::from_secs(10), |app| app.quitting);
+    assert_eq!(fs::read_to_string(&path).unwrap(), "xtext\n");
+}
+
+#[test]
+fn a_cancelled_quit_doesnt_come_back_later() {
+    let e = env();
+    for n in ["a.txt", "b.txt"] {
+        fs::write(e.left.join(n), "text\n").unwrap();
+    }
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(e.left.join("a.txt")));
+    let a = editor_for(&mut app, "a.txt");
+    open_editor(&mut app, oc_local::local(e.left.join("b.txt")));
+    let b = editor_for(&mut app, "b.txt");
+    type_in(&mut app, a, "x");
+    key(&mut app, a, Key::Char('s'), primary());
+    press_with(&mut app, Key::Char('q'), Mods::primary());
+    key(&mut app, a, Key::Enter, Mods::NONE); // Save (one is running)…
+    type_in(&mut app, a, "y"); // …but typing on keeps the window, and the app
+    wait_until(&mut app, "saved", Duration::from_secs(10), move |app| !ed(app, a).saving);
+    settle(&mut app);
+    assert!(app.window_ids().contains(&a) && !app.quitting && !app.quit_pending);
+    // Closing another editor later doesn't quit the app.
+    key(&mut app, b, Key::Char('w'), primary());
+    wait_until(&mut app, "b closed", Duration::from_secs(10), move |app| !app.window_ids().contains(&b));
+    settle(&mut app);
+    assert!(!app.quitting);
+}
+
+#[test]
+fn a_file_that_failed_to_load_loads_once_it_is_fixed() {
+    let e = env();
+    let path = e.left.join("a.txt");
+    fs::write(&path, b"\0binary").unwrap();
+    let mut app = app(&e);
+    app.watch = true;
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.txt");
+    assert!(ed(&app, id).load_failed && ed(&app, id).read_only);
+    std::thread::sleep(Duration::from_millis(300));
+    fs::write(&path, "text now\n").unwrap();
+    wait_until(&mut app, "reload", Duration::from_secs(10), move |app| ed(app, id).buf.text() == "text now\n");
+    assert!(ed(&app, id).loaded && !ed(&app, id).read_only);
+    type_in(&mut app, id, "ok ");
+    assert!(ed(&app, id).modified());
+}
+
+#[test]
 fn reloads_when_changed_on_disk() {
     let e = env();
     let path = e.left.join("a.txt");
