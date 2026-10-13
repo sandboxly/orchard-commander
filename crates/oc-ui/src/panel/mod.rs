@@ -349,7 +349,7 @@ impl FilePanel {
         let n = self.len();
         for k in 0..n {
             let row = (start + k) % n;
-            if self.name_at(row).is_some_and(|name| name != PARENT && name.to_lowercase().starts_with(&needle)) {
+            if self.name_at(row).is_some_and(|name| name != PARENT && starts_with_lowered(name, &needle)) {
                 self.list.select(row, self.rows);
                 return true;
             }
@@ -401,6 +401,16 @@ impl FilePanel {
         };
         [info, place].into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" · ")
     }
+}
+
+/// `name.to_lowercase().starts_with(lowered)`, without lowering a copy of
+/// every ASCII name (quick search walks up to the whole folder per key).
+fn starts_with_lowered(name: &str, lowered: &str) -> bool {
+    if name.is_ascii() {
+        let n = lowered.len();
+        return name.len() >= n && name.as_bytes()[..n].eq_ignore_ascii_case(lowered.as_bytes());
+    }
+    name.to_lowercase().starts_with(lowered)
 }
 
 /// The nearest real folder of a location: itself on the local disk, the
@@ -671,7 +681,40 @@ pub fn sort_by(app: &mut App, side: usize, key: SortKey) {
         s.extra.insert(format!("{name}_sort"), sort.into());
         s.extra.insert(format!("{name}_sort_reverse"), reverse.into());
     });
-    reload(app, side);
+    resort(app, side);
+}
+
+/// Show the panel's entries in its new order: sorted again on a worker, not
+/// listed again (a 100k folder answers in a fraction of the time, a server
+/// folder without a round trip). A listing still on its way is redone with
+/// the new order instead.
+fn resort(app: &mut App, side: usize) {
+    let p = panel_mut(app, side);
+    let Some(started) = p.listed_from.filter(|_| p.completed == p.request) else {
+        reload(app, side);
+        return;
+    };
+    p.request += 1;
+    let request = p.request;
+    p.loading_location = p.location.clone();
+    // Only the order changes: what is shown already passed the listing's
+    // filters (search results show hidden hits whatever the setting).
+    let opts = ListOptions { show_hidden: true, ..p.options() };
+    let entries = p.entries.clone();
+    // The same listing, so the same age: a folder change seen since still reloads.
+    let shown = Listed { location: p.location.clone(), entries: Vec::new(), has_parent: p.has_parent, free: p.free, started, fell_back: false };
+    app.tasks.run_in_background(
+        move |_| Ok(Listed { entries: oc_vfs::sort_entries(entries, opts), ..shown }),
+        move |app, result| {
+            listed(app, side, request, LoadOptions { keep_cursor: true, ..Default::default() }, result);
+            // The watcher's reload came due meanwhile and gave way to this
+            // "listing": the change isn't shown yet, so reload now.
+            let p = panel(app, side);
+            if p.request == request && !p.reload_timer && p.changed_at.is_some_and(|at| at > started) {
+                reload(app, side);
+            }
+        },
+    );
 }
 
 /// The watcher saw a change in the shown folder: reload after a short quiet time.

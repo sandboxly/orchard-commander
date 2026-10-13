@@ -18,7 +18,7 @@ use oc_grid::winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use oc_grid::winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use oc_grid::winit::keyboard::{Key, NamedKey};
 use oc_grid::winit::window::{Window, WindowId};
-use oc_grid::{FontConfig, Frame, WindowRenderer};
+use oc_grid::{FontConfig, Frame, Rendered, WindowRenderer};
 use support::FakeFm;
 
 struct App {
@@ -60,8 +60,10 @@ impl App {
         self.fm.draw(&mut self.frame, (m.width, m.height));
         let t1 = Instant::now();
         match gpu.render(&self.frame) {
-            Ok(Some(_)) => {}
-            Ok(None) => {
+            Ok(Rendered::Shown(_)) => {}
+            // Drawn again on the next event (showing the window resizes or focuses it).
+            Ok(Rendered::Hidden) => return,
+            Ok(Rendered::Retry) => {
                 self.redraw();
                 return;
             }

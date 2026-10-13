@@ -10,6 +10,20 @@ use crate::fonts::{FontConfig, FontLibrary};
 use crate::frame::Frame;
 use crate::renderer::{GridRenderer, PrepareStats};
 
+/// What [`WindowRenderer::render`] did with a frame.
+#[derive(Debug)]
+pub enum Rendered {
+    /// Drawn and presented.
+    Shown(PrepareStats),
+    /// The window can't be seen (covered, minimized, on another Space):
+    /// nothing was drawn. Draw again when it shows (winit's
+    /// `WindowEvent::Occluded(false)`), not right away: on macOS this answer
+    /// comes at once, so redrawing on it would spin.
+    Hidden,
+    /// The surface was reconfigured or timed out: request another redraw.
+    Retry,
+}
+
 pub struct WindowRenderer {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -116,10 +130,9 @@ impl WindowRenderer {
         self.renderer.set_scale_factor(scale_factor as f32)
     }
 
-    /// Draw and present `frame`. Returns `Ok(None)` when the frame was
-    /// skipped (window occluded, surface being reconfigured) — the caller
-    /// should request another redraw.
-    pub fn render(&mut self, frame: &Frame) -> Result<Option<PrepareStats>, GridError> {
+    /// Draw and present `frame`, unless the window is hidden or its surface
+    /// isn't ready (see [`Rendered`]).
+    pub fn render(&mut self, frame: &Frame) -> Result<Rendered, GridError> {
         let mut reconfigure = false;
         let texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
@@ -129,12 +142,11 @@ impl WindowRenderer {
                 reconfigure = true;
                 t
             }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return Ok(None);
-            }
+            wgpu::CurrentSurfaceTexture::Occluded => return Ok(Rendered::Hidden),
+            wgpu::CurrentSurfaceTexture::Timeout => return Ok(Rendered::Retry),
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(self.renderer.device(), &self.config);
-                return Ok(None);
+                return Ok(Rendered::Retry);
             }
             wgpu::CurrentSurfaceTexture::Validation => {
                 return Err(GridError::Surface(
@@ -157,6 +169,6 @@ impl WindowRenderer {
         if reconfigure {
             self.surface.configure(self.renderer.device(), &self.config);
         }
-        Ok(Some(stats))
+        Ok(Rendered::Shown(stats))
     }
 }
