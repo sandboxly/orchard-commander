@@ -1,5 +1,7 @@
 //! Raster images (PNG, JPEG, GIF, WebP, BMP, TIFF, ICO, …) via the `image`
-//! crate, animated GIF/WebP/APNG as frame lists, and SVG via resvg.
+//! crate, animated GIF/WebP/APNG as frame lists, SVG via resvg, WBMP/XBM/XPM
+//! by hand, and on macOS HEIC/HEIF, ICNS and JPEG 2000 via ImageIO: the
+//! formats 1.x's Qt build reads.
 
 use std::io::Cursor;
 use std::sync::{Arc, OnceLock};
@@ -30,8 +32,16 @@ const MAX_LOCAL_BYTES: u64 = 1024 * 1024 * 1024;
 /// Extensions this build decodes.
 pub fn supported_extensions() -> &'static [&'static str] {
     &[
-        "png", "jpg", "jpeg", "jpe", "jfif", "gif", "bmp", "webp", "tif", "tiff", "ico", "svg", "svgz", "tga", "pbm",
-        "pgm", "ppm", "pnm", "qoi", "apng",
+        "png", "jpg", "jpeg", "jpe", "jfif", "gif", "bmp", "webp", "tif", "tiff", "ico", "cur", "svg", "svgz", "tga",
+        "pbm", "pgm", "ppm", "pnm", "qoi", "apng", "wbmp", "xbm", "xpm",
+        #[cfg(target_os = "macos")]
+        "heic",
+        #[cfg(target_os = "macos")]
+        "heif",
+        #[cfg(target_os = "macos")]
+        "icns",
+        #[cfg(target_os = "macos")]
+        "jp2",
     ]
 }
 
@@ -79,13 +89,22 @@ impl Previewer for ImagePreviewer {
         let ext = crate::api::ext_for_name(src.name());
         // The name picks the decoder; a misnamed file still decodes by its
         // contents (Qt sniffed them too).
-        let image = if matches!(ext.as_str(), "svg" | "svgz") {
-            decode_svg(&data).or_else(|e| decode_image(&data).map_err(|_| e))
-        } else {
-            decode_image_as(&data, ImageFormat::from_extension(&ext))
-                .or_else(|e| if looks_like_svg(&data) { decode_svg(&data) } else { Err(e) })
-        }
-        .map_err(|e| PreviewError::CannotPreview(format!("Not a readable image: {e}")))?;
+        let image = match ext.as_str() {
+            "svg" | "svgz" => decode_svg(&data).or_else(|e| decode_image(&data).map_err(|_| e)),
+            "wbmp" => super::bitmaps::decode_wbmp(&data).map(|i| still(i, "WBMP")),
+            "xbm" => super::bitmaps::decode_xbm(&data).map(|i| still(i, "XBM")),
+            "xpm" => super::bitmaps::decode_xpm(&data).map(|i| still(i, "XPM")),
+            // A cursor is an icon with hotspots; the ICO decoder reads it.
+            "cur" => decode_image_as(&data, Some(ImageFormat::Ico)).map(|i| ImageData { format: "CUR", ..i }),
+            #[cfg(target_os = "macos")]
+            "heic" | "heif" | "icns" | "jp2" => super::imageio::decode(&data, imageio_format(&ext)),
+            _ => decode_image_as(&data, ImageFormat::from_extension(&ext))
+                .or_else(|e| if looks_like_svg(&data) { decode_svg(&data) } else { Err(e) }),
+        };
+        // Whatever ImageIO reads (a misnamed HEIC, …), as Qt's plugins would.
+        #[cfg(target_os = "macos")]
+        let image = image.or_else(|e| super::imageio::decode(&data, "IMAGE").map_err(|_| e));
+        let image = image.map_err(|e| PreviewError::CannotPreview(format!("Not a readable image: {e}")))?;
         let mut info = format!(
             "{}×{} · {} · {}",
             image.source_width,
@@ -97,6 +116,30 @@ impl Previewer for ImagePreviewer {
             info.push_str(" · animated");
         }
         Ok(Loaded::new(PreviewData::Image(image), info))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn imageio_format(ext: &str) -> &'static str {
+    match ext {
+        "heic" => "HEIC",
+        "heif" => "HEIF",
+        "icns" => "ICNS",
+        _ => "JP2",
+    }
+}
+
+/// A single decoded picture, scaled down to fit.
+fn still(img: RgbaImage, format: &'static str) -> ImageData {
+    let (sw, sh) = img.dimensions();
+    let img = shrink(img);
+    ImageData {
+        width: img.width(),
+        height: img.height(),
+        source_width: sw,
+        source_height: sh,
+        format,
+        frames: vec![Frame { rgba: img.into_raw(), delay: Duration::ZERO }],
     }
 }
 

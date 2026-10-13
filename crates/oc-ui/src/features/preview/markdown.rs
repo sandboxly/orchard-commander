@@ -1,6 +1,7 @@
 //! Rendered Markdown (1.x showed it in a `QTextBrowser`): headings, wrapped
 //! paragraphs, lists, quotes, highlighted code blocks, rules and tables,
-//! laid out for the pane's width. Links open in the default app on click.
+//! laid out for the pane's width. Links open in the default app on click;
+//! text can be selected and copied ([`super::select`]).
 //!
 //! The layout depends only on the width; it is computed when the width
 //! changes and cached, and drawing paints only the visible rows.
@@ -14,6 +15,7 @@ use oc_preview::{Align, Color, MarkdownData, MdBlock, MdBlockKind, StyledLine, T
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use super::select::{self, MenuChoice, Pos, RowText, Selection};
 use super::text::{Painter, clamp_top, code_background, paint, scroll_event};
 use super::views::{ContentView, Handle};
 use crate::app::{App, Outcome};
@@ -47,11 +49,22 @@ pub struct Row {
     /// where the code background starts.
     pub fill_from: usize,
     pub pieces: Vec<Piece>,
+    /// Cells of indentation, quote bars and list markers before the text
+    /// (not copied, as Qt didn't copy them).
+    pub lead: usize,
+    /// What a copy puts between the previous row and this one: "\n", or
+    /// " " / "" where a paragraph or code line was wrapped.
+    pub joiner: &'static str,
 }
 
 impl Row {
     fn new(kind: RowKind) -> Row {
-        Row { kind, fill_from: 0, pieces: Vec::new() }
+        Row { kind, fill_from: 0, pieces: Vec::new(), lead: 0, joiner: "\n" }
+    }
+
+    /// Width in cells.
+    pub fn width(&self) -> usize {
+        self.pieces.iter().map(|p| p.text.width()).sum()
     }
 
     fn push(&mut self, text: &str, style: TextStyle, link: Option<&str>) {
@@ -94,24 +107,26 @@ pub fn layout(data: &MarkdownData, width: usize) -> Vec<Row> {
         match &b.kind {
             MdBlockKind::Heading { level, line } => {
                 let kind = RowKind::Heading(*level);
-                for pieces in wrap(line, width.saturating_sub(q)) {
+                for (pieces, joiner) in wrap_joined(line, width.saturating_sub(q)) {
                     let mut row = quote_row(b.quote_depth, kind);
                     row.pieces.extend(pieces);
+                    row.joiner = joiner;
                     out.push(row);
                 }
             }
             MdBlockKind::Paragraph(line) => {
                 let indent = q + if b.list_depth > 0 { list_indent + 2 } else { 0 };
-                for pieces in wrap(line, width.saturating_sub(indent)) {
+                for (pieces, joiner) in wrap_joined(line, width.saturating_sub(indent)) {
                     let mut row = quote_row(b.quote_depth, RowKind::Text);
                     row.push(&" ".repeat(indent - q), TextStyle::default(), None);
                     row.pieces.extend(pieces);
+                    (row.lead, row.joiner) = (indent, joiner);
                     out.push(row);
                 }
             }
             MdBlockKind::ListItem { marker, line } => {
                 let lead = list_indent + marker.width() + 1;
-                for (i, pieces) in wrap(line, width.saturating_sub(q + lead)).into_iter().enumerate() {
+                for (i, (pieces, joiner)) in wrap_joined(line, width.saturating_sub(q + lead)).into_iter().enumerate() {
                     let mut row = quote_row(b.quote_depth, RowKind::Text);
                     if i == 0 {
                         row.push(&" ".repeat(list_indent), TextStyle::default(), None);
@@ -121,6 +136,7 @@ pub fn layout(data: &MarkdownData, width: usize) -> Vec<Row> {
                         row.push(&" ".repeat(lead), TextStyle::default(), None);
                     }
                     row.pieces.extend(pieces);
+                    (row.lead, row.joiner) = (q + lead, joiner);
                     out.push(row);
                 }
             }
@@ -129,12 +145,13 @@ pub fn layout(data: &MarkdownData, width: usize) -> Vec<Row> {
                 // One cell of padding on each side inside the background.
                 let inner = width.saturating_sub(indent + 2).max(1);
                 for line in lines {
-                    for pieces in break_chars(line, inner) {
+                    for (i, pieces) in break_chars(line, inner).into_iter().enumerate() {
                         let mut row = quote_row(b.quote_depth, RowKind::Code);
                         row.push(&" ".repeat(indent - q), TextStyle::default(), None);
                         row.fill_from = indent;
                         row.push(" ", TextStyle::default(), None);
                         row.pieces.extend(pieces);
+                        (row.lead, row.joiner) = (indent + 1, if i == 0 { "\n" } else { "" });
                         out.push(row);
                     }
                 }
@@ -142,6 +159,7 @@ pub fn layout(data: &MarkdownData, width: usize) -> Vec<Row> {
             MdBlockKind::Rule => {
                 let mut row = quote_row(b.quote_depth, RowKind::Text);
                 row.push(&"─".repeat(width.saturating_sub(q)), border(), None);
+                row.lead = usize::MAX; // a line, not text
                 out.push(row);
             }
             MdBlockKind::Table { align, header, rows } => {
@@ -162,13 +180,22 @@ fn quote_row(depth: u8, kind: RowKind) -> Row {
     for _ in 0..depth {
         row.push("│ ", border(), None);
     }
+    row.lead = depth as usize * 2;
     row
 }
 
 /// Word-wrap a styled line to rows of at most `width` cells; "\n" breaks
 /// rows. Words longer than a row are broken.
 pub fn wrap(line: &StyledLine, width: usize) -> Vec<Vec<Piece>> {
+    wrap_joined(line, width).into_iter().map(|(pieces, _)| pieces).collect()
+}
+
+/// [`wrap`], each row with what joins it to the row before when copied:
+/// "\n" after a line break, " " where spaces were wrapped away, "" where a
+/// word was broken.
+fn wrap_joined(line: &StyledLine, width: usize) -> Vec<(Vec<Piece>, &'static str)> {
     let width = width.max(1);
+    let soft = || Row { joiner: "", ..Row::new(RowKind::Text) };
     let mut rows: Vec<Row> = vec![Row::new(RowKind::Text)];
     let mut w = 0usize;
     for (text, style, link) in line.segments() {
@@ -181,9 +208,10 @@ pub fn wrap(line: &StyledLine, width: usize) -> Vec<Vec<Piece>> {
                 let ww = word.width();
                 let blank = word.trim().is_empty();
                 if w + ww > width && w > 0 {
-                    rows.push(Row::new(RowKind::Text));
+                    rows.push(soft());
                     w = 0;
                     if blank {
+                        rows.last_mut().expect("one row").joiner = " ";
                         continue;
                     }
                 }
@@ -195,7 +223,7 @@ pub fn wrap(line: &StyledLine, width: usize) -> Vec<Vec<Piece>> {
                 for g in word.graphemes(true) {
                     let gw = g.width();
                     if w + gw > width && w > 0 {
-                        rows.push(Row::new(RowKind::Text));
+                        rows.push(soft());
                         w = 0;
                     }
                     rows.last_mut().expect("one row").push(g, style, link);
@@ -204,24 +232,24 @@ pub fn wrap(line: &StyledLine, width: usize) -> Vec<Vec<Piece>> {
             }
         }
     }
-    // Spaces where a row was broken don't belong to it.
-    let rows_len = rows.len();
-    rows.into_iter()
-        .enumerate()
-        .map(|(i, mut r)| {
-            if i + 1 < rows_len {
-                while let Some(last) = r.pieces.last_mut() {
-                    let trimmed = last.text.trim_end().len();
-                    last.text.truncate(trimmed);
-                    if !last.text.is_empty() {
-                        break;
-                    }
-                    r.pieces.pop();
-                }
+    // Spaces where a row was broken don't belong to it (a copy puts one back).
+    for i in 0..rows.len().saturating_sub(1) {
+        let r = &mut rows[i];
+        let mut trimmed = false;
+        while let Some(last) = r.pieces.last_mut() {
+            let keep = last.text.trim_end().len();
+            trimmed |= keep < last.text.len();
+            last.text.truncate(keep);
+            if !last.text.is_empty() {
+                break;
             }
-            r.pieces
-        })
-        .collect()
+            r.pieces.pop();
+        }
+        if trimmed && rows[i + 1].joiner.is_empty() {
+            rows[i + 1].joiner = " ";
+        }
+    }
+    rows.into_iter().map(|r| (r.pieces, r.joiner)).collect()
 }
 
 /// Break a line (code) into rows of `width` cells without looking for words.
@@ -333,13 +361,75 @@ fn table(align: &[Align], header: &[StyledLine], rows: &[Vec<StyledLine>], width
 pub struct MarkdownView {
     pub data: MarkdownData,
     pub top: usize,
+    pub selection: Selection,
+    /// The link the left button went down on (opened on release, unless
+    /// the press became a selection).
+    pressed_link: Option<String>,
     /// The layout for a width.
     cache: RefCell<Option<(usize, Rc<Vec<Row>>)>>,
 }
 
 impl MarkdownView {
     pub fn new(data: MarkdownData) -> Self {
-        MarkdownView { data, top: 0, cache: RefCell::new(None) }
+        MarkdownView { data, top: 0, selection: Selection::default(), pressed_link: None, cache: RefCell::new(None) }
+    }
+
+    /// The selected text as laid out for the last width drawn.
+    pub fn selected_text(&self) -> String {
+        let cache = self.cache.borrow();
+        let Some((_, rows)) = cache.as_ref() else { return String::new() };
+        self.selection.text(|r| rows.get(r).map(|row| row_text(row)))
+    }
+
+    /// Selection, links and the context menu; None if the event is none of those.
+    fn mouse(&mut self, app: &mut App, h: Handle, ev: &Event, area: Rect) -> Option<Outcome> {
+        let Event::Mouse(m) = ev else { return None };
+        let text_area = Rect { w: area.w.saturating_sub(1), ..area };
+        let inside = text_area.contains(m.col, m.row);
+        let link = self.link_at(area, m.col, m.row);
+        match m.kind {
+            MouseKind::Down(MouseButton::Right) | MouseKind::DoubleClick(MouseButton::Right) if inside => {
+                let has_selection = !self.selection.is_empty();
+                select::context_menu(app, m, has_selection, link.is_some(), move |app, choice| match choice {
+                    MenuChoice::CopyLink => select::copy(app, link.as_deref().unwrap_or_default()),
+                    MenuChoice::Copy => {
+                        h.with::<MarkdownView, _>(app, |v, app, _| select::copy(app, &v.selected_text()));
+                    }
+                    MenuChoice::SelectAll => {
+                        h.with::<MarkdownView, _>(app, |v, _, area| {
+                            let n = v.rows(area.w).len();
+                            v.selection.select_all(n);
+                        });
+                    }
+                });
+                Some(Outcome::Consumed)
+            }
+            MouseKind::Down(MouseButton::Left) | MouseKind::DoubleClick(MouseButton::Left) if !inside => None,
+            MouseKind::Down(MouseButton::Left)
+            | MouseKind::DoubleClick(MouseButton::Left)
+            | MouseKind::Up(MouseButton::Left)
+            | MouseKind::Move => {
+                let rows = self.rows(area.w);
+                let top = clamp_top(self.top, rows.len(), area.h as usize);
+                let pos = select::pos_at(m, text_area, top, 0);
+                let word = |(r, c): Pos| rows.get(r).and_then(|row| select::word_at(&row.text(), c));
+                let changed = self.selection.mouse(m, pos, word);
+                match m.kind {
+                    MouseKind::Down(_) => self.pressed_link = link.filter(|l| external(l)),
+                    MouseKind::Up(_) => {
+                        let pressed = self.pressed_link.take();
+                        if let Some(l) = pressed.filter(|l| self.selection.is_empty() && link.as_ref() == Some(l)) {
+                            open_link(app, l);
+                        }
+                    }
+                    _ => {}
+                }
+                // Hovering, or dragging within the same cell, changes nothing on screen.
+                let mine = changed || m.kind != MouseKind::Move;
+                Some(if mine { Outcome::Consumed } else { Outcome::Ignored })
+            }
+            _ => None,
+        }
     }
 
     /// The rows for a pane `width` cells wide (one column is kept for the scrollbar).
@@ -372,6 +462,22 @@ impl MarkdownView {
         }
         None
     }
+}
+
+/// What copying sees of a row.
+fn row_text(row: &Row) -> RowText<'static> {
+    RowText { text: row.text().into(), lead: row.lead, joiner: row.joiner }
+}
+
+fn open_link(app: &mut App, link: String) {
+    app.tasks.run_in_background(
+        move |_| oc_local::open_with_default_app(std::path::Path::new(&link)).map_err(|e| (link, e)),
+        |app, r| {
+            if let Err((link, e)) = r {
+                app.error(format!("Cannot open {link}: {e}"));
+            }
+        },
+    );
 }
 
 /// Only links that leave the app: web pages and mail.
@@ -418,28 +524,29 @@ impl ContentView for MarkdownView {
                 (p.text.as_str(), s)
             });
             paint(f, area.x, y, area.x + text_w, 0, pieces);
+            if let Some(cells) = self.selection.cells_in_row(top + i, row.width()) {
+                select::paint(f, ctx, cells, area.x, y, 0, area.x + text_w);
+            }
         }
         Scrollbar { total: rows.len(), visible, top }.draw(f, area, ctx);
     }
 
-    fn handle_event(&mut self, app: &mut App, _h: Handle, ev: &Event, area: Rect) -> Outcome {
-        if let Event::Mouse(m) = ev
-            && m.kind == MouseKind::Down(MouseButton::Left)
+    fn handle_event(&mut self, app: &mut App, h: Handle, ev: &Event, area: Rect) -> Outcome {
+        if let Some(outcome) = self.mouse(app, h, ev, area) {
+            return outcome;
+        }
+        if let Event::Key(k) = ev
+            && select::is_copy(k)
         {
-            if let Some(link) = self.link_at(area, m.col, m.row).filter(|l| external(l)) {
-                app.tasks.run_in_background(
-                    move |_| oc_local::open_with_default_app(std::path::Path::new(&link)).map_err(|e| (link, e)),
-                    |app, r| {
-                        if let Err((link, e)) = r {
-                            app.error(format!("Cannot open {link}: {e}"));
-                        }
-                    },
-                );
-            }
+            select::copy(app, &self.selected_text());
             return Outcome::Consumed;
         }
         let total = self.rows(area.w).len();
         if scroll_event(&mut self.top, ev, total, area.h as usize) { Outcome::Consumed } else { Outcome::Ignored }
+    }
+
+    fn resized(&mut self, _app: &mut App, _h: Handle, _area: Rect) {
+        self.selection.clear(); // rows are laid out anew
     }
 
     /// The rendered text (as laid out 80 cells wide).
@@ -496,6 +603,15 @@ mod tests {
                 "└───┴────┘",
             ]
         );
+    }
+
+    #[test]
+    fn copying_rejoins_wrapped_rows_and_skips_markers() {
+        let data = oc_preview::markdown::render("one two three\n\n- item\n\n> quoted\n\n---\n\nabcdefghij", &|| false);
+        let rows = layout(&data, 8);
+        let mut s = Selection::default();
+        s.select_all(rows.len());
+        assert_eq!(s.text(|r| rows.get(r).map(row_text)), "one two three\n\nitem\n\nquoted\n\n\n\nabcdefghij");
     }
 
     #[test]

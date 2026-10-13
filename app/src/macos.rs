@@ -261,6 +261,18 @@ fn triggered_by_key() -> bool {
     app.currentEvent().is_some_and(|e| e.r#type() == NSEventType::KeyDown)
 }
 
+/// Whether the wheel event AppKit is dispatching is trackpad momentum (the
+/// fingers have lifted). winit reports its phase only as Started/Moved/Ended,
+/// the same as for the fingers' own scrolling.
+pub fn scroll_is_momentum() -> bool {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSEventType};
+
+    let Some(mtm) = MainThreadMarker::new() else { return false };
+    let app = NSApplication::sharedApplication(mtm);
+    app.currentEvent().is_some_and(|e| e.r#type() == NSEventType::ScrollWheel && e.momentumPhase().0 != 0)
+}
+
 /// The Dock icon (a bare binary has none; a bundle gets it from Info.plist,
 /// this covers `cargo run` and keeps the 1.x look).
 pub fn set_app_icon() {

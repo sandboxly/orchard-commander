@@ -152,7 +152,7 @@ impl PdfView {
 
     fn wheel(&mut self, app: &mut App, h: Handle, area: Rect, lines: f32) {
         let now = Instant::now();
-        if self.wheel_paused_until.is_some_and(|t| now < t) || lines == 0.0 {
+        if app.wheel_momentum || self.wheel_paused_until.is_some_and(|t| now < t) || lines == 0.0 {
             return;
         }
         self.wheel_paused_until = Some(now + WHEEL_PAUSE);

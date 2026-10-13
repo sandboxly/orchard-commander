@@ -255,6 +255,100 @@ fn animated_gifs_play() {
     wait_for(&mut app, "the first frame again", |app| pane(app).content_as::<ImageView>().is_some_and(|v| v.frame == 0));
 }
 
+/// Takes a second over `.slowpreview` files.
+struct SlowPreviewer;
+
+impl oc_preview::Previewer for SlowPreviewer {
+    fn id(&self) -> &str {
+        "slow-test"
+    }
+
+    fn title(&self) -> &str {
+        "Slow"
+    }
+
+    fn score(&self, f: &oc_preview::FileInfo) -> i32 {
+        if f.ext == "slowpreview" { oc_preview::Score::SPECIFIC } else { oc_preview::Score::NO }
+    }
+
+    fn load(&self, _: &oc_preview::PreviewSource, _: &oc_preview::LoadContext) -> Result<oc_preview::Loaded, oc_preview::PreviewError> {
+        std::thread::sleep(Duration::from_secs(1));
+        Ok(oc_preview::Loaded::new(oc_preview::PreviewData::StyledText(oc_preview::StyledText::plain("slow")), "slow"))
+    }
+}
+
+/// 1.x named the new file as soon as it started loading it; 2.0 keeps the
+/// previous content for a moment (no flicker), then does the same.
+#[test]
+fn a_slow_local_load_names_the_new_file() {
+    let _ = oc_preview::Registry::global().register(Arc::new(SlowPreviewer), true);
+    let e = env();
+    fs::write(e.src.join("big.slowpreview"), "x").unwrap();
+    let mut app = app(&e);
+    open_preview(&mut app);
+    select(&mut app, "a.txt");
+    wait_for(&mut app, "a.txt", |app| shown_text(app) == "alpha");
+    select(&mut app, "big.slowpreview");
+    wait_for(&mut app, "the new name", |app| pane(app).title == "big.slowpreview");
+    assert!(pane(&app).loading());
+    assert_eq!((shown_text(&app).as_str(), pane(&app).info.as_str()), ("", ""), "not the old file's content");
+    wait_for(&mut app, "the slow preview", |app| shown_text(app) == "slow");
+}
+
+fn mouse(app: &mut App, kind: MouseKind, col: u16, row: u16) {
+    app.handle_event(MAIN_WINDOW, Event::Mouse(MouseEvent { kind, col, row, mods: Mods::NONE }));
+}
+
+/// 1.x's QTextBrowser: drag to select, double-click a word, ⌘C, and the
+/// right-click menu Copy / Copy Link Location / Select All.
+#[test]
+fn preview_text_can_be_selected_and_copied() {
+    let e = env();
+    fs::write(e.src.join("lines.txt"), "first line\nsecond line\n").unwrap();
+    fs::write(e.src.join("doc.md"), "See [the site](https://example.com) here.\n").unwrap();
+    let mut app = app(&e);
+    open_preview(&mut app);
+    select(&mut app, "lines.txt");
+    wait_for(&mut app, "the text", |app| shown_text(app).contains("second line"));
+    let area = pane(&app).content_rect(main_window::layout(&app).frames[1]);
+    // Drag from "line" to "sec"; the button comes up over the other panel.
+    mouse(&mut app, MouseKind::Down(MouseButton::Left), area.x + 6, area.y);
+    mouse(&mut app, MouseKind::Move, area.x + 3, area.y + 1);
+    mouse(&mut app, MouseKind::Up(MouseButton::Left), 2, 2);
+    mouse(&mut app, MouseKind::Move, area.x + 8, area.y + 1); // no button: no change
+    assert_eq!(app.main.active, 1, "clicking the preview focuses it");
+    press_with(&mut app, Key::Char('c'), Mods::primary());
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("line\nsec"));
+
+    mouse(&mut app, MouseKind::DoubleClick(MouseButton::Left), area.x + 9, area.y + 1);
+    press_with(&mut app, Key::Char('c'), Mods::primary());
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("line"));
+
+    // Right-click → Select All, then Copy from the menu.
+    click(&mut app, area.x + 2, area.y + 3, MouseButton::Right);
+    assert_eq!(app.top_modal_text().unwrap(), "Copy\nCopy Link Location\nSelect All");
+    press(&mut app, Key::Up);
+    press(&mut app, Key::Enter);
+    settle(&mut app);
+    click(&mut app, area.x + 2, area.y + 3, MouseButton::Right); // a double-click to the app
+    press(&mut app, Key::Enter);
+    settle(&mut app);
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("first line\nsecond line\n"));
+
+    // Markdown: Copy Link Location on a link; a plain click still opens nothing here.
+    app.clipboard.set_text("");
+    select(&mut app, "doc.md");
+    wait_for(&mut app, "markdown", |app| kind(app) == "markdown");
+    let area = pane(&app).content_rect(main_window::layout(&app).frames[1]);
+    click(&mut app, area.x + 6, area.y, MouseButton::Right);
+    press(&mut app, Key::Char('l'));
+    settle(&mut app);
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("https://example.com"));
+    mouse(&mut app, MouseKind::DoubleClick(MouseButton::Left), area.x + 1, area.y);
+    press_with(&mut app, Key::Char('c'), Mods::primary());
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("See"));
+}
+
 #[test]
 fn markdown_renders() {
     let e = env();
@@ -347,6 +441,16 @@ fn pdf_wheel_turns_one_page_per_step() {
     std::thread::sleep(Duration::from_millis(400));
     wheel(&mut app, 1.0);
     assert_eq!(pdf_view(&app).index, 1);
+
+    // Trackpad momentum after the fingers lift turns no page (1.x ignored
+    // ScrollMomentum), however long it goes on.
+    std::thread::sleep(Duration::from_millis(400));
+    app.wheel_momentum = true;
+    wheel(&mut app, -1.0);
+    app.wheel_momentum = false;
+    assert_eq!(pdf_view(&app).index, 1, "momentum");
+    wheel(&mut app, -1.0);
+    assert_eq!(pdf_view(&app).index, 2, "a new flick after the momentum");
 }
 
 // ---------------------------------------------------------------------------

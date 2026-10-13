@@ -650,7 +650,8 @@ pub fn enter_archive(app: &mut App, side: usize, file: VPath) {
             p.jobs -= 1;
             match opened {
                 Some(Ok(root)) => load(app, side, root, LoadOptions::default()),
-                Some(Err(e)) => app.error(format!("Cannot open {name}: {e}")),
+                // The archive's own message names the file (1.x: str(exc)).
+                Some(Err(e)) => app.error(e.to_string()),
                 None => app.error(format!("{name} can't be opened as an archive")),
             }
         },

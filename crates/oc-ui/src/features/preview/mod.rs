@@ -23,6 +23,7 @@ pub mod media;
 mod media_paint;
 pub mod message;
 pub mod pdf;
+pub mod select;
 pub mod text;
 pub mod views;
 
@@ -280,6 +281,11 @@ impl PreviewView {
         self.split(main_window::layout(app).frames[side]).1
     }
 
+    /// Where the content goes when the pane is drawn into `frame` (clicks in tests).
+    pub fn content_rect(&self, frame: Rect) -> Rect {
+        self.split(frame).1
+    }
+
     /// Where chip `i` is when the pane is drawn into `frame` (clicks in tests).
     pub fn chip_rect(&self, frame: Rect, i: usize) -> Option<Rect> {
         let row = self.split(frame).0?;
@@ -415,14 +421,26 @@ impl PreviewView {
         let download_ok = self.download_ok.as_ref() == Some(&path);
         if let Some(size) = cloud_size.filter(|&s| download_ok || s <= AUTO_DOWNLOAD_LIMIT) {
             self.show_loading(app, side, &name, format!("Downloading {name} from the cloud…\n{}", human_size(size)));
-        } else if !path.is_local() {
-            // Servers: only if it takes a moment, to avoid flicker.
+        } else {
+            // Only if it takes a moment, to avoid flicker. Servers say
+            // "Loading …"; a slow local file (a big image or PDF) gets its
+            // name over an empty pane, as 1.x showed it while loading.
+            let remote = !path.is_local();
+            let title = display_name(&path);
             self.slow_timer = Some(app.schedule(SLOW_LOAD, move |app| {
                 with_view_as::<PreviewView, _>(app, side, ID, |v, app| {
                     v.slow_timer = None;
-                    if v.request == request {
+                    if v.request != request {
+                        return;
+                    }
+                    if remote {
                         let text = format!("Loading {name}…");
                         v.show_loading(app, side, &name, text);
+                    } else {
+                        v.title = title;
+                        v.info.clear();
+                        v.chips.clear();
+                        v.set_content(app, side, Box::new(MessageView::new("", None)));
                     }
                 });
             }));

@@ -548,6 +548,17 @@ fn archives_open_like_folders() {
     wait_no_dialogs(&mut app);
     assert_eq!(fs::read(e.right.join("inside.txt")).unwrap(), b"hello");
     assert!(app.toast.as_ref().is_some_and(|t| t.text == "Extracting finished"));
+
+    // A broken archive: its own message, as 1.x showed it (no second prefix).
+    fs::write(e.right.join("broken.zip"), b"not a zip at all").unwrap();
+    press_with(&mut app, Key::Char('r'), Mods::primary()); // reload: the panels list broken.zip
+    settle(&mut app);
+    put_cursor_on(&mut app, 1, "broken.zip");
+    app.main.active = 1;
+    press(&mut app, Key::Enter);
+    settle(&mut app);
+    let text = app.toast.as_ref().map(|t| t.text.clone()).unwrap_or_default();
+    assert!(text.starts_with("Cannot read broken.zip: ") && !text.contains("Cannot open"), "{text}");
 }
 
 /// A minimal stored (uncompressed) zip writer, so the test needs no zip crate.

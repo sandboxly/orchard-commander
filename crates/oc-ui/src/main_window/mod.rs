@@ -45,6 +45,9 @@ pub struct MainWindow {
     /// with the first listing, on a worker: a saved folder on a dead network
     /// mount must not hang the window.
     startup_fallback: [Option<PathBuf>; 2],
+    /// The side view the left button went down in: it gets the moves and
+    /// the release until then, wherever they are (selecting text).
+    view_drag: Option<usize>,
 }
 
 impl MainWindow {
@@ -82,7 +85,7 @@ impl MainWindow {
             p.reverse = settings.extra.get(&format!("{name}_sort_reverse")).and_then(|v| v.as_bool()).unwrap_or(false);
             Side::new(name, p, &registry.side_views)
         };
-        MainWindow { sides: [make(0, left), make(1, right)], active: 0, bottom_rows: 0, startup_fallback }
+        MainWindow { sides: [make(0, left), make(1, right)], active: 0, bottom_rows: 0, startup_fallback, view_drag: None }
     }
 
     /// The side file operations act on: the active one, or the other if it shows a view.
@@ -438,6 +441,19 @@ pub fn panel_key(app: &mut App, side: usize, k: &crate::input::KeyEvent) -> Outc
 fn mouse(app: &mut App, m: &crate::input::MouseEvent) -> Outcome {
     let l = layout(app);
     let pressed = matches!(m.kind, MouseKind::Down(_) | MouseKind::DoubleClick(_));
+    if pressed {
+        app.main.view_drag = None; // a release lost to a dialog doesn't keep the grab
+    }
+    if let Some(side) = app.main.view_drag
+        && matches!(m.kind, MouseKind::Move | MouseKind::Up(MouseButton::Left))
+    {
+        if m.kind == MouseKind::Up(MouseButton::Left) {
+            app.main.view_drag = None;
+        }
+        if let SideMode::View(i) = app.main.sides[side].mode {
+            return view_event(app, side, i, &Event::Mouse(*m));
+        }
+    }
     if let Some(strip) = l.strip
         && strip.contains(m.col, m.row)
     {
@@ -472,6 +488,9 @@ fn mouse(app: &mut App, m: &crate::input::MouseEvent) -> Outcome {
                 SideMode::View(i) => {
                     if pressed {
                         app.main.active = side;
+                    }
+                    if m.kind == MouseKind::Down(MouseButton::Left) {
+                        app.main.view_drag = Some(side);
                     }
                     let ev = Event::Mouse(*m);
                     view_event(app, side, i, &ev);

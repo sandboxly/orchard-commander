@@ -303,7 +303,8 @@ scale: render PDF pages and fit images to that.
 
 `mod.rs` is the pane (`PreviewView`, a `SideView`): debounced loading
 through `oc_preview::Registry::global()` on a worker with cancellation, the
-previous content kept until the next one is ready, "View as" chips
+previous content kept until the next one is ready (for at most 300 ms:
+then the new name over an empty pane, servers "Loading …"), "View as" chips
 (Shift+F3; the choice per extension lasts until quit), title = file name,
 subtitle = the previewer's info, cloud placeholders ("Downloading … from
 the cloud"; above 25 MB "Download and preview"; "Try again"). Reload panels

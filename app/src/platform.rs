@@ -669,7 +669,13 @@ impl ApplicationHandler<AppEvent> for Platform {
                     }
                 };
                 if lines != 0.0 {
+                    #[cfg(target_os = "macos")]
+                    let momentum = crate::macos::scroll_is_momentum();
+                    #[cfg(not(target_os = "macos"))]
+                    let momentum = false;
+                    self.app().wheel_momentum = momentum;
                     self.mouse(key, MouseKind::Scroll(lines));
+                    self.app().wheel_momentum = false;
                 }
                 // Sideways only when that is the gesture (a vertical swipe drifts a little).
                 if cols != 0.0 && cols.abs() > lines.abs() {

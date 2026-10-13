@@ -235,6 +235,10 @@ pub struct App {
     pub cell_px: (f32, f32),
     pub focused: WinId,
     pub window_focused: bool,
+    /// The wheel event being handled is trackpad momentum (the fingers have
+    /// lifted; set by the platform layer). The PDF view ignores those, as
+    /// 1.x did, so one flick turns one page.
+    pub wheel_momentum: bool,
     next_id: u64,
     writer: Option<SettingsWriter>,
     pub watch: bool,
@@ -293,6 +297,7 @@ impl App {
             cell_px: (8.0, 16.0),
             focused: MAIN_WINDOW,
             window_focused: true,
+            wheel_momentum: false,
             next_id: 1,
             writer,
             watch: cfg.watch,
