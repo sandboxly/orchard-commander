@@ -297,4 +297,5 @@ pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::m
     for s in 0..2 {
         panel::reload(app, s);
     }
+    crate::commands::files_changed(app);
 }

@@ -14,6 +14,7 @@ oc-media = { path = "../oc-media" }
 serde_json = "1.0"
 image = { version = "0.25.6", default-features = false }
 oc-term.workspace = true
+oc-search.workspace = true
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
@@ -28,3 +29,4 @@ tempfile.workspace = true
 tempfile.workspace = true
 oc-archive.workspace = true
 oc-pdf = { path = "../oc-pdf", features = ["testing"] }
+zip = { version = "9.0", default-features = false }

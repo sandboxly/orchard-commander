@@ -347,7 +347,8 @@ pub(crate) fn handle_event(app: &mut App, ev: &Event) -> Outcome {
     }
     match ev {
         Event::Key(k) => {
-            if let Some(cmd) = app.registry.for_key(k) {
+            // A disabled command leaves its key to the panel / side view.
+            if let Some(cmd) = app.registry.for_key(k).filter(|c| c.is_enabled(app)) {
                 let id = cmd.id;
                 app.run_command(id);
                 return Outcome::Consumed;

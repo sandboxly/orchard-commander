@@ -3883,6 +3883,7 @@ dependencies = [
  "oc-media",
  "oc-pdf",
  "oc-preview",
+ "oc-search",
  "oc-term",
  "oc-vfs",
  "ropey",
@@ -3890,6 +3891,7 @@ dependencies = [
  "tempfile",
  "unicode-segmentation",
  "unicode-width",
+ "zip",
 ]
 
 [[package]]

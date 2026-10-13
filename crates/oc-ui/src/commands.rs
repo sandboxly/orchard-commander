@@ -187,6 +187,18 @@ pub type SettingsHook = fn(&mut App);
 pub type LocationHook = fn(&mut App, usize);
 /// Runs after the main window's grid size changed.
 pub type ResizeHook = fn(&mut App);
+/// Runs after the app changed files (copy, move, trash, rename…), once the
+/// panels were told to reload. See [`files_changed`].
+pub type FilesChangedHook = fn(&mut App);
+
+/// Tell the features that files changed (call after a file operation):
+/// e.g. search results drop hits whose files are gone.
+pub fn files_changed(app: &mut App) {
+    let hooks = app.registry.on_files_changed.clone();
+    for hook in hooks {
+        hook(app);
+    }
+}
 
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
@@ -199,6 +211,7 @@ pub struct Registry {
     pub(crate) on_settings_changed: Vec<SettingsHook>,
     pub(crate) on_location_changed: Vec<LocationHook>,
     pub(crate) on_resized: Vec<ResizeHook>,
+    pub(crate) on_files_changed: Vec<FilesChangedHook>,
 }
 
 impl Registry {
@@ -253,6 +266,11 @@ impl Registry {
     /// After the main window's grid size changed (window resized, font changed).
     pub fn on_resized(&mut self, hook: ResizeHook) -> &mut Self {
         self.on_resized.push(hook);
+        self
+    }
+
+    pub fn on_files_changed(&mut self, hook: FilesChangedHook) -> &mut Self {
+        self.on_files_changed.push(hook);
         self
     }
 
