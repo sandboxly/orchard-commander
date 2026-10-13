@@ -168,8 +168,8 @@ const QUOTE: &AsciiSet = &CONTROLS
 
 /// Python `quote(s)` with its default safe="/" — used for user names in URLs.
 pub fn quote(s: &str, safe_slash: bool) -> String {
-    let set = if safe_slash { QUOTE.remove(b'/') } else { *QUOTE };
-    utf8_percent_encode(s, &set).to_string()
+    const QUOTE_SAFE_SLASH: &AsciiSet = &QUOTE.remove(b'/');
+    utf8_percent_encode(s, if safe_slash { QUOTE_SAFE_SLASH } else { QUOTE }).to_string()
 }
 
 pub fn unquote(s: &str) -> String {
