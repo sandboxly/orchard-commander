@@ -118,7 +118,8 @@ reg.add(
   item shows the command's first shortcut, `Command::menu_shortcut`, as
   1.x's Qt menus did), the in-window strip (F9), the F-key bar (`.fkey`),
   the right end of the bar (`.footer_right("Commands")`) and the command
-  palette (⌘P, fuzzy filter, 1.x's order; `.hidden_from_palette()` to leave
+  palette (⌘P, 1.x's order from `features::window::PALETTE_ORDER`, every typed word
+  must appear; `.hidden_from_palette()` to leave
   one out). `.alias_keys` adds keys that run a command without being shown.
 * Native menu items: a click is `App::menu_activated`, a key equivalent
   (macOS gives those keys to the menu, not the window; the binary tells them
@@ -486,10 +487,10 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * `App::new` loads `oc_config::Settings` from the 1.x config dir. Keys written
   (same meaning as 1.x): `left_path`, `right_path` (nearest local folder),
   `show_hidden`, `font_size` (zoom; reset → `null`), `color_scheme` /
-  `light_scheme` / `dark_scheme`, `extra.left_mode` / `extra.right_mode`.
-  New in 2.x (ignored by 1.x): `extra.left_sort`, `extra.left_sort_reverse`
-  (and `right_…`), `extra.window_geometry` (logical `width`, `height`, `x`,
-  `y`; 1.x's Qt `geometry` blob is left alone).
+  `light_scheme` / `dark_scheme`, `extra.left_mode` / `extra.right_mode`,
+  `extra.geometry` (the main window: Qt's `saveGeometry()` blob in base64,
+  read and written by `app/src/geometry.rs`). The sort order is not saved
+  (1.x sorts by name at every start).
 * `app.theme` (`Theme`) = scheme colors + `BoxStyle` + `FontConfig` (family,
   style, size, line spacing). `update_settings` re-resolves it when the
   appearance changes and emits `PlatformRequest::ThemeChanged`; the binary

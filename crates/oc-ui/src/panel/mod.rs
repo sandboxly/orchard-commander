@@ -432,6 +432,31 @@ pub fn local_anchor(v: &VPath) -> Option<PathBuf> {
     v.fs.exit_to().and_then(|p| local_anchor(&p))
 }
 
+/// Just the OS's reason for an error, like 1.x's `exc.strerror`: "Permission
+/// denied" from "[Errno 13] Permission denied: '/x'". "Not found" and
+/// "already exists" are 1.x's `FileNotFoundError` / `FileExistsError`
+/// (e.g. an SFTP mkdir). Other errors keep their whole text.
+pub fn error_reason(e: &oc_vfs::VfsError) -> String {
+    use oc_vfs::VfsError;
+    let text = e.to_string();
+    match e {
+        VfsError::NotFound(_) => return "No such file or directory".into(),
+        VfsError::AlreadyExists(_) => return "File exists".into(),
+        VfsError::Io(_) => {}
+        _ => return text,
+    }
+    if let Some(rest) = text.strip_prefix("[Errno ")
+        && let Some((_, reason)) = rest.split_once("] ")
+    {
+        return reason.split_once(": '").map_or(reason, |(r, _)| r).to_owned();
+    }
+    // A bare std error: "Permission denied (os error 13)".
+    match text.rfind(" (os error ") {
+        Some(i) => text[..i].to_owned(),
+        None => text,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Working with the app
 // ---------------------------------------------------------------------------
@@ -495,7 +520,7 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
                     Ok(entries) => (location, entries, false),
                     Err(e) => {
                         log::info!("{shown}: {e}; showing {} instead", fallback.display());
-                        let entries = fallback.list_dir(list_opts).map_err(|e| (e.to_string(), Some(e)))?;
+                        let entries = fallback.list_dir(list_opts).map_err(|e| (error_reason(&e), Some(e)))?;
                         (fallback, entries, true)
                     }
                 };
@@ -514,7 +539,7 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
                 }
             }
             let loc = loc.ok_or_else(|| (format!("{shown} no longer exists"), None))?;
-            let entries = loc.list_dir(list_opts).map_err(|e| (e.to_string(), Some(e)))?;
+            let entries = loc.list_dir(list_opts).map_err(|e| (error_reason(&e), Some(e)))?;
             let has_parent = loc.parent().is_some();
             let free = loc.fs.free_space(&loc.path);
             Ok(Listed { location: loc, entries, has_parent, free, started, fell_back: false })
@@ -673,6 +698,7 @@ fn open_local(app: &mut App, name: &str, local: PathBuf) {
 }
 
 /// A click on a column header: sort by it, or reverse if it already is.
+/// Not saved: like 1.x, every start sorts by name.
 pub fn sort_by(app: &mut App, side: usize, key: SortKey) {
     let p = panel_mut(app, side);
     if p.sort == key {
@@ -681,12 +707,6 @@ pub fn sort_by(app: &mut App, side: usize, key: SortKey) {
         p.sort = key;
         p.reverse = false;
     }
-    let (sort, reverse) = (p.sort.as_str(), p.reverse);
-    let name = crate::main_window::SIDE_NAMES[side];
-    app.update_settings(move |s| {
-        s.extra.insert(format!("{name}_sort"), sort.into());
-        s.extra.insert(format!("{name}_sort_reverse"), reverse.into());
-    });
     resort(app, side);
 }
 

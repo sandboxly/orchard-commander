@@ -225,6 +225,13 @@ pub fn toggle(app: &mut App) {
     remember(app);
 }
 
+/// Give the keys back to the panels (1.x: a panel's `setFocus()`).
+pub fn focus_panels(app: &mut App) {
+    if has_focus(app) {
+        set_focus(app, false);
+    }
+}
+
 /// ⌃⇧`: change the active side's shell to its panel's folder.
 pub fn to_panel_folder(app: &mut App) {
     if !is_visible(app) {

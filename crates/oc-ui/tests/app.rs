@@ -142,7 +142,7 @@ fn sorting_reorders_the_listing_keeping_cursor_and_marks() {
 }
 
 #[test]
-fn zoom_and_sort_persist() {
+fn zoom_persists_but_sort_does_not() {
     let e = env();
     let mut app = app(&e);
     let size = app.theme.font.size;
@@ -157,8 +157,10 @@ fn zoom_and_sort_persist() {
     app.flush_settings();
     let s = oc_config::Settings::load(&app.paths.settings_file());
     assert_eq!(s.font_size, None);
-    assert_eq!(s.extra.get("left_sort").and_then(|v| v.as_str()), Some("size"));
-    assert_eq!(s.extra.get("left_sort_reverse").and_then(|v| v.as_bool()), Some(true));
+    // 1.x sorts by name at every start; there's no setting for it.
+    assert_eq!(app.main.sides[0].panel.sort, oc_vfs::SortKey::Size);
+    assert!(app.main.sides[0].panel.reverse);
+    assert!(s.extra.keys().all(|k| !k.contains("sort")), "{:?}", s.extra.keys().collect::<Vec<_>>());
 }
 
 #[test]
@@ -441,20 +443,80 @@ fn f6_renames_in_the_same_folder_and_f7_makes_folders() {
 }
 
 #[test]
-fn errors_show_in_a_message_box() {
+fn operation_errors_show_in_a_toast() {
     let e = env();
     fs::create_dir(e.left.join("d")).unwrap();
     let mut app = app(&e);
     press(&mut app, Key::Down);
     press(&mut app, Key::F(5));
-    // Copying a folder into itself fails.
+    // Copying a folder into itself fails: a red toast, like 1.x (no dialog to dismiss).
     let target = e.left.join("d").join("inside");
     type_text(&mut app, &target.to_string_lossy());
     press(&mut app, Key::Enter);
-    wait_until(&mut app, "error box", Duration::from_secs(10), |app| app.operation.is_none() && app.modal_titles() == ["Copying"]);
-    assert!(app.top_modal_text().unwrap().contains("into itself"), "{:?}", app.top_modal_text());
+    wait_until(&mut app, "error toast", Duration::from_secs(10), |app| app.operation.is_none() && app.modal_titles().is_empty());
+    let toast = app.toast.clone().expect("a toast");
+    assert_eq!(toast.severity, oc_ui::Severity::Error);
+    assert!(toast.text.contains("into itself"), "{}", toast.text);
+}
+
+#[test]
+fn no_second_operation_while_a_cancelled_one_winds_down() {
+    let e = env();
+    fs::write(e.left.join("a.txt"), "a").unwrap();
+    let mut app = app(&e);
+    // A cancelled operation whose worker hasn't ended yet (1.x: `isRunning()`).
+    let token = oc_ui::CancelToken::new();
+    token.cancel();
+    app.operation = Some(token.clone());
+    press(&mut app, Key::Down);
+    press(&mut app, Key::F(5));
+    wait_dialog(&mut app, "Copy");
     press(&mut app, Key::Enter);
-    assert!(app.modal_titles().is_empty());
+    settle(&mut app);
+    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Another file operation is still running"));
+    assert!(app.operation.as_ref().is_some_and(|t| t.is_cancelled()), "still the old one");
+    assert!(!e.right.join("a.txt").exists());
+}
+
+#[test]
+fn the_source_panel_is_active_after_an_operation() {
+    let e = env();
+    fs::write(e.left.join("a.txt"), "a").unwrap();
+    let mut app = app(&e);
+    put_cursor_on(&mut app, 0, "a.txt");
+    // The right side shows the preview: F5 acts on the left panel…
+    app.main.active = 1;
+    app.main.sides[1].mode = oc_ui::main_window::SideMode::View(0);
+    assert_eq!(app.main.files_side(), 0);
+    press(&mut app, Key::F(5));
+    wait_dialog(&mut app, "Copy");
+    press(&mut app, Key::Enter);
+    wait_no_dialogs(&mut app);
+    assert!(e.right.join("a.txt").exists());
+    // …which has the focus afterwards (1.x: `source.setFocus()`).
+    assert_eq!(app.main.active, 0);
+}
+
+#[test]
+fn files_and_commands_menus_group_like_1x() {
+    let e = env();
+    let app = app(&e);
+    let labels = |menu| {
+        oc_ui::menus::menu_items(&app, menu)
+            .into_iter()
+            .map(|id| id.map_or("-".to_owned(), |id| app.registry.get(id).unwrap().label_in_menu().to_owned()))
+            .collect::<Vec<_>>()
+    };
+    let files = labels(oc_ui::Menu::Files);
+    let ops = ["Copy", "Move / rename", "Multi-rename", "Undo rename", "Make directory", "Move to trash"];
+    let start = files.iter().position(|l| l == "Copy").unwrap();
+    assert_eq!(files[start - 1], "-");
+    assert_eq!(files[start..start + ops.len()], ops, "{files:?}");
+    assert_eq!(files[start + ops.len()], "-");
+    let commands = labels(oc_ui::Menu::Commands);
+    let goto = commands.iter().position(|l| l == "Go to path").unwrap();
+    assert_eq!(commands[goto - 1], "-");
+    assert_eq!(commands[goto + 1], "Bookmarks", "{commands:?}");
 }
 
 #[test]

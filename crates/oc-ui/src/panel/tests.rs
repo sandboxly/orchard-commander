@@ -242,3 +242,17 @@ fn watcher_reloads_skip_what_our_own_reload_already_shows() {
     crate::testing::settle(&mut app);
     assert_eq!(panel(&app, 0).request, after_ours + 1, "nobody reloaded it: the watcher does");
 }
+
+#[test]
+fn error_reason_is_strerror() {
+    use oc_vfs::VfsError;
+    use std::io;
+    let io = |msg: &str| VfsError::Io(io::Error::new(io::ErrorKind::PermissionDenied, msg));
+    assert_eq!(error_reason(&io("[Errno 13] Permission denied: '/x'")), "Permission denied");
+    assert_eq!(error_reason(&io("[Errno 61] Connection refused")), "Connection refused");
+    assert_eq!(error_reason(&VfsError::Io(io::Error::from_raw_os_error(13))), "Permission denied");
+    // 1.x's remote file systems raise FileExistsError / FileNotFoundError.
+    assert_eq!(error_reason(&VfsError::AlreadyExists("sftp://h/docs".into())), "File exists");
+    assert_eq!(error_reason(&VfsError::NotFound("sftp://h/x".into())), "No such file or directory");
+    assert_eq!(error_reason(&VfsError::Operation("Target directory does not exist".into())), "Target directory does not exist");
+}

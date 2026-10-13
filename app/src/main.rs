@@ -10,6 +10,7 @@
 //! - `OC_TIMING=1`: print startup-to-first-frame time to stderr (`OC_TIMING=exit`:
 //!   and quit right after it).
 
+mod geometry;
 mod platform;
 mod screenshot;
 mod selftest;

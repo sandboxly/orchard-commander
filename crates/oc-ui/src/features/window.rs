@@ -115,7 +115,7 @@ const PALETTE_ORDER: &[&str] = &[
     "app.zoom_reset",
 ];
 
-/// ⌘P: every command, fuzzy-filtered; Enter runs it. Like 1.x it lists
+/// ⌘P: every command, filtered by the typed words; Enter runs it. Like 1.x it lists
 /// commands that can't run right now too (Stop search without a search).
 pub fn command_palette(app: &mut App) {
     let mut listed: Vec<&Command> = app.registry.commands().iter().filter(|c| c.in_palette).collect();

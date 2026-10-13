@@ -140,6 +140,22 @@ fn keys_go_to_the_shell_not_the_window() {
     assert!(terminal::take_recorded(&mut app).is_empty());
 }
 
+#[test]
+fn a_finished_file_operation_takes_the_keys_back_to_its_panel() {
+    use oc_ui::features::fileops::{self, Kind};
+    let e = env();
+    let mut app = app(&e);
+    toggle(&mut app);
+    started(&mut app, 0);
+    // E.g. Files → Copy from the menu bar while the shell has the keys.
+    fileops::run(&mut app, Kind::Copy, vec![oc_local::local(e.src.join("a.txt"))], Some(oc_local::local(&e.dst)), 0);
+    wait_until(&mut app, "the copy", WAIT, |app| app.operation.is_none());
+    assert!(e.dst.join("a.txt").exists());
+    // 1.x: `source.setFocus()`.
+    assert!(terminal::is_visible(&app) && !terminal::has_focus(&app));
+    assert_eq!(app.main.active, 0);
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn cmd_j_toggles_from_inside() {
