@@ -84,6 +84,9 @@ impl Inner {
 
     fn cached(&self, key: CacheKey) -> Option<Arc<Page>> {
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        if self.closed.load(Ordering::SeqCst) {
+            return None;
+        }
         let i = cache.iter().position(|(k, _)| *k == key)?;
         let hit = cache.remove(i)?;
         let page = hit.1.clone();
@@ -94,10 +97,12 @@ impl Inner {
     fn remember(&self, key: CacheKey, page: Page, size: (f32, f32)) -> Arc<Page> {
         self.sizes.lock().unwrap_or_else(|e| e.into_inner()).insert(page.index, size);
         let page = Arc::new(page);
+        // Checked under the lock: `close` sets the flag, then clears the
+        // cache under it, so nothing is cached after closing.
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         if self.closed.load(Ordering::SeqCst) {
             return page;
         }
-        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         cache.retain(|(k, _)| *k != key);
         cache.push_back((key, page.clone()));
         while cache.len() > CACHE_PAGES {

@@ -9,7 +9,7 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::io::{Read, Seek};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -169,9 +169,42 @@ pub(crate) fn open(id: u64, reader: impl Read + Seek + Send + 'static) -> Result
     wait(&rx)?
 }
 
+/// What PDFium reads documents through. pdfium-render answers each of
+/// PDFium's block requests with a single `read` call and takes a short read
+/// for a full block (the rest of the block is garbage), and a panicking
+/// reader would unwind through PDFium's C frames (an abort). Network streams
+/// do return short reads, so: fill every block completely or fail it, and
+/// turn panics into errors.
+struct BlockReader<R>(R);
+
+impl<R: Read> Read for BlockReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut filled = 0;
+        while filled < buf.len() {
+            match catch_unwind(AssertUnwindSafe(|| self.0.read(&mut buf[filled..]))) {
+                // PDFium only asks for bytes below the length it was given:
+                // the file got shorter. Fail the block.
+                Ok(Ok(0)) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "the PDF ended early")),
+                Ok(Ok(n)) => filled += n.min(buf.len() - filled),
+                Ok(Err(e)) if e.kind() == io::ErrorKind::Interrupted => {}
+                Ok(Err(e)) => return Err(e),
+                Err(panic) => return Err(io::Error::other(format!("reading the PDF failed: {}", panic_text(&panic)))),
+            }
+        }
+        Ok(filled)
+    }
+}
+
+impl<R: Seek> Seek for BlockReader<R> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        catch_unwind(AssertUnwindSafe(|| self.0.seek(pos)))
+            .unwrap_or_else(|panic| Err(io::Error::other(format!("seeking in the PDF failed: {}", panic_text(&panic)))))
+    }
+}
+
 impl Engine {
     fn open(&mut self, id: u64, reader: impl Read + Seek + 'static) -> Result<Opened, PdfError> {
-        let doc = self.pdfium.load_pdf_from_reader(reader, None).map_err(PdfError::from_load)?;
+        let doc = self.pdfium.load_pdf_from_reader(BlockReader(reader), None).map_err(PdfError::from_load)?;
         let page_count = usize::try_from(doc.pages().len()).unwrap_or(0);
         let title = doc
             .metadata()

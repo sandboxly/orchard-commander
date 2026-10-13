@@ -312,3 +312,121 @@ fn many_threads_at_once() {
         assert_eq!(h.join().unwrap(), (i % 6, Some(WHITE)));
     }
 }
+
+/// A network stream: `read` returns at most a few bytes per call (a packet
+/// at a time), as SFTP/HTTP streams do. PDFium asks for whole blocks, so the
+/// blocks must be filled completely.
+struct Trickle<R> {
+    inner: R,
+    chunk: usize,
+}
+
+impl<R: Read> Read for Trickle<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = buf.len().min(self.chunk);
+        self.inner.read(&mut buf[..n])
+    }
+}
+
+impl<R: Seek> Seek for Trickle<R> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.inner.seek(pos)
+    }
+}
+
+#[test]
+fn short_reads_are_completed() {
+    if !pdfium() {
+        return;
+    }
+    let pdf = TestPdf::with_pages(2).title("Trickled").page(TestPage::left_half(200.0, 100.0, [1.0, 0.0, 0.0])).build();
+    let whole = open(pdf.clone()).unwrap().render(2, 200, 100).unwrap();
+    for chunk in [1, 7, 1000] {
+        let doc = Document::open_reader(Trickle { inner: Cursor::new(pdf.clone()), chunk }).unwrap();
+        assert_eq!((doc.page_count(), doc.title()), (3, "Trickled"), "chunk {chunk}");
+        assert_eq!(*doc.render(2, 200, 100).unwrap(), *whole, "chunk {chunk}");
+    }
+}
+
+/// A stream that breaks once `broken` is set: with an error (a dropped
+/// connection) or a panic (a buggy stream). Neither may hang, abort the
+/// process or render garbage.
+struct Breaks {
+    inner: Cursor<Vec<u8>>,
+    broken: Arc<AtomicBool>,
+    panic: bool,
+}
+
+impl Read for Breaks {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.broken.load(Ordering::SeqCst) {
+            if self.panic {
+                panic!("a buggy stream");
+            }
+            return Err(io::Error::new(io::ErrorKind::ConnectionReset, "connection reset"));
+        }
+        self.inner.read(buf)
+    }
+}
+
+impl Seek for Breaks {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.inner.seek(pos)
+    }
+}
+
+#[test]
+fn broken_streams_fail_cleanly() {
+    if !pdfium() {
+        return;
+    }
+    let mut pdf = TestPdf::default();
+    for _ in 0..50 {
+        pdf = pdf.page(TestPage::left_half(100.0, 100.0, [1.0, 0.0, 0.0])).junk(64 * 1024);
+    }
+    let pdf = pdf.build();
+    for panic in [false, true] {
+        let broken = Arc::new(AtomicBool::new(true));
+        let stream = Breaks { inner: Cursor::new(pdf.clone()), broken: broken.clone(), panic };
+        assert!(matches!(Document::open_reader(stream), Err(PdfError::Unreadable(_))), "panic: {panic}");
+
+        broken.store(false, Ordering::SeqCst);
+        let stream = Breaks { inner: Cursor::new(pdf.clone()), broken: broken.clone(), panic };
+        let doc = Document::open_reader(stream).unwrap();
+        assert_eq!(doc.page_count(), 50);
+        broken.store(true, Ordering::SeqCst); // the connection drops
+        match doc.render(25, 100, 100) {
+            Err(PdfError::Render(msg)) => assert!(msg.contains("page 26"), "{msg}"),
+            Ok(page) => assert_eq!(page.pixel(10, 50), Some([255, 0, 0, 255])), // read before it broke
+            Err(e) => panic!("{e:?}"),
+        }
+    }
+    oc_pdf::self_test().unwrap(); // the PDFium thread lives on
+}
+
+/// A one-page PDF whose page is turned by 90°.
+fn rotated_pdf() -> Vec<u8> {
+    let mut pdf = pdf_bytes(1);
+    // Same length as what it replaces, so the xref offsets stay right.
+    let (from, to) = (b"/Resources << >>", b"/Rotate 90      ");
+    let at = pdf.windows(from.len()).position(|w| w == from).unwrap();
+    pdf[at..at + to.len()].copy_from_slice(to);
+    pdf
+}
+
+/// Pages with /Rotate are measured and drawn as displayed (turned), like
+/// pypdfium2's get_page_size()/get_size()/render().
+#[test]
+fn rotated_pages_are_measured_as_shown() {
+    if !pdfium() {
+        return;
+    }
+    let doc = open(rotated_pdf()).unwrap();
+    assert_eq!(doc.page_size(0).unwrap(), (842.0, 595.0));
+    let page = doc.render_width(0, 842).unwrap();
+    assert_eq!((page.width, page.height), (842, 595));
+    let fresh = open(rotated_pdf()).unwrap();
+    let page = fresh.render(0, 421, 421).unwrap(); // measured while rendering, not by page_size
+    assert_eq!((page.width, page.height), (421, 298));
+    assert_eq!(fresh.page_size(0).unwrap(), (842.0, 595.0));
+}

@@ -145,3 +145,22 @@ fn pages_render_in_the_background_and_close_with_the_preview() {
     pages.render_async(0, 70, 70, Box::new(move |r| tx.send(r.is_err()).unwrap()));
     assert!(rx.recv_timeout(Duration::from_secs(10)).unwrap());
 }
+
+/// A server stream that hands over a few bytes per `read` (as network
+/// streams do) still previews correctly, without downloading the file.
+#[test]
+fn pdf_streamed_in_small_reads() {
+    if !pdf_available() {
+        return;
+    }
+    let pdf = TestPdf::with_pages(1).title("Remote").page(TestPage::left_half(200.0, 100.0, [0.0, 0.0, 1.0])).build();
+    let cache = tempfile::tempdir().unwrap();
+    let mem = Arc::new(MemFs { max_read: 5, ..MemFs::default() });
+    mem.add("remote.pdf", pdf);
+    let ctx = LoadContext { cache_dir: Some(cache.path().to_path_buf()), ..LoadContext::default() };
+    let o = Registry::with_builtins().preview(&mem.vpath("remote.pdf"), &ctx, None);
+    let data = pdf_data(&o);
+    assert_eq!((data.page_count, data.title.as_str()), (2, "Remote"));
+    assert_eq!(data.pages.render(1, 200, 200).unwrap().pixel(5, 50), Some([0, 0, 255, 255]));
+    assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 0); // streamed, not copied
+}

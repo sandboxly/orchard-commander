@@ -42,7 +42,8 @@ pub fn platform_dir() -> String {
 /// 2. `../Frameworks` of the executable (a macOS app bundle) and `../lib`
 ///    (Linux packages: /opt/orchard-commander/lib)
 /// 3. debug builds only: the workspace's `vendor/pdfium/<platform>/`
-/// 4. the bare name, for the system's library search path
+/// 4. the bare name, for the system's library search path (not on Windows,
+///    where that search includes the current directory: DLL planting)
 pub fn candidates() -> Vec<PathBuf> {
     candidates_for(std::env::var_os(ENV_VAR).filter(|v| !v.is_empty()).map(PathBuf::from))
 }
@@ -70,7 +71,9 @@ fn candidates_for(env: Option<PathBuf>) -> Vec<PathBuf> {
         let vendor = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../vendor/pdfium").join(platform_dir());
         out.push(vendor.join(name));
     }
-    out.push(PathBuf::from(name));
+    if !cfg!(windows) {
+        out.push(PathBuf::from(name));
+    }
     out
 }
 
@@ -79,9 +82,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn candidates_end_with_the_bare_name() {
+    fn candidates_end_with_the_bare_name_except_on_windows() {
         let c = candidates_for(None);
-        assert_eq!(c.last().unwrap(), Path::new(library_name()));
+        assert_eq!(c.last().unwrap() == Path::new(library_name()), !cfg!(windows));
         assert!(c.iter().any(|p| p.ends_with(Path::new("Frameworks").join(library_name()))));
         assert!(platform_dir().contains('-'));
     }
