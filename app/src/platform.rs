@@ -26,8 +26,10 @@ use crate::Args;
 pub enum AppEvent {
     /// Task results are waiting (`App::process_tasks`).
     Wake,
-    /// A native menu item was chosen (command id).
+    /// A native menu item was clicked (command id).
     Menu(String),
+    /// A native menu item's key equivalent was pressed (command id).
+    MenuKey(String),
 }
 
 struct Win {
@@ -397,8 +399,8 @@ impl ApplicationHandler<AppEvent> for Platform {
         {
             crate::macos::set_app_icon();
             let proxy = self.proxy.clone();
-            self.menu = crate::macos::NativeMenu::install(self.app(), move |id| {
-                let _ = proxy.send_event(AppEvent::Menu(id));
+            self.menu = crate::macos::NativeMenu::install(self.app(), move |id, by_key| {
+                let _ = proxy.send_event(if by_key { AppEvent::MenuKey(id) } else { AppEvent::Menu(id) });
             });
         }
         self.settle(el);
@@ -414,6 +416,7 @@ impl ApplicationHandler<AppEvent> for Platform {
                 self.app().process_tasks();
             }
             AppEvent::Menu(id) => self.app().menu_activated(&id),
+            AppEvent::MenuKey(id) => self.app().menu_key_equivalent(&id),
         }
         self.settle(el);
     }

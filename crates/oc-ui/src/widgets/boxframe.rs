@@ -58,7 +58,9 @@ impl<'a> BoxFrame<'a> {
         fill(f, r, c.background);
         fill(f, inner, c.surface);
         let line = if self.active { c.border_active } else { c.border };
-        f.draw_box(r.cell_rect(), ctx.theme.frame, Style::new(line, c.background));
+        // The focused frame is drawn with thicker lines too (1.x: a 2 px pen).
+        let border = if self.active { Style::new(line, c.background).with(Flags::STRONG) } else { Style::new(line, c.background) };
+        f.draw_box(r.cell_rect(), ctx.theme.frame, border);
 
         // Title and subtitle cells interrupt the top/bottom strips.
         let title = self.title_text(r);
@@ -175,6 +177,10 @@ mod tests {
         assert_eq!(b.title_rect(Rect::new(0, 0, 30, 5)), Some(Rect::new(2, 0, 7, 1)));
         // Active title: inverted in the active border color.
         assert_eq!(f.cell(3, 0).unwrap().bg, theme.colors.border_active);
+        // The active border is drawn strong (thicker), an inactive one not.
+        assert!(f.cell(0, 2).unwrap().flags.contains(Flags::STRONG));
+        BoxFrame { active: false, ..b }.draw(&mut f, Rect::new(0, 0, 30, 5), &ctx);
+        assert!(!f.cell(0, 2).unwrap().flags.contains(Flags::STRONG));
     }
 
     #[test]

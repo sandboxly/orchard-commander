@@ -517,3 +517,26 @@ fn synthesized_or_real_italic_leans_right() {
         "dim max {brightest}"
     );
 }
+
+#[test]
+fn strong_box_lines_are_thicker_other_glyphs_unchanged() {
+    // The focused panel's frame: Flags::STRONG draws box lines one step thicker.
+    let Some(mut r) = renderer() else { return };
+    let mut f = Frame::new(6, 2, BG);
+    f.put_str(0, 0, "──a", Style::fg(FG));
+    f.put_str(0, 1, "──a", Style::fg(FG).with(Flags::STRONG));
+    let img = r.render(&f).unwrap();
+    let m = r.renderer().metrics();
+    let lit = |row: u32, col: u32| {
+        (0..m.height)
+            .filter(|y| img.pixel(col * m.width + m.width / 2, row * m.height + y) != BG)
+            .count()
+    };
+    assert_eq!(lit(1, 0), 2 * lit(0, 0), "twice the thin line");
+    let glyph = |row: u32| {
+        (0..m.width * m.height)
+            .filter(|i| img.pixel(2 * m.width + i % m.width, row * m.height + i / m.width) != BG)
+            .count()
+    };
+    assert_eq!(glyph(0), glyph(1), "text ignores STRONG");
+}

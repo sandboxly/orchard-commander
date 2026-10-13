@@ -118,8 +118,12 @@ reg.add(
   window), the in-window strip (F9), the F-key bar (`.fkey`), the right end
   of the bar (`.footer_right("Commands")`) and the command palette (⌘P,
   fuzzy filter; `.hidden_from_palette()` to leave one out).
-* While a dialog is open, a native menu item is delivered to the dialog as
-  its key (so ⌘A selects text in a field). `.global()` commands (Quit) run anyway.
+* Native menu items: a click is `App::menu_activated`, a key equivalent
+  (macOS gives ⌘ keys to the menu, not the window; the binary tells them
+  apart by `NSApp.currentEvent`) is `App::menu_key_equivalent`. While a
+  dialog is open a click does nothing (like Qt's menus under a modal
+  dialog) and a key equivalent goes to the dialog as its key (so ⌘A selects
+  text in a field). `.global()` commands (Quit) run anyway.
 
 ## Adding a feature module (the usual case)
 
@@ -243,7 +247,13 @@ State structs with `draw(&self, f, rect, ctx[, focused])` and
 | `ListState` | cursor + scroll for any length; `draw` calls back per visible row; scrollbar |
 | `Scrollbar` | pixel-exact thumb |
 | `DropdownMenu` | items with shortcuts, checks, separators, hotkeys, mouse |
-| `cover(f, rect, ctx)` | call before drawing anything that floats over other content |
+| `cover(f, rect, ctx)` | call before drawing anything that floats over other content (cuts pixel rects around it, clips images to what stays visible) |
+| `features::settings::form` | combo box field + `Popup` list (separators, type-to-jump, ≤ 20 rows), spin box, heading/label/muted text — for settings-like forms |
+
+A focused `BoxFrame` (panels, dialogs, popups) draws its border with
+`Flags::STRONG`: oc-grid draws box-drawing lines one step thicker (1.x's
+2 px pen). The check marks `✓`/`✔` are drawn geometrically when no
+installed font has them.
 
 Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 `border_active`, `cursor_bg`, `footer_key`, …). Never hard-code colors.
@@ -261,7 +271,24 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
   style, size, line spacing). `update_settings` re-resolves it when the
   appearance changes and emits `PlatformRequest::ThemeChanged`; the binary
   re-rasterizes the font and resizes the grid. `set_system_dark` follows
-  the OS when `follow_system_appearance` is on.
+  the OS when `follow_system_appearance` is on (winit `ThemeChanged`).
+* Color schemes come from `theme::SchemeCache` (app state): built-ins need
+  no disk; the user's `color-schemes/*.toml` are read once in the
+  background at start (synchronously only when the configured scheme is a
+  user one), so zooming or the OS going dark never reads the disk. Use
+  `app.color_scheme(name)`, `app.color_schemes()`, and
+  `app.refresh_color_schemes(then)` after writing scheme files.
+* Settings window: `features/settings/` (⌘,; pages Appearance, Preview,
+  Terminal; `scheme_editor.rs` for the color scheme editor). Every control
+  writes through `update_settings` with only its own keys; values are read
+  back from `app.settings` when drawn. Keys it writes besides the
+  appearance ones: `play_next`, `extra["preview.media.autoplay"]`,
+  `terminal_shell`, `terminal_link`, `menu_bar_visible`. Features that
+  react to them (player, terminal) use `reg.on_settings_changed`.
+* Saved folders are not checked at start on the UI thread: the first
+  listing gets `LoadOptions::fallback` (left: current folder, right: home)
+  and the worker falls back if the saved folder can't be listed, leaving
+  the saved setting alone (a network mount may come back).
 
 ## File systems and archives
 
@@ -277,7 +304,12 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
   `FileSystem::materialize` first (archives extract into their own cache).
 * Folder watching: `panel/watch.rs` (notify), debounced 250 ms, reload keeps
   the cursor; never supersedes a listing still on its way. Watchers are
-  started and stopped on a worker (FSEvents starts/joins a thread).
+  started and stopped on a worker (FSEvents starts/joins a thread). A
+  watcher reload is skipped when the shown listing started after the
+  change (our own reload after F5/F6/F8…), and waits while `app.operation`
+  runs (its end reloads both panels).
+* Quick search (type a name in a panel): letters within 400 ms extend it
+  (Qt's keyboard input interval, as in 1.x).
 * Mouse wheel: scrolls the view, not the cursor (like 1.x's Qt views); the
   next cursor key scrolls the cursor back into view.
 

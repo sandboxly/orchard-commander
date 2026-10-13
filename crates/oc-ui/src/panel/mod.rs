@@ -22,8 +22,9 @@ use crate::widgets::ListState;
 /// The parent row's name.
 pub const PARENT: &str = "..";
 
-/// Typing more letters within this time extends the quick search.
-pub const QUICK_SEARCH_TIMEOUT: Duration = Duration::from_millis(1000);
+/// Typing more letters within this time extends the quick search (Qt's
+/// `QApplication::keyboardInputInterval`, which 1.x used).
+pub const QUICK_SEARCH_TIMEOUT: Duration = Duration::from_millis(400);
 
 /// After this long without a listing, the status line says "loading…".
 const LOADING_HINT: Duration = Duration::from_millis(200);
@@ -79,6 +80,11 @@ pub struct FilePanel {
     pub(crate) watch_wanted: Option<PathBuf>,
     pub(crate) reload_due: Option<Instant>,
     pub(crate) reload_timer: bool,
+    /// When the watcher last reported a change (on the UI thread, so after it happened).
+    pub(crate) changed_at: Option<Instant>,
+    /// When the worker of the shown listing started reading: a listing that
+    /// started after a change already shows it (no watcher reload needed).
+    pub(crate) listed_from: Option<Instant>,
 }
 
 impl FilePanel {
@@ -109,6 +115,8 @@ impl FilePanel {
             watch_wanted: None,
             reload_due: None,
             reload_timer: false,
+            changed_at: None,
+            listed_from: None,
         }
     }
 
@@ -421,6 +429,10 @@ pub struct LoadOptions {
     pub keep_cursor: bool,
     /// Show the nearest existing ancestor if the folder is gone.
     pub walk_up: bool,
+    /// Show this instead if the folder can't be listed (the saved folders at
+    /// start: checked on the worker, so a dead network mount can't hang the
+    /// window). The saved folder setting is then left alone.
+    pub fallback: Option<VPath>,
 }
 
 struct Listed {
@@ -428,6 +440,10 @@ struct Listed {
     entries: Vec<Entry>,
     has_parent: bool,
     free: Option<u64>,
+    /// When the worker started reading.
+    started: Instant,
+    /// The fallback is shown.
+    fell_back: bool,
 }
 
 pub fn panel(app: &App, side: usize) -> &FilePanel {
@@ -454,8 +470,23 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
         }
     });
     let shown = location.display();
+    let fallback = opts.fallback.clone();
     app.tasks.run_in_background(
         move |_| -> Result<Listed, String> {
+            let started = Instant::now();
+            if let Some(fallback) = fallback {
+                let (loc, entries, fell_back) = match location.list_dir(list_opts) {
+                    Ok(entries) => (location, entries, false),
+                    Err(e) => {
+                        log::info!("{shown}: {e}; showing {} instead", fallback.display());
+                        let entries = fallback.list_dir(list_opts).map_err(|e| e.to_string())?;
+                        (fallback, entries, true)
+                    }
+                };
+                let has_parent = loc.parent().is_some();
+                let free = loc.fs.free_space(&loc.path);
+                return Ok(Listed { location: loc, entries, has_parent, free, started, fell_back });
+            }
             let mut loc = Some(location.clone());
             if opts.walk_up {
                 while let Some(l) = &loc {
@@ -469,7 +500,7 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
             let entries = loc.list_dir(list_opts).map_err(|e| e.to_string())?;
             let has_parent = loc.parent().is_some();
             let free = loc.fs.free_space(&loc.path);
-            Ok(Listed { location: loc, entries, has_parent, free })
+            Ok(Listed { location: loc, entries, has_parent, free, started, fell_back: false })
         },
         move |app, result| listed(app, side, request, opts, result),
     );
@@ -494,11 +525,13 @@ fn listed(app: &mut App, side: usize, request: u64, opts: LoadOptions, result: R
     let select = if opts.keep_cursor && !changed { p.cursor_name().map(str::to_owned) } else { opts.select };
     let before = p.cursor_target();
     p.free = listed.free;
+    p.listed_from = Some(listed.started);
     p.set_entries(listed.location, listed.entries, listed.has_parent, select.as_deref());
     if app.watch {
         watch::update(app, side);
     }
-    if changed {
+    // A saved folder that isn't there (unmounted) stays the saved one.
+    if changed && !listed.fell_back {
         crate::main_window::location_changed(app, side);
     }
     if panel(app, side).cursor_target() != before || changed {
@@ -517,7 +550,7 @@ pub fn reload(app: &mut App, side: usize) {
     }
     let loc = p.location.clone();
     let select = p.cursor_name().map(str::to_owned);
-    load(app, side, loc, LoadOptions { select, keep_cursor: true, walk_up: true });
+    load(app, side, loc, LoadOptions { select, keep_cursor: true, walk_up: true, ..Default::default() });
 }
 
 /// Backspace / "..": the parent, with the cursor on the folder we came from.
@@ -628,8 +661,10 @@ pub fn sort_by(app: &mut App, side: usize, key: SortKey) {
 
 /// The watcher saw a change in the shown folder: reload after a short quiet time.
 pub(crate) fn directory_changed(app: &mut App, side: usize) {
+    let now = Instant::now();
     let p = panel_mut(app, side);
-    p.reload_due = Some(Instant::now() + WATCH_DEBOUNCE);
+    p.changed_at = Some(now);
+    p.reload_due = Some(now + WATCH_DEBOUNCE);
     if !p.reload_timer {
         p.reload_timer = true;
         app.schedule(WATCH_DEBOUNCE, move |app| reload_when_quiet(app, side));
@@ -637,21 +672,35 @@ pub(crate) fn directory_changed(app: &mut App, side: usize) {
 }
 
 fn reload_when_quiet(app: &mut App, side: usize) {
+    let busy = app.operation.is_some();
     let p = panel_mut(app, side);
     let now = Instant::now();
     match p.reload_due {
         Some(due) if due > now => {
             app.schedule(due - now, move |app| reload_when_quiet(app, side));
         }
+        // Our own copy/move/delete is still changing the folder: it reloads
+        // both panels when it ends, so wait for that instead.
+        _ if busy => {
+            app.schedule(WATCH_DEBOUNCE, move |app| reload_when_quiet(app, side));
+        }
         _ => {
             p.reload_timer = false;
             p.reload_due = None;
+            // A listing that started after the change (our own reload after
+            // a file operation, F2…) already shows it.
+            let seen = matches!((p.listed_from, p.changed_at), (Some(from), Some(at)) if from > at);
             // Never let a refresh of the folder being left supersede a listing on its way.
-            if p.completed == p.request {
+            if p.completed == p.request && !seen {
                 reload(app, side);
             }
         }
     }
+}
+
+/// Whether a watcher reload is waiting (tests).
+pub fn reload_pending(app: &App, side: usize) -> bool {
+    panel(app, side).reload_timer
 }
 
 #[cfg(test)]

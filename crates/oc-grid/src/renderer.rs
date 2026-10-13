@@ -14,7 +14,7 @@ use rustc_hash::FxHashMap;
 use crate::GridError;
 use crate::atlas::AtlasFull;
 use crate::color::Rgba;
-use crate::fonts::{BOLD, CellMetrics, FontConfig, FontLibrary, FontSet, ITALIC, StyleBits};
+use crate::fonts::{BOLD, CellMetrics, FontConfig, FontLibrary, FontSet, ITALIC, STRONG, StyleBits};
 use crate::frame::{Area, CellRect, CursorShape, Flags, Frame, ImageId, Layer, PxRect};
 use crate::glyph_cache::GlyphCache;
 
@@ -770,6 +770,11 @@ impl GridRenderer {
                 let style: StyleBits = (if flags.contains(Flags::BOLD) { BOLD } else { 0 })
                     | (if flags.contains(Flags::ITALIC) {
                         ITALIC
+                    } else {
+                        0
+                    })
+                    | (if flags.contains(Flags::STRONG) {
+                        STRONG
                     } else {
                         0
                     });

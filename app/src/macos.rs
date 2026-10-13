@@ -65,7 +65,8 @@ fn accelerator(s: &Shortcut) -> Option<KeyAccelerator> {
 }
 
 /// Native menu items forward their command; with an accelerator, macOS
-/// handles the key itself (`App::menu_activated` routes it like a key press).
+/// handles the key itself (`App::menu_key_equivalent` routes it like a key
+/// press; a click is `App::menu_activated`).
 /// Only ⌘ shortcuts become accelerators: plain keys (F5, Delete, letters)
 /// stay with the window, so a focused view (the terminal, later) still gets them.
 fn native_accelerator(cmd: &Command) -> Option<KeyAccelerator> {
@@ -73,7 +74,9 @@ fn native_accelerator(cmd: &Command) -> Option<KeyAccelerator> {
 }
 
 impl NativeMenu {
-    pub fn install(app: &App, on_command: impl Fn(String) + Send + Sync + 'static) -> Option<NativeMenu> {
+    /// `on_command(id, by_key)`: a menu item was chosen, by its key
+    /// equivalent (`by_key`) or with the mouse.
+    pub fn install(app: &App, on_command: impl Fn(String, bool) + Send + Sync + 'static) -> Option<NativeMenu> {
         let menu = Menu::new();
         let mut checks = Vec::new();
         let mut items = Vec::new();
@@ -148,7 +151,7 @@ impl NativeMenu {
         window_menu.set_as_windows_menu_for_nsapp();
 
         menu.init_for_nsapp();
-        MenuEvent::set_event_handler(Some(move |e: MenuEvent| on_command(e.id.0.clone())));
+        MenuEvent::set_event_handler(Some(move |e: MenuEvent| on_command(e.id.0.clone(), triggered_by_key())));
         Some(NativeMenu { _menu: menu, checks, items })
     }
 
@@ -166,6 +169,17 @@ impl NativeMenu {
             }
         }
     }
+}
+
+/// Whether the menu action being handled comes from a key equivalent (the
+/// event AppKit is dispatching is a key press) rather than a click.
+fn triggered_by_key() -> bool {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSEventType};
+
+    let Some(mtm) = MainThreadMarker::new() else { return false };
+    let app = NSApplication::sharedApplication(mtm);
+    app.currentEvent().is_some_and(|e| e.r#type() == NSEventType::KeyDown)
 }
 
 /// The Dock icon (a bare binary has none; a bundle gets it from Info.plist,
