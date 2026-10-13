@@ -1,0 +1,227 @@
+name: CI
+
+# Branches only: no tag trigger, no release upload, no publishing anywhere.
+# Release wiring is added when 2.0 replaces 1.x on main (docs/RELEASING.md).
+on:
+  push:
+    branches: [main, rust-2.0]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Smaller debug builds (disk space on the runners); backtraces keep lines.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  RUST_BACKTRACE: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.04: the oldest glibc we ship for (same as the packages), and
+        # everything needed (Mesa lavapipe, libclang, ALSA) is in its archive.
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+
+      - uses: ./.github/actions/setup-build
+        with:
+          components: clippy
+          cache-key: test
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Tests
+        # Server tests run against in-process servers; the SFTP/SMB ones that
+        # need Docker skip themselves without it (Linux runners have it).
+        run: cargo test --locked --workspace --all-features --no-fail-fast
+        timeout-minutes: 40
+
+      - name: Release build
+        run: cargo build --locked --release -p orchard-commander
+
+      - name: Self-test of the release build
+        run: |
+          exe=target/release/orchard-commander
+          if [ "$RUNNER_OS" = "Windows" ]; then exe="$exe.exe"; fi
+          "$exe" --version
+          "$exe" --self-test
+
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]  # 22.04: an older glibc runs on more distributions
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-build
+        with:
+          cache-key: package
+          # The packages' self-tests must find FFmpeg and PDFium in the bundle.
+          runtime-paths: "false"
+
+      - name: Release build
+        run: cargo build --locked --release -p orchard-commander
+
+      - name: Version
+        run: |
+          id="$(cargo pkgid -p orchard-commander)"
+          echo "VERSION=${id##*[#@]}" >> "$GITHUB_ENV"
+          echo "version ${id##*[#@]}"
+
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-about@0.9.2
+
+      - name: Rust crate licenses (licenses/THIRD-PARTY-RUST.txt)
+        run: |
+          if ! scripts/third-party-licenses.sh --check; then
+            echo "::warning file=licenses/THIRD-PARTY-RUST.txt::out of date (packages get a regenerated copy); rerun the script and commit"
+            scripts/third-party-licenses.sh
+          fi
+
+      - name: Stage the app folder
+        run: |
+          exe=target/release/orchard-commander
+          if [ "$RUNNER_OS" = "Windows" ]; then exe="$exe.exe"; fi
+          packaging/stage.sh "$PLATFORM" "$exe" dist/orchard-commander
+
+      - name: Self-test of the staged app (no FFmpeg/PDFium outside it)
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            dist/orchard-commander/orchard-commander.exe --self-test
+          else
+            echo "linked libraries:"
+            ldd dist/orchard-commander/orchard-commander
+            if ldd dist/orchard-commander/orchard-commander | grep -q "not found"; then exit 1; fi
+            ldd dist/orchard-commander/orchard-commander | grep -q "dist/orchard-commander/lib/libavcodec" \
+              || { echo "libavcodec is not the bundled one"; exit 1; }
+            objdump -T dist/orchard-commander/orchard-commander | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+            dist/orchard-commander/orchard-commander --self-test
+          fi
+
+      - name: Windows installer and zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=$env:VERSION" packaging\windows\orchard-commander.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force release | Out-Null
+          Move-Item dist\Orchard-Commander-Setup.exe release\
+          Compress-Archive -Path dist\orchard-commander -DestinationPath release\Orchard-Commander-Windows.zip
+
+      - name: Test the installer (silent install, run, uninstall)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Process release\Orchard-Commander-Setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER' -Wait
+          $app = "$env:LOCALAPPDATA\Programs\Orchard Commander"
+          $exe = "$app\orchard-commander.exe"
+          if (-not (Test-Path $exe)) { throw "not installed: $exe" }
+          $bundle = (Resolve-Path dist\orchard-commander).Path
+          $want = Get-ChildItem -Recurse -File $bundle | ForEach-Object { $_.FullName.Substring($bundle.Length) }
+          $have = Get-ChildItem -Recurse -File $app | ForEach-Object { $_.FullName.Substring($app.Length) }
+          $missing = $want | Where-Object { $have -notcontains $_ }
+          Write-Host "bundle: $($want.Count) files, installed: $($have.Count), missing: $($missing.Count)"
+          $missing | Select-Object -First 25 | ForEach-Object { Write-Host "  missing $_" }
+          if ($missing) { throw "the installer left out $($missing.Count) file(s)" }
+          if (-not (Test-Path "$app\licenses\UnRAR.txt")) { throw "licenses missing" }
+          $run = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest.txt
+          Get-Content selftest.txt
+          if ($run.ExitCode) { throw "self-test of the installed app failed ($($run.ExitCode))" }
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          # The uninstaller continues from a copy of itself in TEMP: wait for it to finish.
+          foreach ($i in 1..30) { if (-not (Test-Path $app)) { break }; Start-Sleep 1 }
+          if (Test-Path $app) {
+            Get-ChildItem -Recurse $app | ForEach-Object { Write-Host "  left $($_.FullName)" }
+            throw "uninstall left $app behind"
+          }
+
+      - name: Linux packages (tar.gz, deb, rpm, AppImage)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release tools
+          tar czf release/Orchard-Commander-Linux.tar.gz -C dist orchard-commander
+          curl -fsSL -o tools/nfpm.tar.gz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  tools/nfpm.tar.gz" | sha256sum -c
+          tar xzf tools/nfpm.tar.gz -C tools nfpm
+          tools/nfpm package -f packaging/linux/nfpm.yaml -p deb -t release/Orchard-Commander-Linux-x86_64.deb
+          tools/nfpm package -f packaging/linux/nfpm.yaml -p rpm -t release/Orchard-Commander-Linux-x86_64.rpm
+          # AppImage: the app folder plus a launcher, desktop entry and icon.
+          mkdir -p AppDir/usr/lib
+          cp -a dist/orchard-commander AppDir/usr/lib/orchard-commander
+          cp packaging/linux/AppRun AppDir/AppRun
+          chmod +x AppDir/AppRun
+          cp packaging/linux/orchard-commander.desktop packaging/linux/orchard-commander.png AppDir/
+          curl -fsSL -o tools/appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  tools/appimagetool" | sha256sum -c
+          chmod +x tools/appimagetool
+          ARCH=x86_64 tools/appimagetool --appimage-extract-and-run AppDir release/Orchard-Commander-Linux-x86_64.AppImage
+          ls -l release
+
+      - name: Test the Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          dpkg-deb --info release/Orchard-Commander-Linux-x86_64.deb
+          sudo apt-get install -y ./release/Orchard-Commander-Linux-x86_64.deb
+          test -L /usr/bin/orchard-commander
+          test -f /usr/share/applications/orchard-commander.desktop
+          test -f /usr/share/icons/hicolor/256x256/apps/orchard-commander.png
+          test -f /usr/share/doc/orchard-commander/UnRAR.txt
+          test -f /usr/share/doc/orchard-commander/ffmpeg/LGPL-3.0.txt
+          test -f /opt/orchard-commander/lib/libavcodec.so.62
+          orchard-commander --version
+          orchard-commander --self-test
+          sudo apt-get remove -y orchard-commander
+          if [ -e /opt/orchard-commander ] || [ -e /usr/bin/orchard-commander ]; then
+            echo "removing the package left files behind"; find /opt/orchard-commander; exit 1
+          fi
+          chmod +x release/Orchard-Commander-Linux-x86_64.AppImage
+          release/Orchard-Commander-Linux-x86_64.AppImage --appimage-extract-and-run --self-test
+          # The tarball runs from wherever it is unpacked.
+          mkdir -p "$RUNNER_TEMP/tgz"
+          tar xzf release/Orchard-Commander-Linux.tar.gz -C "$RUNNER_TEMP/tgz"
+          "$RUNNER_TEMP/tgz/orchard-commander/orchard-commander" --self-test
+
+      - name: Test the rpm (Fedora container)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD/release:/release:ro" -e ORCHARD_COMMANDER_CONFIG_DIR=/tmp/oc-config fedora:42 \
+            bash -euxc 'dnf install -y /release/Orchard-Commander-Linux-x86_64.rpm
+                        rpm -ql orchard-commander | grep -c .
+                        orchard-commander --self-test
+                        dnf remove -y orchard-commander
+                        test ! -e /opt/orchard-commander'
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-${{ runner.os }}
+          path: release/*
+          if-no-files-found: error

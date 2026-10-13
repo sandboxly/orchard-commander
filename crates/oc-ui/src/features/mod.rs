@@ -2,6 +2,7 @@
 //! one `register` function. Adding a feature = a new module here plus one
 //! line in [`ALL`] (see docs/ARCHITECTURE.md).
 
+pub mod about;
 pub mod bookmarks;
 pub mod editor;
 pub mod fileops;
@@ -32,4 +33,5 @@ pub const ALL: &[fn(&mut Registry)] = &[
     search::register,
     rename::register,
     bookmarks::register,
+    about::register,
 ];

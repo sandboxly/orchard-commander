@@ -106,7 +106,15 @@ impl NativeMenu {
 
         // The application menu: About, Settings, Services, Hide…, Quit.
         let app_menu = Submenu::new(oc_config::APP_NAME, true);
-        let _ = app_menu.append(&PredefinedMenuItem::about(None, None));
+        // Ours lists the licenses too; AppKit's panel only if there is none.
+        match reg.commands().iter().find(|c| c.role == MenuRole::About) {
+            Some(about) => {
+                let _ = app_menu.append(make(about).as_ref());
+            }
+            None => {
+                let _ = app_menu.append(&PredefinedMenuItem::about(None, None));
+            }
+        }
         let prefs: Vec<&Command> = reg.commands().iter().filter(|c| c.role == MenuRole::Preferences).collect();
         if !prefs.is_empty() {
             let _ = app_menu.append(&PredefinedMenuItem::separator());

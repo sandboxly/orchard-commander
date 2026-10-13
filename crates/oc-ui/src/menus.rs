@@ -46,7 +46,7 @@ impl Menu {
             Menu::Left | Menu::Right => &["mode", "location"],
             Menu::Files => &["select", "ops", "find", "quit"],
             Menu::Commands => &["palette", "preview", "bookmarks", "servers", "panels", "terminal"],
-            Menu::Options => &["settings", "view", "zoom"],
+            Menu::Options => &["settings", "view", "zoom", "about"],
         }
     }
 }

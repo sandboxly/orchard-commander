@@ -1,0 +1,9 @@
+# Windows: link the C runtime statically, so the installed app doesn't need
+# the Visual C++ Redistributable (vcruntime140.dll). The C/C++ code built by
+# the cc crate (UnRAR, Oniguruma, zstd, liblzma) follows this setting. The
+# bundled DLLs (FFmpeg: MinGW-built, PDFium) bring their own runtimes.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
