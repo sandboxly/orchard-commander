@@ -15,6 +15,10 @@ arboard = { version = "3.6", default-features = false }
 log = "0.4"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
+# The F4 editor: rope buffer, text files and highlighting (no PDF/media needed here).
+ropey = "1.6"
+oc-preview = { path = "../oc-preview", default-features = false }
+tempfile.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

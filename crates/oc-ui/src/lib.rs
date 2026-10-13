@@ -32,7 +32,7 @@ pub mod testing;
 pub mod theme;
 pub mod widgets;
 
-pub use app::{App, AppConfig, MAIN_WINDOW, Outcome, PlatformRequest, Severity, UiWindow, WinId};
+pub use app::{App, AppConfig, MAIN_WINDOW, Outcome, PlatformRequest, Severity, UiWindow, WinId, WindowMenu, WindowMenuItem};
 pub use commands::{Command, CommandId, MenuRole, Registry};
 pub use geom::Rect;
 pub use input::{Event, Key, KeyEvent, Mods, MouseButton, MouseEvent, MouseKind};

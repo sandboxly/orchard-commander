@@ -53,6 +53,9 @@ pub enum PlatformRequest {
     },
     CloseWindow(WinId),
     SetTitle(WinId, String),
+    /// Bring a window to the front and focus it (e.g. an editor that is
+    /// already open for the file, or one asking about unsaved changes).
+    RaiseWindow(WinId),
     /// Font, colors or frame style changed: re-read [`App::theme`].
     ThemeChanged,
     /// Check marks / enabled states may have changed (native menus).
@@ -81,6 +84,25 @@ pub enum Outcome {
     Consumed,
 }
 
+/// A menu of a window's own native menu bar (macOS shows it while the
+/// window is focused, instead of the main window's menus).
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowMenu {
+    pub title: String,
+    /// `None` is a separator.
+    pub items: Vec<Option<WindowMenuItem>>,
+}
+
+/// An item of a [`WindowMenu`]. Choosing it sends `shortcut` to the window
+/// as a key press (so the window handles menu and keyboard alike).
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowMenuItem {
+    pub id: String,
+    pub label: String,
+    pub shortcut: Option<crate::shortcut::Shortcut>,
+    pub enabled: bool,
+}
+
 /// A top-level window other than the main one (e.g. an editor).
 pub trait UiWindow: Any {
     fn title(&self) -> String;
@@ -92,6 +114,10 @@ pub trait UiWindow: Any {
     }
     fn wants_text_input(&self) -> bool {
         false
+    }
+    /// Its own native menus (macOS), shown while it is focused; empty keeps the main ones.
+    fn menus(&self) -> Vec<WindowMenu> {
+        Vec::new()
     }
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -219,6 +245,11 @@ pub struct App {
     /// outlive `operation`, which is cleared on the UI thread).
     pub(crate) operation_running: Option<Arc<AtomicBool>>,
     pub quitting: bool,
+    /// Set while [`quit`](App::quit) asks the other windows to close. A
+    /// window that refused in order to ask the user (unsaved changes) calls
+    /// `quit()` again once it has closed, or clears this if the user
+    /// cancelled.
+    pub quit_pending: bool,
     /// Feature state by type (see [`App::state`]).
     states: HashMap<TypeId, Box<dyn Any>>,
 }
@@ -262,6 +293,7 @@ impl App {
             operation: None,
             operation_running: None,
             quitting: false,
+            quit_pending: false,
             states: HashMap::new(),
         };
         crate::main_window::start(&mut app);
@@ -589,6 +621,10 @@ impl App {
             if close {
                 self.windows.remove(pos);
                 self.modals.retain(|m| m.window != win);
+                self.sizes.retain(|(w, _)| *w != win);
+                if self.focused == win {
+                    self.focused = MAIN_WINDOW;
+                }
                 self.request(PlatformRequest::CloseWindow(win));
             } else {
                 self.windows[pos].1 = Some(w);
@@ -600,9 +636,32 @@ impl App {
         std::iter::once(MAIN_WINDOW).chain(self.windows.iter().map(|(id, _)| *id)).collect()
     }
 
+    /// Take window `id` out to use it together with `&mut App` (task
+    /// results, dialog answers); put it back with [`put_window`](Self::put_window).
+    /// Meanwhile the window is skipped by drawing, events and closing.
+    pub fn take_window(&mut self, id: WinId) -> Option<Box<dyn UiWindow>> {
+        self.windows.iter_mut().find(|(w, _)| *w == id)?.1.take()
+    }
+
+    pub fn put_window(&mut self, id: WinId, window: Box<dyn UiWindow>) {
+        if let Some(slot) = self.windows.iter_mut().find(|(w, _)| *w == id) {
+            slot.1 = Some(window);
+        }
+    }
+
+    /// A window's state, if it is a `T` (drawing, predicates, tests).
+    pub fn window<T: UiWindow>(&self, id: WinId) -> Option<&T> {
+        self.windows.iter().find(|(w, _)| *w == id)?.1.as_ref()?.as_any().downcast_ref::<T>()
+    }
+
     /// A window's state, if it is a `T` (for feature commands acting on the focused window).
     pub fn window_mut<T: UiWindow>(&mut self, id: WinId) -> Option<&mut T> {
         self.windows.iter_mut().find(|(w, _)| *w == id)?.1.as_mut()?.as_any_mut().downcast_mut::<T>()
+    }
+
+    /// The native menus of window `id` (empty for the main window: it uses the registry's).
+    pub fn window_menus(&self, id: WinId) -> Vec<WindowMenu> {
+        self.windows.iter().find(|(w, _)| *w == id).and_then(|(_, w)| w.as_ref()).map(|w| w.menus()).unwrap_or_default()
     }
 
     pub fn window_title(&self, id: WinId) -> String {
@@ -634,11 +693,17 @@ impl App {
     /// goes to the dialog as a key instead (so ⌘A selects the text in a
     /// field rather than marking all files); global commands always run.
     pub fn menu_activated(&mut self, id: &str) {
+        let win = self.focused;
         let Some(cmd) = self.registry.get(id) else {
+            // A window's own menu item: its shortcut, as a key press.
+            let item = self.window_menus(win).into_iter().flat_map(|m| m.items).flatten().find(|i| i.id == id);
+            if let Some(s) = item.and_then(|i| i.shortcut) {
+                self.handle_event(win, Event::Key(s.to_event()));
+            }
             return;
         };
-        let win = self.focused;
-        if self.has_modal(win) && !cmd.global {
+        // Main window commands reach other windows (and dialogs) as their keys.
+        if (self.has_modal(win) || win != MAIN_WINDOW) && !cmd.global {
             if let Some(s) = cmd.shortcuts.first().copied() {
                 self.handle_event(win, Event::Key(s.to_event()));
             }
@@ -738,12 +803,14 @@ impl App {
     /// Quit: other windows may refuse (unsaved changes); the running file
     /// operation is cancelled.
     pub fn quit(&mut self) {
+        self.quit_pending = true;
         for id in self.window_ids().into_iter().skip(1) {
             self.close_requested(id);
+            if self.windows.iter().any(|(w, _)| *w == id) {
+                return; // it refused (asking first): one question at a time, like 1.x
+            }
         }
-        if self.windows.iter().any(|(_, w)| w.is_some()) {
-            return; // a window refused
-        }
+        self.quit_pending = false;
         if let Some(op) = &self.operation {
             op.cancel();
         }
