@@ -21,9 +21,14 @@
 //! for a file, the first provider that handles it and has a value wins.
 //! Values are strings, already cleaned up for use in file names.
 
+mod asf;
 mod audio;
+mod bytes;
+mod dsf;
 mod exif;
+mod flv;
 mod media;
+mod mpeg;
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -49,8 +54,11 @@ pub const AUDIO: &[&str] = &[
     ".mp3", ".flac", ".m4a", ".m4b", ".aac", ".ogg", ".oga", ".opus", ".wma", ".wav", ".aiff", ".aif", ".ape", ".wv",
     ".mpc", ".dsf",
 ];
-pub const VIDEO: &[&str] =
-    &[".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".wmv", ".asf", ".flv", ".mpg", ".mpeg", ".3gp", ".ts"];
+/// Python's list plus the other MPEG stream names (DVD, AVCHD / Blu-ray).
+pub const VIDEO: &[&str] = &[
+    ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".wmv", ".asf", ".flv", ".mpg", ".mpeg", ".3gp", ".ts", ".vob",
+    ".m2ts", ".mts",
+];
 pub const IMAGES: &[&str] = &[
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif", ".dng", ".cr2", ".nef", ".arw",
     ".orf", ".rw2",

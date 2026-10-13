@@ -2,15 +2,22 @@
 //!
 //! Small hand-written readers for the headers only (nothing is decoded and
 //! big media payloads are skipped by seeking): ISO-BMFF (MP4, MOV, M4V, 3GP),
-//! Matroska/WebM and AVI for videos; `imagesize` for images. Not covered:
-//! WMV/ASF, FLV, MPEG program and transport streams.
+//! Matroska/WebM, AVI, ASF (WMV), FLV and MPEG program/transport streams for
+//! videos; `imagesize` for images. The container is recognised by its
+//! content, not the file name.
 
 use std::io::{self, BufReader, SeekFrom};
 
 use super::{
-    Field, IMAGES, Metadata, MetadataProvider, ProviderError, ReadSeek, Source, VIDEO, clean, dimensions, duration,
-    format_g, has_suffix,
+    Field, IMAGES, Metadata, MetadataProvider, ProviderError, ReadSeek, Source, VIDEO, asf, clean, dimensions,
+    duration, flv, format_g, has_suffix, mpeg,
 };
+
+/// hachoir's limits for plausible values (anything else it left out).
+const MAX_SIDE: u64 = 20_000;
+const MAX_FPS: f64 = 150.0;
+const MIN_SECONDS: f64 = 0.001;
+const MAX_SECONDS: f64 = 365.0 * 86_400.0;
 
 /// Width, height, length, frame rate and title of videos; size of images.
 pub struct MediaProperties;
@@ -62,14 +69,15 @@ impl MetadataProvider for MediaProperties {
         // Headers are read in small pieces: buffer them (one read per atom or
         // element instead of a system call or server round trip per field).
         let info = video_info(&mut BufReader::new(&mut *src.file))?;
-        if let Some((w, h)) = info.size {
+        let side = |n: &u64| (1..=MAX_SIDE).contains(n);
+        if let Some((w, h)) = info.size.filter(|(w, h)| side(w) && side(h)) {
             dimensions(&mut out, w, h);
             out.insert("quality".into(), format!("{h}p"));
         }
-        if let Some(s) = info.seconds.filter(|s| s.is_finite() && *s >= 0.0) {
+        if let Some(s) = info.seconds.filter(|s| (MIN_SECONDS..=MAX_SECONDS).contains(s)) {
             out.insert("duration".into(), duration(s));
         }
-        if let Some(fps) = info.fps.filter(|f| f.is_finite() && *f > 0.0) {
+        if let Some(fps) = info.fps.filter(|f| (1.0..=MAX_FPS).contains(f)) {
             out.insert("fps".into(), format_g(fps));
         }
         if let Some(title) = info.title {
@@ -84,7 +92,8 @@ impl MetadataProvider for MediaProperties {
 pub(crate) fn video_info(file: &mut dyn ReadSeek) -> io::Result<VideoInfo> {
     let len = file.seek(SeekFrom::End(0))?;
     file.seek(SeekFrom::Start(0))?;
-    let mut head = [0u8; 12];
+    // Enough for a few transport stream packets.
+    let mut head = [0u8; 1024];
     let n = read_up_to(file, &mut head)?;
     let head = &head[..n];
     if head.len() >= 8 && matches!(&head[4..8], b"ftyp" | b"moov" | b"mdat" | b"free" | b"wide" | b"skip") {
@@ -95,6 +104,16 @@ pub(crate) fn video_info(file: &mut dyn ReadSeek) -> io::Result<VideoInfo> {
     }
     if head.len() >= 12 && &head[..4] == b"RIFF" && &head[8..12] == b"AVI " {
         return avi_info(file, len);
+    }
+    if asf::is_asf(head) {
+        let asf = asf::read(file)?;
+        return Ok(VideoInfo { size: asf.video_size, seconds: asf.seconds, fps: asf.fps, title: asf.title });
+    }
+    if flv::is_flv(head) {
+        return flv::read(file, len);
+    }
+    if mpeg::is_program_stream(head) || mpeg::is_video_es(head) || mpeg::ts_layout(head).is_some() {
+        return mpeg::read(file, len, head);
     }
     Err(io::Error::new(io::ErrorKind::Unsupported, "unknown video container"))
 }

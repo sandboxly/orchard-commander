@@ -1,0 +1,43 @@
+{
+ "clip.flv": {
+  "media": {
+   "duration": "3s",
+   "fps": "10",
+   "height": "64",
+   "quality": "64p",
+   "resolution": "96x64",
+   "width": "96"
+  }
+ },
+ "clip.m2ts": {},
+ "clip.mpg": {
+  "media": {}
+ },
+ "clip.ts": {
+  "media": {}
+ },
+ "clip.wmv": {
+  "media": {
+   "duration": "3s",
+   "height": "64",
+   "quality": "64p",
+   "resolution": "96x64",
+   "title": "My - Film",
+   "width": "96"
+  }
+ },
+ "tone.dsf": {
+  "audio": {
+   "bitrate": "5645",
+   "duration": "3s"
+  }
+ },
+ "tone.wma": {
+  "audio": {
+   "bitrate": "24",
+   "duration": "3s",
+   "title": "Tone - One",
+   "year": "1992"
+  }
+ }
+}
