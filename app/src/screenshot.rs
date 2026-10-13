@@ -1,5 +1,7 @@
 //! `--screenshot OUT.png`: the main window rendered offscreen, for reviewers
 //! and docs. Reads the user's settings (theme, saved folders) but writes nothing.
+//! Keys go to the focused window; a window they open (F4: an editor) gets
+//! the focus and the screenshot's size, and the focused window is drawn.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -7,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use oc_grid::{Frame, HeadlessRenderer};
-use oc_ui::{App, AppConfig, MAIN_WINDOW};
+use oc_ui::{App, AppConfig, MAIN_WINDOW, PlatformRequest};
 
 use crate::Args;
 
@@ -35,9 +37,19 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
             eprintln!("unknown key {key:?} (use names like Down, F5, Primary+P, Space, a)");
             return ExitCode::from(2);
         };
-        app.handle_event(MAIN_WINDOW, oc_ui::Event::Key(s.to_event()));
+        let win = app.focused;
+        app.handle_event(win, oc_ui::Event::Key(s.to_event()));
         wait_for_listings(&mut app, Duration::from_secs(60));
+        // Act on the requests the way the platform layer does.
+        for r in app.take_requests() {
+            if let PlatformRequest::OpenWindow { id, .. } = r {
+                app.resize(id, cols, rows);
+                app.handle_event(id, oc_ui::Event::Focus(true));
+                wait_for_listings(&mut app, Duration::from_secs(60));
+            }
+        }
     }
+    let win = app.focused;
     let mut renderer = match renderer.join().expect("renderer thread") {
         Ok(r) => r,
         Err(e) => {
@@ -47,12 +59,12 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     };
     let m = renderer.renderer().metrics();
     app.cell_px = (m.width as f32, m.height as f32);
-    app.resize(MAIN_WINDOW, cols, rows);
+    app.resize(win, cols, rows);
     // Views that render at the pane's pixel size (PDF pages) do it again.
     wait_for_listings(&mut app, Duration::from_secs(60));
     let mut frame = Frame::new(cols, rows, app.theme.colors.background);
     let t_draw = Instant::now();
-    app.draw(MAIN_WINDOW, &mut frame, app.cell_px);
+    app.draw(win, &mut frame, app.cell_px);
     let drawn = t_draw.elapsed();
     let t_render = Instant::now();
     oc_ui::images::ImageSync::default().sync(&app, &frame, renderer.renderer());

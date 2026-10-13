@@ -69,6 +69,8 @@ fn role_theme() -> &'static Theme {
         use SyntaxRole::*;
         let rules: &[(&str, SyntaxRole)] = &[
             ("comment, punctuation.definition.comment", Comment),
+            // Python docstrings are strings to Pygments (String.Doc), as in 1.x.
+            ("comment.block.documentation.python, comment.block.documentation.python punctuation.definition.comment", String),
             ("keyword, storage.type, storage.modifier, keyword.control", Keyword),
             ("keyword.operator, punctuation.separator.key-value.mapping", Operator),
             ("keyword.operator.word, keyword.operator.logical.python", Keyword),
@@ -185,6 +187,98 @@ fn highlight_unguarded(
         lines.push(StyledLine::default());
     }
     Some(lines)
+}
+
+// ---------------------------------------------------------------------------
+// Incremental highlighting (the editor)
+// ---------------------------------------------------------------------------
+
+/// The language of a script without a known extension, from its first line
+/// ("#!/usr/bin/env python3"); like Pygments' shebang guess in 1.x.
+pub fn syntax_for_first_line(line: &str) -> Option<&'static SyntaxReference> {
+    let found = syntax_set().find_syntax_by_first_line(line)?;
+    (found.name != "Plain Text").then_some(found)
+}
+
+/// The parser state between two lines. Equal states mean the rest of a
+/// document highlights the same as before, so an editor can stop
+/// re-highlighting after an edit once the state converges.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineState {
+    parse: syntect::parsing::ParseState,
+    highlight: syntect::highlighting::HighlightState,
+}
+
+// SAFETY: the only part that isn't `Send` is the capture `Region` an
+// oniguruma-backed `ParseState` keeps for back-references: a heap block of
+// match positions owned by this state alone (cloned deeply, freed on drop,
+// never shared with the regex or another state). Moving that ownership to
+// another thread is sound; the state stays `!Sync`. The editor needs this to
+// highlight on a worker and keep checkpoint states on the UI thread.
+unsafe impl Send for LineState {}
+
+/// A run of one role in a line: byte offsets into the line's text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RoleSpan {
+    pub start: u32,
+    pub end: u32,
+    pub role: SyntaxRole,
+}
+
+/// Highlights a document line by line with explicit state, so callers can
+/// keep states at checkpoints and re-highlight only from an edited line.
+pub struct LineHighlighter {
+    syntax: &'static SyntaxReference,
+    highlighter: syntect::highlighting::Highlighter<'static>,
+}
+
+impl LineHighlighter {
+    pub fn new(syntax: &'static SyntaxReference) -> Self {
+        LineHighlighter { syntax, highlighter: syntect::highlighting::Highlighter::new(role_theme()) }
+    }
+
+    /// The language name ("Python").
+    pub fn name(&self) -> &'static str {
+        &self.syntax.name
+    }
+
+    /// The state at the start of a document.
+    pub fn start(&self) -> LineState {
+        LineState {
+            parse: syntect::parsing::ParseState::new(self.syntax),
+            highlight: syntect::highlighting::HighlightState::new(&self.highlighter, syntect::parsing::ScopeStack::new()),
+        }
+    }
+
+    /// Highlight one line — with its "\n" unless it is the last — and
+    /// advance `state` past it. Spans cover the text without the line ending;
+    /// unstyled text has none. None if the grammar failed (or panicked): the
+    /// caller shows the rest as plain text.
+    pub fn line(&self, state: &mut LineState, line: &str) -> Option<Vec<RoleSpan>> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.line_unguarded(state, line))).unwrap_or_else(|_| {
+            log::warn!("highlighting as {} panicked", self.syntax.name);
+            None
+        })
+    }
+
+    fn line_unguarded(&self, state: &mut LineState, line: &str) -> Option<Vec<RoleSpan>> {
+        use syntect::highlighting::RangedHighlightIterator;
+        let ops = state.parse.parse_line(line, syntax_set()).ok()?;
+        let content_len = line.strip_suffix('\n').map_or(line.len(), |l| l.strip_suffix('\r').unwrap_or(l).len());
+        let mut spans: Vec<RoleSpan> = Vec::new();
+        for (style, _, range) in RangedHighlightIterator::new(&mut state.highlight, &ops, line, &self.highlighter) {
+            let Some(role) = role_of(&style) else { continue };
+            let (start, end) = (range.start.min(content_len), range.end.min(content_len));
+            if start >= end {
+                continue;
+            }
+            match spans.last_mut() {
+                Some(last) if last.role == role && last.end as usize == start => last.end = end as u32,
+                _ => spans.push(RoleSpan { start: start as u32, end: end as u32, role }),
+            }
+        }
+        Some(spans)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +444,32 @@ mod tests {
         assert!(second.iter().any(|(t, r)| t.contains("😀") && *r == Some(SyntaxRole::String)), "{second:?}");
         assert!(lines[1].runs.iter().all(|r| r.end <= lines[1].text.len()));
         assert_eq!(lines[2].text, "");
+    }
+
+    #[test]
+    fn line_highlighter_states_converge() {
+        let h = LineHighlighter::new(syntax_for_file("a.py").unwrap());
+        assert_eq!(h.name(), "Python");
+        let mut s = h.start();
+        let spans = h.line(&mut s, "def f():\n").unwrap();
+        assert!(spans.iter().any(|sp| sp.role == SyntaxRole::Keyword && (sp.start, sp.end) == (0, 3)), "{spans:?}");
+        let after_first = s.clone();
+        // Inside a triple-quoted string the state differs; after it, it matches again.
+        let mut t = after_first.clone();
+        h.line(&mut t, "x = \"\"\"open\n").unwrap();
+        assert_ne!(t, after_first);
+        let spans = h.line(&mut t, "still\"\"\"\n").unwrap();
+        assert_eq!(spans.first().map(|sp| sp.role), Some(SyntaxRole::String));
+        let mut u = after_first.clone();
+        h.line(&mut u, "x = 1\n").unwrap();
+        let mut v = after_first;
+        h.line(&mut v, "y = 2\n").unwrap();
+        assert_eq!(u, v, "same state after different simple lines");
+        let mut d = h.start();
+        let doc = h.line(&mut d, "\"\"\"Docstring.\"\"\"\n").unwrap();
+        assert!(doc.iter().all(|sp| sp.role == SyntaxRole::String) && !doc.is_empty(), "docstrings look like strings: {doc:?}");
+        assert_eq!(syntax_for_first_line("#!/usr/bin/env python3").map(|s| s.name.as_str()), Some("Python"));
+        assert!(syntax_for_first_line("hello").is_none());
     }
 
     #[test]

@@ -19,6 +19,9 @@ arboard = { version = "3.6", default-features = false, features = ["image-data"]
 log = "0.4"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
+# The F4 editor: rope buffer (text files and highlighting come from oc-preview).
+ropey = "1.6"
+tempfile.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

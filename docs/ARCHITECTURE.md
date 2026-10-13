@@ -302,14 +302,53 @@ impl UiWindow for EditorWindow {
     fn handle_event(&mut self, app: &mut App, id: WinId, ev: &Event) -> Outcome;
     fn close_requested(&mut self, app: &mut App, id: WinId) -> bool;   // false: e.g. ask to save first
     fn wants_text_input(&self) -> bool;
+    fn menus(&self) -> Vec<WindowMenu>;                                  // own native menus (macOS), optional
     fn as_any(&self) -> &dyn Any;  fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 app.window_mut::<EditorWindow>(app.focused)   // from a command acting on the focused window
+app.window::<EditorWindow>(id)                // read-only (tests, predicates)
+let w = app.take_window(id)?; …; app.put_window(id, w);   // the window together with &mut App
+app.request(PlatformRequest::RaiseWindow(id)) // bring it to the front (already open, asking)
 ```
 
-Dialogs can be pushed on any window (`app.push_modal(id, …)`). Quitting asks
-every window first. An editor needs its own native menu (File/Edit) on macOS:
-extend `app/src/macos.rs` to switch menus on focus (planned, not built).
+* Task results and dialog answers reach a window by id: take it out, use it
+  with `&mut App`, put it back (`features::editor::window::with_editor` wraps
+  that). Don't close a window from inside its own `handle_event` (it is taken
+  out meanwhile): `app.later(move |app| app.close_requested(id))`.
+* Dialogs can be pushed on any window (`app.push_modal(id, …)`).
+* Quitting asks the other windows first, one at a time: `App::quit` sets
+  `app.quit_pending` and stops at the first window that refuses. A window
+  that refused to ask the user calls `app.quit()` again once it has closed
+  (or clears `quit_pending` on Cancel); see `features::editor::window::close_window`.
+* Own menus (macOS): `menus()` returns `WindowMenu`s whose items carry a
+  shortcut. While such a window is focused the binary swaps in a menu bar
+  with the application menu, these menus and Window
+  (`app/src/macos.rs: WindowMenuBar`), so the main menus' ⌘ keys don't
+  fire; choosing an item sends its shortcut to the window as a key
+  (`App::menu_activated`). `PlatformRequest::MenusChanged` refreshes the
+  enabled states. Registry commands chosen while another window is focused
+  reach it as their key, too (only `.global()` ones run).
+* `--screenshot --keys`: keys go to the focused window; a window they open
+  gets the focus (and the screenshot size) and the focused window is drawn,
+  e.g. `--keys "Down F4 Primary+F a b c Enter"` shows the editor.
+
+### The editor (`features/editor/`)
+
+F4 / Shift+F4 open an `EditorWindow` per file (`EditorState` lists them).
+`buffer.rs` is a ropey rope with cursor, selection and undo groups (typing
+merges; each step has a unique id and "modified" = the newest step isn't
+the one that was saved). Columns skip runs of plain ASCII a rope chunk at a
+time and find uses the rope's line iterator + `str` search, so multi-MB
+files and minified one-line files stay fast; Replace all is a single edit.
+`highlight.rs` highlights with syntect on a worker in 30 ms slices on a rope
+snapshot, keeping parser states every 64 lines; after an edit it restarts at
+the edited line and stops when the state at a later checkpoint matches the
+old one (`oc_preview::highlight::LineHighlighter` / `LineState`); lines over
+20 000 bytes stay plain. Files are
+read, decoded (`oc_preview::textfile`), turned into a rope and given a syntax
+on a worker; local saves are a temp file + atomic rename keeping permissions,
+others `open_write`; local files are watched (folder watch, 300 ms debounce,
+own saves recognised by mtime+size).
 
 ## Widgets: `widgets/`
 

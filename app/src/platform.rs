@@ -72,6 +72,9 @@ struct Platform {
     exit_after_first_frame: bool,
     #[cfg(target_os = "macos")]
     menu: Option<crate::macos::NativeMenu>,
+    /// The focused window's own menu bar (an editor's File/Edit), while it is in front.
+    #[cfg(target_os = "macos")]
+    window_menu: Option<(WinId, crate::macos::WindowMenuBar)>,
 }
 
 pub fn run(args: Args, started: Instant) -> ExitCode {
@@ -106,6 +109,8 @@ pub fn run(args: Args, started: Instant) -> ExitCode {
         exit_after_first_frame: std::env::var("OC_TIMING").is_ok_and(|v| v == "exit"),
         #[cfg(target_os = "macos")]
         menu: None,
+        #[cfg(target_os = "macos")]
+        window_menu: None,
     };
     if let Err(e) = event_loop.run_app(&mut platform) {
         eprintln!("event loop error: {e}");
@@ -231,12 +236,44 @@ impl Platform {
                         self.windows[&k].window.set_title(&title);
                     }
                 }
+                PlatformRequest::RaiseWindow(id) => {
+                    if let Some(k) = self.win_for(id) {
+                        let w = &self.windows[&k].window;
+                        w.set_minimized(false);
+                        w.focus_window();
+                    }
+                }
                 PlatformRequest::ThemeChanged => self.apply_theme(),
                 PlatformRequest::MenusChanged => {
                     #[cfg(target_os = "macos")]
                     if let (Some(menu), Some(app)) = (&self.menu, &self.app) {
                         menu.update(app);
+                        if let Some((id, bar)) = &self.window_menu {
+                            bar.update(&app.window_menus(*id));
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    /// macOS: a window with its own menus (an editor) gets the menu bar
+    /// while it is focused; the main window's comes back afterwards.
+    #[cfg(target_os = "macos")]
+    fn sync_menu_bar(&mut self) {
+        let Some(app) = self.app.as_ref() else { return };
+        let focused = app.focused;
+        let menus = if focused == MAIN_WINDOW { Vec::new() } else { app.window_menus(focused) };
+        let want = (!menus.is_empty()).then_some(focused);
+        if want == self.window_menu.as_ref().map(|(id, _)| *id) {
+            return;
+        }
+        self.window_menu = None;
+        match want {
+            Some(id) => self.window_menu = crate::macos::WindowMenuBar::install(app, &menus).map(|bar| (id, bar)),
+            None => {
+                if let Some(menu) = &self.menu {
+                    menu.activate();
                 }
             }
         }
@@ -366,6 +403,8 @@ impl Platform {
         if self.app.as_ref().is_some_and(|a| a.quitting) {
             return;
         }
+        #[cfg(target_os = "macos")]
+        self.sync_menu_bar();
         let redraw = self.app().take_redraw();
         let app = self.app.as_ref().expect("app");
         for w in self.windows.values_mut() {

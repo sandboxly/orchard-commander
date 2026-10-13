@@ -186,7 +186,7 @@ fn every_shortcut_belongs_to_one_command() {
         assert!(reg.get(id).is_some(), "{id}");
     }
     let fkeys: Vec<&str> = reg.fkeys().iter().map(|c| c.fkey.unwrap().0).collect();
-    assert_eq!(fkeys, ["F3", "F5", "F6", "F7", "F8", "F9", "F10"]);
+    assert_eq!(fkeys, ["F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10"]);
 }
 
 #[test]
