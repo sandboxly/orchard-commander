@@ -27,7 +27,8 @@ pub fn register(reg: &mut Registry) {
         Command::new("nav.goto", "Go to path", goto_path)
             .help("Type a directory or a server address")
             .keys(&["Primary+G", "Primary+Shift+G"])
-            .menu(Menu::Commands, "navigate"),
+            // First in the bookmarks block (1.x); registered before them.
+            .menu(Menu::Commands, "bookmarks"),
     );
     reg.add(
         Command::new("panel.swap", "Swap panels", swap_panels)
@@ -52,8 +53,8 @@ pub fn register(reg: &mut Registry) {
             .help("Show or hide hidden files")
             .keys(&["Primary+Shift+."])
             .other_keys(&["Primary+H"])
-            .menu(Menu::Options, "view")
-            .checked(|app| app.settings.hidden_visible()),
+            // A plain item, no check mark (1.x).
+            .menu(Menu::Options, "view"),
     );
     for side in 0..2 {
         let (loc_id, loc_title, loc_key, tr_id, tr_title, tr_key, menu) = if side == 0 {

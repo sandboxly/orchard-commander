@@ -19,8 +19,7 @@ pub fn register(reg: &mut Registry) {
         })
         .help("Open the menu bar")
         .keys(&["F9"])
-        .fkey("F9", "Menu")
-        .hidden_from_palette(),
+        .fkey("F9", "Menu"),
     );
     reg.add(
         Command::new("app.quit", "Quit", |app| app.quit())
@@ -47,7 +46,9 @@ pub fn register(reg: &mut Registry) {
         Command::new("app.zoom_in", "Zoom in", |app| zoom(app, 1))
             .help("Larger font")
             // "+" is its own key on e.g. German layouts (1.x: "Ctrl++").
-            .keys(&["Primary+=", "Primary+Shift+=", "Primary++"])
+            .keys(&["Primary+=", "Primary++"])
+            // ⌘+ typed as ⌘⇧= on US layouts; not listed (1.x shows "⌘=, ⌘+").
+            .alias_keys(&["Primary+Shift+="])
             .menu(Menu::Options, "zoom"),
     );
     reg.add(
@@ -68,13 +69,59 @@ pub fn zoom(app: &mut App, delta: i64) {
     app.update_settings(move |s| s.font_size = size);
 }
 
-/// ⌘P: every command, fuzzy-filtered; Enter runs it.
+/// The command palette's order: 1.x's command list (`_build_commands`), so
+/// Enter on an empty filter runs the same command. Commands not listed here
+/// follow in registration order.
+const PALETTE_ORDER: &[&str] = &[
+    "preview.toggle",
+    "preview.cycle",
+    "files.edit",
+    "files.new_file",
+    "files.copy",
+    "files.move",
+    "files.mkdir",
+    "files.trash",
+    "app.menu",
+    "app.quit",
+    "app.settings",
+    "app.color_scheme",
+    "app.palette",
+    "panel.reload",
+    "panel.hidden",
+    "panel.swap",
+    "panel.same",
+    "panel.transfer_left",
+    "panel.transfer_right",
+    "panel.select_all",
+    "panel.clear_selection",
+    "terminal.toggle",
+    "terminal.panel_folder",
+    "files.multi_rename",
+    "files.undo_rename",
+    "search.find",
+    "search.stop",
+    "search.last",
+    "bookmarks.menu",
+    "bookmarks.goto",
+    "bookmarks.add",
+    "bookmarks.organize",
+    "nav.goto",
+    "conn.manager",
+    "conn.disconnect",
+    "nav.location_left",
+    "nav.location_right",
+    "app.zoom_in",
+    "app.zoom_out",
+    "app.zoom_reset",
+];
+
+/// ⌘P: every command, fuzzy-filtered; Enter runs it. Like 1.x it lists
+/// commands that can't run right now too (Stop search without a search).
 pub fn command_palette(app: &mut App) {
-    let cmds: Vec<(&'static str, PickerItem)> = app
-        .registry
-        .commands()
-        .iter()
-        .filter(|c| c.in_palette && c.is_enabled(app))
+    let mut listed: Vec<&Command> = app.registry.commands().iter().filter(|c| c.in_palette).collect();
+    listed.sort_by_key(|c| PALETTE_ORDER.iter().position(|id| *id == c.id).unwrap_or(PALETTE_ORDER.len()));
+    let cmds: Vec<(&'static str, PickerItem)> = listed
+        .into_iter()
         .map(|c| {
             let keys = c.shortcuts.iter().map(|s| s.display()).collect::<Vec<_>>().join(", ");
             (c.id, PickerItem::new(c.title.clone(), if keys.is_empty() { c.help.clone() } else { keys }))

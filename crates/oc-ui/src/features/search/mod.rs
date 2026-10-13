@@ -49,9 +49,10 @@ pub fn register(reg: &mut Registry) {
         Command::new("search.stop", "Stop search", stop_search)
             .help("Stop the running search")
             .keys(&["Escape"])
-            // Esc stays with the side views (terminal, preview) and only
-            // stops something while a search runs.
-            .enabled(|app| is_running(app) && app.main.sides[app.main.active].mode == SideMode::Files),
+            // Only while a search runs, on either kind of side (1.x: a window
+            // shortcut); otherwise Esc is left to the panel / side view. The
+            // terminal keeps its Esc (it sees keys first).
+            .enabled(is_running),
     );
     reg.on_files_changed(prune_then_reload);
     reg.on_files_moved(relocate);

@@ -69,10 +69,11 @@ fn accelerator(s: &Shortcut) -> Option<KeyAccelerator> {
 /// Native menu items forward their command; with an accelerator, macOS
 /// handles the key itself (`App::menu_key_equivalent` routes it like a key
 /// press; a click is `App::menu_activated`).
-/// Only ⌘ shortcuts become accelerators: plain keys (F5, Delete, letters)
-/// stay with the window, so a focused view (the terminal, later) still gets them.
+/// The item shows the command's first shortcut, as 1.x's Qt menus did (F5,
+/// ⌥F7, ⌃`); one without ⌘ reaches the window as the key it is, so a
+/// focused view (the terminal) still gets it.
 fn native_accelerator(cmd: &Command) -> Option<KeyAccelerator> {
-    cmd.shortcuts.iter().find(|s| s.mods.logo).and_then(accelerator)
+    cmd.menu_shortcut().as_ref().and_then(accelerator)
 }
 
 impl NativeMenu {

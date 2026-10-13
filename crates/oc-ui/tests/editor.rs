@@ -482,6 +482,10 @@ fn enter_keeps_the_indentation() {
     key(&mut app, id, Key::Down, primary_mods_doc_end());
     type_in(&mut app, id, "\ny");
     assert_eq!(text(&app, id), "def f():\n    x = 1\n    y");
+    // Shift+Enter is Qt's line separator: a newline without indentation.
+    key(&mut app, id, Key::Enter, Mods::SHIFT);
+    type_in(&mut app, id, "z");
+    assert_eq!(text(&app, id), "def f():\n    x = 1\n    y\nz");
 }
 
 #[test]
@@ -580,6 +584,68 @@ fn title_shortens_the_home_folder() {
     let loc = oc_local::local(home.join("src").join("a.txt"));
     let shown = oc_ui::features::editor::window::short_display(&loc);
     assert_eq!(shown, format!("~{}", Path::new("/src/a.txt").display()).replace('/', std::path::MAIN_SEPARATOR_STR));
+}
+
+/// macOS: 1.x's text field had Qt's Cocoa bindings: Home / End = document,
+/// ⌃← / ⌃→ / ⌃A / ⌃E / ⌥↑ / ⌥↓ = line, emacs keys, ⌃K / ⌃Y cut / paste.
+#[cfg(target_os = "macos")]
+#[test]
+fn mac_cocoa_editing_keys() {
+    let e = env();
+    let path = e.left.join("a.txt");
+    fs::write(&path, "one two\nthree four\nfive").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.txt");
+    let ctrl = Mods { ctrl: true, ..Mods::NONE };
+    let at = |app: &App| {
+        let b = &ed(app, id).buf;
+        let line = b.line_of(b.cursor);
+        (line, b.cursor - b.line_start(line))
+    };
+    key(&mut app, id, Key::End, Mods::NONE);
+    assert_eq!(at(&app), (2, 4), "End: end of the document");
+    key(&mut app, id, Key::Home, Mods::NONE);
+    assert_eq!(at(&app), (0, 0), "Home: start of the document");
+    key(&mut app, id, Key::Char('n'), ctrl);
+    assert_eq!(at(&app), (1, 0), "⌃N: next line");
+    key(&mut app, id, Key::Right, ctrl);
+    assert_eq!(at(&app), (1, 10), "⌃→: end of the line");
+    key(&mut app, id, Key::Left, ctrl);
+    assert_eq!(at(&app), (1, 0), "⌃←: start of the line");
+    key(&mut app, id, Key::Char('e'), ctrl);
+    assert_eq!(at(&app), (1, 10), "⌃E");
+    key(&mut app, id, Key::Up, Mods::ALT);
+    assert_eq!(at(&app), (1, 0), "⌥↑");
+    key(&mut app, id, Key::Down, Mods::ALT);
+    assert_eq!(at(&app), (1, 10), "⌥↓");
+    key(&mut app, id, Key::Char('a'), ctrl);
+    key(&mut app, id, Key::Char('p'), ctrl);
+    assert_eq!(at(&app), (0, 0), "⌃A, ⌃P");
+    key(&mut app, id, Key::Char('f'), ctrl);
+    key(&mut app, id, Key::Char('d'), ctrl);
+    key(&mut app, id, Key::Char('h'), ctrl);
+    assert_eq!(text(&app, id), "e two\nthree four\nfive", "⌃F, ⌃D, ⌃H");
+    // ⇧⌃E selects to the line end; ⌃K cuts it, ⌃Y pastes it at the end.
+    key(&mut app, id, Key::Char('e'), Mods { shift: true, ..ctrl });
+    key(&mut app, id, Key::Char('k'), ctrl);
+    assert_eq!(text(&app, id), "\nthree four\nfive");
+    key(&mut app, id, Key::End, Mods::NONE);
+    key(&mut app, id, Key::Char('y'), ctrl);
+    assert_eq!(text(&app, id), "\nthree four\nfivee two");
+    // Qt has no shifted emacs / page keys: ⇧⌃B, ⇧⌃↑ neither move nor select.
+    let before = at(&app);
+    key(&mut app, id, Key::Char('b'), Mods { shift: true, ..ctrl });
+    key(&mut app, id, Key::Up, Mods { shift: true, ..ctrl });
+    assert_eq!(at(&app), before);
+    assert!(ed(&app, id).buf.selection().is_none());
+    // ⌃O / ⌃↩: a line break without indentation (Qt's line separator).
+    key(&mut app, id, Key::Char('o'), ctrl);
+    key(&mut app, id, Key::Enter, ctrl);
+    assert_eq!(text(&app, id), "\nthree four\nfivee two\n\n");
+    // ⌘F4 closes like ⌘W (asking first: there are changes).
+    key(&mut app, id, Key::F(4), primary());
+    wait_dialog(&mut app, "Unsaved changes");
 }
 
 /// A zip with one stored (uncompressed) file, so the test needs no zip crate.

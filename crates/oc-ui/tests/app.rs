@@ -180,6 +180,114 @@ fn command_palette_filters_and_runs() {
     assert!(app.modal_titles().is_empty());
 }
 
+/// 1.x's palette: its command list in order (Toggle preview first), Menu
+/// and Stop search included, no side-mode entries, the keys 1.x shows;
+/// PgDn moves 10 entries.
+#[test]
+fn command_palette_lists_like_1x() {
+    let e = env();
+    let mut app = app(&e);
+    press_with(&mut app, Key::Char('p'), Mods::primary());
+    let text = app.top_modal_text().unwrap();
+    let titles: Vec<&str> = text.lines().collect();
+    assert_eq!(titles[..4], ["Toggle preview", "Next preview view", "Edit", "New file"]);
+    assert_eq!(titles.len(), 40, "{titles:?}");
+    for t in ["Menu", "Stop search", "Zoom in", "Right drive / location"] {
+        assert!(titles.contains(&t), "{t}");
+    }
+    assert!(!titles.iter().any(|t| t.starts_with("Left: ") || t.starts_with("Right: ")), "{titles:?}");
+    // PgDn: 10 down = the 11th, Settings…
+    press(&mut app, Key::PageDown);
+    press(&mut app, Key::Enter);
+    assert_eq!(app.modal_titles(), ["Settings"]);
+    press(&mut app, Key::Escape);
+    let keys = |id: &str| app.registry.get(id).unwrap().shortcuts.iter().map(|s| s.display()).collect::<Vec<_>>();
+    if cfg!(target_os = "macos") {
+        assert_eq!(keys("app.zoom_in"), ["⌘=", "⌘+"]);
+        assert_eq!(keys("terminal.panel_folder"), ["⌃⇧`"]);
+    }
+    // The unlisted spelling still works: ⌘⇧= zooms in.
+    let size = app.theme.font.size;
+    press_with(&mut app, Key::Char('='), Mods { shift: true, ..Mods::primary() });
+    assert_eq!(app.theme.font.size, size + 1.0);
+}
+
+/// 1.x's menu layout: rename commands among the file operations, Go to path
+/// with the bookmarks, Toggle hidden files without a check mark.
+#[test]
+fn menus_are_grouped_like_1x() {
+    use oc_ui::menus::{Menu, menu_items};
+    let e = env();
+    let app = app(&e);
+    let files: Vec<Option<&str>> = menu_items(&app, Menu::Files);
+    assert_eq!(
+        files,
+        [
+            Some("panel.select_all"),
+            Some("panel.clear_selection"),
+            None,
+            Some("files.copy"),
+            Some("files.move"),
+            Some("files.multi_rename"),
+            Some("files.undo_rename"),
+            Some("files.mkdir"),
+            Some("files.trash"),
+            None,
+            Some("search.find"),
+            Some("search.last"),
+            None,
+            Some("app.quit"),
+        ]
+    );
+    let commands = menu_items(&app, Menu::Commands);
+    let goto = commands.iter().position(|c| *c == Some("nav.goto")).unwrap();
+    assert_eq!(commands[goto - 1], None);
+    assert_eq!(commands[goto + 1], Some("bookmarks.menu"));
+    assert_eq!(commands.iter().filter(|c| c.is_none()).count(), 5);
+    assert_eq!(app.registry.get("panel.hidden").unwrap().is_checked(&app), None);
+}
+
+/// Native menu items show the first shortcut (F5, ⌥F7…), as 1.x's Qt menus;
+/// such a key equivalent arrives as the key itself.
+#[test]
+fn native_menus_show_the_first_shortcut() {
+    let e = env();
+    let mut app = app(&e);
+    let shown = |app: &App, id: &str| app.registry.get(id).unwrap().menu_shortcut().map(|s| s.display()).unwrap_or_default();
+    let f = |n| oc_ui::Shortcut::new(Key::F(n), Mods::NONE).display();
+    assert_eq!(shown(&app, "files.copy"), f(5));
+    assert_eq!(shown(&app, "files.trash"), f(8));
+    assert_eq!(shown(&app, "search.find"), oc_ui::Shortcut::new(Key::F(7), Mods::ALT).display());
+    assert_eq!(shown(&app, "nav.location_left"), oc_ui::Shortcut::new(Key::F(1), Mods::ALT).display());
+    assert_eq!(shown(&app, "app.quit"), oc_ui::Shortcut::new(Key::Char('q'), Mods::primary()).display());
+    app.menu_key_equivalent("files.mkdir"); // F7 through the menu
+    assert_eq!(app.modal_titles(), ["Make directory"]);
+}
+
+/// 1.x's table view: arrows / paging move the cursor with any modifier;
+/// ⌘Home / ⌘End (Ctrl elsewhere) jump to the first / last row.
+#[test]
+fn panel_arrows_move_with_modifiers() {
+    let e = env();
+    for n in ["a", "b", "c", "d"] {
+        fs::write(e.left.join(n), n).unwrap();
+    }
+    let mut app = app(&e);
+    put_cursor_on(&mut app, 0, "a");
+    press_with(&mut app, Key::Down, Mods::SHIFT);
+    assert_eq!(cursor(&app, 0).as_deref(), Some("b"));
+    press_with(&mut app, Key::Down, Mods::ALT);
+    assert_eq!(cursor(&app, 0).as_deref(), Some("c"));
+    press_with(&mut app, Key::Up, Mods::SHIFT);
+    assert_eq!(cursor(&app, 0).as_deref(), Some("b"));
+    press_with(&mut app, Key::End, Mods::primary());
+    assert_eq!(cursor(&app, 0).as_deref(), Some("d"));
+    press_with(&mut app, Key::Home, Mods::SHIFT); // not a row move in 1.x
+    assert_eq!(cursor(&app, 0).as_deref(), Some("d"));
+    press_with(&mut app, Key::Home, Mods::primary());
+    assert_eq!(cursor(&app, 0).as_deref(), Some(".."));
+}
+
 #[test]
 fn menu_strip_runs_commands() {
     let e = env();
@@ -213,7 +321,7 @@ fn every_shortcut_belongs_to_one_command() {
     let reg = oc_ui::Registry::build(oc_ui::features::ALL);
     let mut seen = HashSet::new();
     for c in reg.commands() {
-        for s in &c.shortcuts {
+        for s in c.shortcuts.iter().chain(&c.alias_shortcuts) {
             assert!(seen.insert(*s), "{} is bound twice (again by {})", s.display(), c.id);
         }
     }
