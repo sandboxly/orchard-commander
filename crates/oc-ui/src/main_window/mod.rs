@@ -468,6 +468,12 @@ fn panel_mouse(app: &mut App, side: usize, frame: Rect, m: &crate::input::MouseE
         }
         MouseKind::Down(button) | MouseKind::DoubleClick(button) => {
             app.main.active = side;
+            if button == MouseButton::Left && panel::draw::title_hit(&app.main.sides[side].panel, frame, m.col, m.row) {
+                if let Some(hook) = app.registry.on_title_click {
+                    hook(app, side, m.col, m.row);
+                }
+                return Outcome::Consumed;
+            }
             if let Some(key) = panel::draw::header_hit(&pl, m.col, m.row) {
                 if button == MouseButton::Left && matches!(m.kind, MouseKind::Down(_)) {
                     panel::sort_by(app, side, key);

@@ -45,6 +45,12 @@ pub fn layout(frame: Rect) -> PanelLayout {
     PanelLayout { frame, header, rows, cols: Columns { name, size, mtime } }
 }
 
+/// Whether (col, row) is on the panel's path in its frame title.
+pub fn title_hit(p: &FilePanel, frame: Rect, col: u16, row: u16) -> bool {
+    let title = p.display_path();
+    BoxFrame { title: &title, subtitle: "", active: false }.title_rect(frame).is_some_and(|r| r.contains(col, row))
+}
+
 /// Which sort column a header click at `col` means.
 pub fn header_hit(l: &PanelLayout, col: u16, row: u16) -> Option<SortKey> {
     if !l.header.contains(col, row) {

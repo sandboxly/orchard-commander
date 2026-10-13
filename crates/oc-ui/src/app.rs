@@ -762,6 +762,11 @@ impl App {
         self.request(PlatformRequest::MenusChanged);
     }
 
+    /// Whether changes are written to disk (false for `--screenshot`).
+    pub fn persists(&self) -> bool {
+        self.writer.is_some()
+    }
+
     /// Wait until all settings changes are on disk (tests, quitting).
     pub fn flush_settings(&self) {
         if let Some(w) = &self.writer {

@@ -227,6 +227,8 @@ pub type LocationSource = fn(&App, usize) -> Vec<crate::features::navigation::Lo
 pub type LoadErrorHook = fn(&mut App, usize, &oc_vfs::VPath, &oc_vfs::VfsError) -> bool;
 /// Runs in `App::shutdown` (closing server connections…); keep it bounded.
 pub type ShutdownHook = fn(&mut App);
+/// A click on a file panel's path (its frame title): `(app, side, col, row)`.
+pub type TitleClickHook = fn(&mut App, usize, u16, u16);
 
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
@@ -244,6 +246,7 @@ pub struct Registry {
     pub(crate) location_sources: Vec<LocationSource>,
     pub(crate) on_load_error: Vec<LoadErrorHook>,
     pub(crate) on_shutdown: Vec<ShutdownHook>,
+    pub(crate) on_title_click: Option<TitleClickHook>,
 }
 
 impl Registry {
@@ -309,6 +312,12 @@ impl Registry {
     /// Called with old -> new locations after files were renamed or moved.
     pub fn on_files_moved(&mut self, hook: MovedHook) -> &mut Self {
         self.on_files_moved.push(hook);
+        self
+    }
+
+    /// What a click on a panel's path does (the bookmark menu); one handler.
+    pub fn on_panel_title_click(&mut self, hook: TitleClickHook) -> &mut Self {
+        self.on_title_click = Some(hook);
         self
     }
 
