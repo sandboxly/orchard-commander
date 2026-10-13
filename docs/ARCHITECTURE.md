@@ -120,6 +120,9 @@ reg.add(
   fuzzy filter; `.hidden_from_palette()` to leave one out).
 * While a dialog is open, a native menu item is delivered to the dialog as
   its key (so ⌘A selects text in a field). `.global()` commands (Quit) run anyway.
+* A command whose `.enabled` predicate says false doesn't take its key: the
+  key goes on to the panel / side view (e.g. `search.stop` owns Esc only
+  while a search runs).
 
 ## Adding a feature module (the usual case)
 
@@ -128,7 +131,10 @@ reg.add(
 2. Add `pub mod <name>;` and one line `<name>::register,` to `ALL` in
    `features/mod.rs`. That is the only shared edit.
 3. In `register`: `reg.add(Command…)`, `reg.add_side_view(factory)`,
-   `reg.on_start(fn)`, `reg.on_settings_changed(fn)` as needed.
+   `reg.on_start(fn)`, `reg.on_settings_changed(fn)`,
+   `reg.on_files_changed(fn)` as needed. A feature that changes files
+   (file operations, multi-rename, editor saves…) calls
+   `commands::files_changed(app)` afterwards (`fileops::finished` does).
 4. Keep the feature's state in its own types. Where it must live in the app:
    * per side: a `SideView` (below);
    * a window: a `UiWindow` (below);
@@ -247,6 +253,21 @@ State structs with `draw(&self, f, rect, ctx[, focused])` and
 
 Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 `border_active`, `cursor_bg`, `footer_key`, …). Never hard-code colors.
+
+## Find files: `features/search/`
+
+* ⌘F / ⌥F7 → `FindFilesDialog`; `search::start_search(app, query, side)`
+  runs `oc_search` on a worker (`tasks.spawn`) and shows an
+  `oc_search::SearchResultsFS` in the panel. A 250 ms timer lists new hits
+  while it runs; Esc (`search.stop`) cancels; ⇧⌘F shows the last results.
+* Hits stand for the real files: use `panel.cursor_target()` /
+  `selected_paths()` (resolved) for anything that acts on files (F4 editor,
+  previews, rename) and check capabilities on those paths, not on the
+  results folder (it is read-only: nothing can be created *in* it).
+* After file operations hits whose files are gone are dropped (the
+  `on_files_changed` hook). Renames must call
+  `features::search::relocate(app, &old_to_new)` so the hits follow the
+  renamed files (multi-rename and its undo).
 
 ## Settings and theme
 
