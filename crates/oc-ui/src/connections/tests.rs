@@ -38,6 +38,14 @@ fn declined_questions_are_worded_like_1x() {
     assert_eq!(not_trusted(&sftp), "Host key for example.com was not trusted");
     let dav = Connection { kind: "webdavs".into(), ..sftp };
     assert_eq!(not_trusted(&dav), "The certificate of example.com was not trusted");
+    // paramiko names a host off port 22 "[host]:port".
+    let sftp_port = |p: serde_json::Value| Connection { kind: "sftp".into(), ..dav.with_params([("port".to_string(), p)]) };
+    assert_eq!(not_trusted(&sftp_port(2222.into())), "Host key for [example.com]:2222 was not trusted");
+    assert_eq!(not_trusted(&sftp_port("2222".into())), "Host key for [example.com]:2222 was not trusted");
+    assert_eq!(not_trusted(&sftp_port(22.into())), "Host key for example.com was not trusted");
+    // S3 without a server: Amazon's certificate.
+    let s3 = Connection::new("s3", Default::default(), "");
+    assert_eq!(not_trusted(&s3), "The certificate of s3.amazonaws.com was not trusted");
 }
 
 #[test]
