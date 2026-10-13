@@ -246,10 +246,16 @@ pub(crate) fn sorted_saved(app: &App) -> Vec<Connection> {
 }
 
 /// Add or update (by id) a saved connection; then remember or forget its
-/// password as the editor said (port of `ConnectionManager._apply`).
+/// password as the editor said (port of `ConnectionManager._apply`). Unlike
+/// 1.x, an edit that changes the account (server, port, user…) with
+/// "Remember" still ticked and no new password typed moves the stored
+/// password along instead of silently losing it.
 pub(crate) fn save_connection(app: &mut App, conn: Connection, creds: Option<Credentials>) {
     let st = app.state::<Connections>();
+    let before = st.saved.iter().find(|c| c.id == conn.id).map(account);
     st.saved.retain(|c| c.id != conn.id);
+    // Accounts the other saved connections still use (their passwords stay).
+    let others: Vec<String> = st.saved.iter().map(account).collect();
     st.saved.push(conn.clone());
     st.manager_selected = Some(conn.id.clone());
     let (lock, store, path) = (st.write_lock.clone(), st.store.clone(), app.paths.connections_file());
@@ -260,12 +266,30 @@ pub(crate) fn save_connection(app: &mut App, conn: Connection, creds: Option<Cre
             if let Some(creds) = creds {
                 let pw = passwords(&store);
                 let acc = account(&conn);
+                let old = before.filter(|b| *b != acc);
+                let forget_old = |pw: &Passwords<SharedStore>| {
+                    if let Some(old) = &old
+                        && !others.contains(old)
+                    {
+                        pw.forget(old);
+                    }
+                };
                 match (creds.remember, creds.password.as_deref().filter(|p| !p.is_empty())) {
                     (true, Some(p)) => {
                         pw.set(&acc, p);
                     }
-                    (false, _) => pw.forget(&acc),
-                    _ => {}
+                    (true, None) => {
+                        if let Some(moved) = old.as_deref().and_then(|o| pw.get(o)) {
+                            if pw.get(&acc).is_none() {
+                                pw.set(&acc, &moved);
+                            }
+                            forget_old(&pw);
+                        }
+                    }
+                    (false, _) => {
+                        pw.forget(&acc);
+                        forget_old(&pw);
+                    }
                 }
             }
             (result, saved_store::load_saved(&path))
@@ -279,16 +303,22 @@ pub(crate) fn save_connection(app: &mut App, conn: Connection, creds: Option<Cre
     );
 }
 
-/// Remove a saved connection and its password.
+/// Remove a saved connection, and its password unless another saved
+/// connection uses the same account (e.g. a duplicate with another start
+/// folder: 1.x forgot the password both shared).
 pub(crate) fn delete_connection(app: &mut App, conn: Connection) {
     let st = app.state::<Connections>();
     st.saved.retain(|c| c.id != conn.id);
+    let acc = account(&conn);
+    let shared = st.saved.iter().any(|c| account(c) == acc);
     let (lock, store, path) = (st.write_lock.clone(), st.store.clone(), app.paths.connections_file());
     app.tasks.spawn(
         move || {
             let _order = lock.lock().unwrap_or_else(|p| p.into_inner());
             let result = saved_store::remove(&path, &conn.id);
-            passwords(&store).forget(&account(&conn));
+            if !shared {
+                passwords(&store).forget(&acc);
+            }
             (result, saved_store::load_saved(&path))
         },
         |app, (result, items)| {
@@ -551,9 +581,21 @@ fn load_failed(app: &mut App, side: usize, location: &VPath, error: &VfsError) -
         app.tasks.spawn(move || old.close(), |_, ()| {});
     }
     let path = location.path.clone();
+    let broken = location.fs.clone();
+    // Only if the panel wasn't sent elsewhere while reconnecting.
+    let request = app.main.sides[side].panel.request;
     let target = Target::Then(Box::new(move |app, loc: Option<VPath>| {
-        if let Some(loc) = loc {
-            panel::load(app, side, VPath::new(loc.fs, path), LoadOptions { walk_up: true, ..Default::default() });
+        let Some(loc) = loc else { return };
+        let walk_up = || LoadOptions { walk_up: true, ..Default::default() };
+        // The other panel on the dropped session follows (its session is gone).
+        let other = 1 - side;
+        let there = &app.main.sides[other].panel.location;
+        if there.fs.identity() == broken.identity() {
+            let moved = VPath::new(loc.fs.clone(), there.path.clone());
+            panel::load(app, other, moved, walk_up());
+        }
+        if app.main.sides[side].panel.request == request {
+            panel::load(app, side, VPath::new(loc.fs, path), walk_up());
         }
     }));
     open_connection(app, conn, target, None, false);

@@ -321,7 +321,10 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * A listing that fails because the session broke (`RemoteError::{Connection,
   AuthenticationRequired}` downcast from `VfsError::Io`, `NotConnected`/reset
   kinds, or `!is_connected`) reconnects once per 10 s and lists again
-  (`on_load_error` hook).
+  (`on_load_error` hook); the other panel on that session follows.
+* Passwords follow the accounts: deleting a saved connection keeps the
+  password while another saved connection uses the same account; an edit
+  that changes the account with "Remember" ticked moves it.
 * ⌘K manager, ⇧⌘K disconnect (panels on that server go home), ⌘G accepts
   any registered address (`connections::is_url` / `open_url`), ⌥F1/⌥F2 list
   saved servers and open sessions.

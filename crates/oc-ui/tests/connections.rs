@@ -273,7 +273,13 @@ fn a_lost_session_reconnects_when_listing() {
     wait_dialog(&mut app, "Unknown server");
     trust(&mut app);
     wait_remote(&mut app, 0);
+    // The right panel on the same session (reused: no questions).
+    press(&mut app, Key::Tab);
+    go_to(&mut app, &sftp_url(&server, "/"));
+    wait_remote(&mut app, 1);
+    press(&mut app, Key::Tab);
     let old = app.main.sides[0].panel.location.fs.clone();
+    assert_eq!(app.main.sides[1].panel.location.fs.identity(), old.identity());
     old.close(); // the connection drops
     fs::write(e.server_root.join("pub/new.txt"), "new").unwrap();
     press_with(&mut app, Key::Char('r'), Mods::primary());
@@ -284,6 +290,11 @@ fn a_lost_session_reconnects_when_listing() {
     let p = &app.main.sides[0].panel;
     assert_eq!(p.location.path, "/pub");
     assert!(p.location.fs.identity() != old.identity(), "a new session");
+    wait_until(&mut app, "the other panel to follow", Duration::from_secs(20), |app| {
+        let (l, r) = (&app.main.sides[0].panel, &app.main.sides[1].panel);
+        !r.loading() && r.location.fs.identity() == l.location.fs.identity()
+    });
+    assert_eq!(app.main.sides[1].panel.location.path, "/");
     assert_eq!(app.state::<Connections>().sessions.list().len(), 1);
 }
 
@@ -370,7 +381,28 @@ fn connection_manager_new_edit_duplicate_delete() {
     press(&mut app, Key::Enter);
     wait_saved(&mut app, &e, "the deletion", |v| v.as_array().is_some_and(|a| a.len() == 1));
     assert_eq!(saved_json(&e)[0]["name"], "test2");
-    assert!(store.entries().is_empty(), "deleting forgets the password (same account)");
+    assert_eq!(store.entries().len(), 1, "the original still uses the password");
+
+    // Edit the port (another account): the remembered password moves along.
+    press(&mut app, Key::F(4));
+    wait_dialog(&mut app, "Edit connection");
+    press(&mut app, Key::Down); // Port
+    for _ in 0..8 {
+        press(&mut app, Key::Backspace);
+    }
+    type_text(&mut app, "2222");
+    press(&mut app, Key::Enter);
+    wait_saved(&mut app, &e, "the new port", |v| v[0]["params"]["port"] == 2222);
+    let moved = format!("sftp://{USER}@{}:2222", server.host);
+    wait_until(&mut app, "the password to move", Duration::from_secs(10), |_| store.entries().len() == 1 && store.entries()[0].0.1 != sftp_account(&server));
+    assert_eq!(store.entries(), [((SERVICE.into(), moved), PASSWORD.into())]);
+
+    // Deleting the last connection of an account forgets its password.
+    press(&mut app, Key::Delete);
+    wait_dialog(&mut app, "Delete connection");
+    press(&mut app, Key::Enter);
+    wait_saved(&mut app, &e, "the deletion", |v| v.as_array().is_some_and(|a| a.is_empty()));
+    wait_until(&mut app, "the password to go", Duration::from_secs(10), |_| store.entries().is_empty());
     press(&mut app, Key::Escape);
     wait_no_dialogs(&mut app);
 }
