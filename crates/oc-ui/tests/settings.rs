@@ -345,3 +345,34 @@ fn a_missing_saved_folder_falls_back_without_forgetting_it() {
     app.flush_settings();
     assert_eq!(on_disk(&e).left_path, gone.to_string_lossy(), "kept for when the mount is back");
 }
+
+#[test]
+fn narrow_and_short_windows_keep_everything_inside_the_dialogs() {
+    let e = env();
+    let mut app = app(&e);
+    open_settings(&mut app);
+    let draw = |app: &App, cols: u16, rows: u16| {
+        let mut f = Frame::new(cols, rows, Rgba::BLACK);
+        app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
+        (0..rows).map(|r| f.row_text(r)).collect::<Vec<_>>()
+    };
+    // Too narrow for the Sample next to the form: it is left out instead of
+    // being drawn over the controls.
+    app.resize(MAIN_WINDOW, 70, 20);
+    let text = draw(&app, 70, 20).join("\n");
+    assert!(!text.contains("Sample") && !text.contains("README.md"), "{text}");
+    assert!(text.contains("Typeface") && text.contains("Restore defaults"), "{text}");
+
+    // The scheme editor in a short window: color rows that don't fit are
+    // left out, not drawn below the buttons and over the dialog's frame.
+    app.resize(MAIN_WINDOW, 120, 40);
+    tab_to(&mut app, "Ctl(Edit(Color))");
+    press(&mut app, Key::Enter);
+    app.resize(MAIN_WINDOW, 60, 20);
+    let rows = draw(&app, 60, 20);
+    let buttons = rows.iter().position(|r| r.contains("Save") && r.contains("Cancel")).expect("buttons shown");
+    assert!(rows[buttons..].iter().all(|r| !r.contains('#')), "no color rows at or below the buttons:\n{}", rows.join("\n"));
+    assert!(!rows[buttons].contains("Key bar"));
+    let syntax = rows.iter().find(|r| r.contains("Syntax colors")).unwrap();
+    assert!(syntax.contains("[x] Dark scheme"), "the syntax list doesn't cover the checkbox: {syntax}");
+}

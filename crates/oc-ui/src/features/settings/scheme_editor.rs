@@ -212,8 +212,12 @@ impl SchemeEditor {
         let name_label = Rect::new(x, y, LABEL_W, 1);
         y += 1;
         let dark = Rect::new(x + LABEL_W, y, 20, 1);
-        let syntax = Rect::new(content.right().saturating_sub(SYNTAX_W), y, SYNTAX_W, 1);
+        // Right-aligned, but never over the dark checkbox and its own label.
+        let sx = content.right().saturating_sub(SYNTAX_W).max(dark.right() + width("Syntax colors") + 2);
+        let syntax = Rect::new(sx, y, content.right().saturating_sub(sx), 1);
         y += 2;
+        let buttons = Rect::new(x, content.bottom().saturating_sub(1), content.w, 1);
+        let error = Rect::new(x, (y + COLUMN_ROWS).min(buttons.y.saturating_sub(1)), content.w, 1);
         let col_w = content.w.saturating_sub(3) / 2;
         let mut rows = Vec::new();
         let mut headings = Vec::new();
@@ -224,10 +228,16 @@ impl SchemeEditor {
                 if gi > 0 {
                     cy += 1;
                 }
-                headings.push((Rect::new(cx, cy, col_w, 1), *group));
+                // In a short window the rows that don't fit are left out
+                // (they stay reachable with Tab, just not shown).
+                if cy < error.y {
+                    headings.push((Rect::new(cx, cy, col_w, 1), *group));
+                }
                 cy += 1;
                 for (i, (_, _, g)) in COLOR_ROLES.iter().enumerate() {
-                    if g == group {
+                    if g == group && cy >= error.y {
+                        cy += 1;
+                    } else if g == group {
                         let hex = Rect::new((cx + col_w).saturating_sub(HEX_W), cy, HEX_W, 1);
                         let swatch = Rect::new(hex.x.saturating_sub(1 + SWATCH_W), cy, SWATCH_W, 1);
                         rows.push((i, Rect::new(cx, cy, swatch.x.saturating_sub(cx + 1), 1), swatch, hex));
@@ -237,8 +247,6 @@ impl SchemeEditor {
             }
         }
         rows.sort_by_key(|r| r.0);
-        let error = Rect::new(x, y + COLUMN_ROWS, content.w, 1);
-        let buttons = Rect::new(x, content.bottom().saturating_sub(1), content.w, 1);
         Layout { outer, note, name_label, name, dark, syntax, headings, rows, error, buttons }
     }
 

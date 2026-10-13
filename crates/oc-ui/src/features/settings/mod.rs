@@ -257,6 +257,12 @@ impl PageLayout {
     }
 }
 
+/// The part of `r` inside `to` (empty, at `to`'s corner, if none).
+fn clip(r: Rect, to: Rect) -> Rect {
+    let (x, y) = (r.x.clamp(to.x, to.right()), r.y.clamp(to.y, to.bottom()));
+    Rect::new(x, y, r.right().min(to.right()).saturating_sub(x), r.bottom().min(to.bottom()).saturating_sub(y))
+}
+
 fn check(id: Id, label: &str, on: bool, r: Rect) -> Ctl {
     Ctl { id, rect: r, kind: Kind::Check(Checkbox::new(label, on)) }
 }
@@ -359,10 +365,12 @@ fn appearance_page(app: &App, d: &SettingsDialog, page: Rect) -> PageLayout {
     y += 1;
     ctls.push(check(Id::MenuBar, "Always show the menu bar", app.settings.menu_bar_visible.unwrap_or(false), Rect::new(x, y, form_w, 1)));
 
-    // The Sample on the right, Restore defaults below it.
-    let sx = page.right().saturating_sub(sample::WIDTH);
-    texts.push((Rect::new(sx, page.y, sample::WIDTH, 1), "Sample".to_owned(), TextKind::Heading));
-    let sample = Some(Rect::new(sx, page.y + 1, sample::WIDTH, sample::HEIGHT));
+    // The Sample on the right (if it fits next to the form), Restore defaults below it.
+    let sample = (page.w >= form_w + 2 + sample::WIDTH).then(|| {
+        let sx = page.right() - sample::WIDTH;
+        texts.push((Rect::new(sx, page.y, sample::WIDTH, 1), "Sample".to_owned(), TextKind::Heading));
+        Rect::new(sx, page.y + 1, sample::WIDTH, sample::HEIGHT)
+    });
     let restore = "Restore defaults";
     let rw = width(restore) + 4;
     ctls.push(Ctl { id: Id::Restore, rect: Rect::new(page.right().saturating_sub(rw), page.bottom() - 1, rw, 1), kind: Kind::Button(restore) });
@@ -536,11 +544,19 @@ impl SettingsDialog {
     }
 
     fn layout(&self, app: &App, page: Rect) -> PageLayout {
-        match self.page {
+        let mut l = match self.page {
             0 => appearance_page(app, self, page),
             1 => preview_page(app, page),
             _ => terminal_page(app, page),
+        };
+        // In a small window nothing may reach out of the dialog.
+        for c in &mut l.ctls {
+            c.rect = clip(c.rect, page);
         }
+        for (r, _, _) in &mut l.texts {
+            *r = clip(*r, page);
+        }
+        l
     }
 
     fn close_row() -> ButtonRow {
@@ -619,7 +635,10 @@ impl SettingsDialog {
         match outcome {
             PopupOutcome::Chosen(i) => {
                 self.popup = None;
-                choose(app, id, values[i].clone());
+                // The list may have changed while open (fonts arriving in the background).
+                if let Some(value) = values.get(i) {
+                    choose(app, id, value.clone());
+                }
             }
             PopupOutcome::Closed => self.popup = None,
             PopupOutcome::Consumed => {}
@@ -754,7 +773,7 @@ impl Modal for SettingsDialog {
         }
 
         let l = self.layout(app, r.page);
-        for (tr, text, kind) in &l.texts {
+        for (tr, text, kind) in l.texts.iter().filter(|(r, _, _)| !r.is_empty()) {
             match kind {
                 TextKind::Heading => form::heading(f, tr.x, tr.y, text, tr.w, ctx),
                 TextKind::Label => form::label(f, tr.x, tr.y, text, tr.w, ctx),
@@ -764,7 +783,7 @@ impl Modal for SettingsDialog {
         if let Some(sr) = l.sample {
             sample::draw(f, sr, ctx);
         }
-        for ctl in &l.ctls {
+        for ctl in l.ctls.iter().filter(|c| !c.rect.is_empty()) {
             let focused = self.focus == Focus::Ctl(ctl.id);
             match &ctl.kind {
                 Kind::Check(cb) => cb.draw(f, ctl.rect, ctx, focused),

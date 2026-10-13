@@ -134,6 +134,7 @@ impl Popup {
         cover(f, r, ctx);
         let inner = BoxFrame { title: "", subtitle: "", active: true }.draw(f, r, ctx);
         let mut list = self.list;
+        list.set_len(items.len()); // the items may have changed since it opened
         list.top = list.first_visible(inner.h as usize);
         list.draw(f, inner, ctx, |f, row, i, cursor| match &items[i] {
             Some(text) => {
@@ -149,6 +150,7 @@ impl Popup {
     }
 
     pub fn handle_key(&mut self, k: &KeyEvent, items: &[Choice]) -> PopupOutcome {
+        self.list.set_len(items.len());
         let visible = self.visible(items.len());
         match k.key {
             Key::Escape => PopupOutcome::Closed,
@@ -187,6 +189,7 @@ impl Popup {
     }
 
     pub fn handle_mouse(&mut self, m: &MouseEvent, items: &[Choice], screen: Rect) -> PopupOutcome {
+        self.list.set_len(items.len());
         let r = self.rect(items, screen);
         let inner = r.inset(1, 1);
         let visible = self.visible(items.len());
