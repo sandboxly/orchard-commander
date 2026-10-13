@@ -3883,6 +3883,7 @@ dependencies = [
  "oc-media",
  "oc-pdf",
  "oc-preview",
+ "oc-rename",
  "oc-search",
  "oc-term",
  "oc-vfs",

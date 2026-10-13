@@ -134,9 +134,14 @@ reg.add(
    `reg.on_start(fn)`, `reg.on_settings_changed(fn)`,
    `reg.on_location_changed(fn(app, side))` (a panel arrived in another
    folder), `reg.on_resized(fn)` (the main window's grid size changed),
-   `reg.on_files_changed(fn)` as needed. A feature that changes files
+   `reg.on_files_changed(fn)`,
+   `reg.on_files_moved(fn(&mut App, &HashMap<VPath, VPath>))` as needed. A feature that changes files
    (file operations, multi-rename, editor saves…) calls
    `commands::files_changed(app)` afterwards (`fileops::finished` does).
+   A feature that renames or moves files calls
+   `commands::files_moved(app, &old_to_new)` before reloading the panels
+   (multi-rename does); one that shows files by location (search results:
+   `SearchResultsFS::relocate`) listens with `on_files_moved`.
 4. Keep the feature's state in its own types. Where it must live in the app:
    * per side: a `SideView` (below);
    * a window: a `UiWindow` (below);

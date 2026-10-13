@@ -6,6 +6,7 @@ pub mod editor;
 pub mod fileops;
 pub mod navigation;
 pub mod preview;
+pub mod rename;
 pub mod search;
 pub mod terminal;
 pub mod window;
@@ -23,4 +24,5 @@ pub const ALL: &[fn(&mut Registry)] = &[
     editor::register,
     terminal::register,
     search::register,
+    rename::register,
 ];

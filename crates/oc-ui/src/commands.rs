@@ -23,6 +23,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use oc_vfs::VPath;
+
 use crate::app::App;
 use crate::input::KeyEvent;
 use crate::main_window::side::SideViewFactory;
@@ -200,6 +202,22 @@ pub fn files_changed(app: &mut App) {
     }
 }
 
+/// Runs after a feature renamed or moved files (old location -> new), before
+/// the panels reload: e.g. search results follow the files. See [`files_moved`].
+pub type MovedHook = fn(&mut App, &HashMap<VPath, VPath>);
+
+/// Tell every feature that files were renamed or moved (calls the
+/// [`Registry::on_files_moved`] hooks).
+pub fn files_moved(app: &mut App, moved: &HashMap<VPath, VPath>) {
+    if moved.is_empty() {
+        return;
+    }
+    let hooks = app.registry.on_files_moved.clone();
+    for hook in hooks {
+        hook(app, moved);
+    }
+}
+
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
 pub struct Registry {
@@ -212,6 +230,7 @@ pub struct Registry {
     pub(crate) on_location_changed: Vec<LocationHook>,
     pub(crate) on_resized: Vec<ResizeHook>,
     pub(crate) on_files_changed: Vec<FilesChangedHook>,
+    pub(crate) on_files_moved: Vec<MovedHook>,
 }
 
 impl Registry {
@@ -271,6 +290,12 @@ impl Registry {
 
     pub fn on_files_changed(&mut self, hook: FilesChangedHook) -> &mut Self {
         self.on_files_changed.push(hook);
+        self
+    }
+
+    /// Called with old -> new locations after files were renamed or moved.
+    pub fn on_files_moved(&mut self, hook: MovedHook) -> &mut Self {
+        self.on_files_moved.push(hook);
         self
     }
 
