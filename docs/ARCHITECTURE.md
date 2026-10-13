@@ -623,6 +623,18 @@ Also public: `connections::connect_in_panel(app, side, conn, secret)`,
   (the bundle's Info.plist icon wins when packaged), window geometry restore.
   Windows/Linux: the in-window strip is the menu bar (F9 or
   `menu_bar_visible`), window icon from `app/resources/icon.png`.
+* Windows: a GUI-subsystem exe (no console; options like `--self-test`
+  attach to the parent console unless stdout is redirected), icon
+  (`app/resources/icon.ico`) and version info compiled in by `app/build.rs`.
+  AltGr arrives as Ctrl+Alt: `input::from_winit` turns it back into typing
+  when it produced a character.
+* Linux: Wayland app id / X11 WM_CLASS `orchard-commander` (the .desktop
+  file), RPATH `$ORIGIN/lib:$ORIGIN` for the bundled FFmpeg libraries,
+  keychain = Secret Service over zbus (no libdbus), clipboard via Wayland
+  data-control or X11.
+* No GPU (CI, VMs): `oc_grid` falls back to a software adapter (WARP on
+  Windows, llvmpipe via Vulkan/GL on Linux; CI installs
+  `mesa-vulkan-drivers`); `--self-test` prints which adapter it got.
 
 ## Testing checklist for a new feature
 
