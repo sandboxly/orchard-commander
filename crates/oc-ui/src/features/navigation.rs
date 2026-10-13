@@ -191,9 +191,19 @@ pub fn choose_location(app: &mut App, side: usize) {
     app.tasks.run_in_background(
         |_| oc_local::locations(),
         move |app, places| {
-            let items = places.iter().map(|(label, path)| PickerItem::new(label.clone(), path.display().to_string())).collect();
+            let mut items: Vec<PickerItem> =
+                places.iter().map(|(label, path)| PickerItem::new(label.clone(), path.display().to_string())).collect();
+            // Features' entries (bookmarks ★, connections ⇄) after the drives.
+            let registry = app.registry.clone();
+            let mut extra: Vec<_> = registry.location_sources.iter().flat_map(|source| source(app, side)).collect();
+            items.extend(extra.iter().map(|c| PickerItem::new(c.label.clone(), c.hint.clone())));
             let picker = Picker::new("Go to", items, move |app, choice| {
                 let Some(i) = choice else { return };
+                if i >= places.len() {
+                    let choice = extra.swap_remove(i - places.len());
+                    (choice.open)(app, side);
+                    return;
+                }
                 if app.main.sides[side].mode != SideMode::Files {
                     main_window::set_mode(app, side, SideMode::Files);
                 }

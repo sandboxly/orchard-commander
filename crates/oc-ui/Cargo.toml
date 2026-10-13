@@ -9,6 +9,7 @@ oc-vfs.workspace = true
 oc-local.workspace = true
 oc-config.workspace = true
 oc-grid.workspace = true
+oc-provider = { path = "../oc-provider" }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 arboard = { version = "3.6", default-features = false }

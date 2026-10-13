@@ -183,6 +183,22 @@ fn parse(spec: &str) -> Shortcut {
 pub type StartHook = fn(&mut App);
 /// Runs after settings changed (`App::update_settings`).
 pub type SettingsHook = fn(&mut App);
+/// A click on a file panel's path (its frame title): `(app, side, col, row)`.
+pub type TitleClickHook = fn(&mut App, usize, u16, u16);
+/// Extra entries for the drive / location list (⌥F1 / ⌥F2) of `side`.
+pub type LocationSource = fn(&App, usize) -> Vec<LocationChoice>;
+
+/// Opens a [`LocationChoice`] on a side.
+pub type OpenLocation = Box<dyn FnOnce(&mut App, usize)>;
+
+/// One extra entry in the drive / location list.
+pub struct LocationChoice {
+    pub label: String,
+    /// Shown dimmed (a path, an address).
+    pub hint: String,
+    /// Opens it on the given side.
+    pub open: OpenLocation,
+}
 
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
@@ -193,6 +209,8 @@ pub struct Registry {
     pub(crate) side_views: Vec<SideViewFactory>,
     pub(crate) on_start: Vec<StartHook>,
     pub(crate) on_settings_changed: Vec<SettingsHook>,
+    pub(crate) on_title_click: Option<TitleClickHook>,
+    pub(crate) location_sources: Vec<LocationSource>,
 }
 
 impl Registry {
@@ -235,6 +253,18 @@ impl Registry {
 
     pub fn on_settings_changed(&mut self, hook: SettingsHook) -> &mut Self {
         self.on_settings_changed.push(hook);
+        self
+    }
+
+    /// What a click on a panel's path does (the bookmark menu); one handler.
+    pub fn on_panel_title_click(&mut self, hook: TitleClickHook) -> &mut Self {
+        self.on_title_click = Some(hook);
+        self
+    }
+
+    /// Add entries to the drive / location list (bookmarks, connections…).
+    pub fn add_location_source(&mut self, source: LocationSource) -> &mut Self {
+        self.location_sources.push(source);
         self
     }
 

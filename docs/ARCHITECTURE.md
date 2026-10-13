@@ -150,6 +150,37 @@ reg.add(
 Menu sections are listed in `Menu::sections()` (`menus.rs`). Use an existing
 section; add a new name there only if a new group is really needed.
 
+Other registry hooks:
+
+* `reg.on_panel_title_click(fn(&mut App, side, col, row))`: a left click on
+  a file panel's path (its frame title). Bookmarks use it for their menu
+  (1.x: the panel's `title_clicked`). One handler.
+* `reg.add_location_source(fn(&App, side) -> Vec<LocationChoice>)`: extra
+  entries after the drives in the drive / location list (⌥F1 / ⌥F2); each
+  has a label, a dimmed hint and an `open(app, side)` closure. Bookmarks add
+  "★ Title"; connections add "⇄ Name".
+* `App::persists()`: false in `--screenshot` mode; features writing their
+  own files (bookmarks.json…) skip writing then.
+
+### Bookmarks and location specs (`features/bookmarks/`)
+
+* State: `app.try_state::<bookmarks::Bookmarks>()` (`bookmarks::items(app)`);
+  `bookmarks.json` is read in the background at start (commands that come
+  earlier wait for it) and written in the background after each change.
+* `bookmarks::locations::spec_of(app, &vpath)` describes a folder as an
+  `oc_config::Spec` (archives nest; servers by connection account);
+  `bookmarks::locations::resolve(app, &spec, Box::new(|app, Result<VPath,
+  String>| …))` goes back, never blocking: archives are opened on a worker,
+  servers through `connections::api::resolve_server(app, account, path,
+  on_done)`.
+* The connections feature tells which account a server file system belongs
+  to with `bookmarks::locations::register_account_of(app, fn(&App,
+  &dyn FileSystem) -> Option<String>)` (call it from its `on_start`);
+  without it, server folders can't be bookmarked (opening server bookmarks
+  works regardless).
+* `bookmarks::navigate(app, &spec, side, focus)` / `open_bookmark` for other
+  features that want to go to a saved place.
+
 ## Side views (Preview, terminal-in-a-side, …): `main_window/side.rs`
 
 Each side shows its file panel ("Files" tab) or one of the registered side
