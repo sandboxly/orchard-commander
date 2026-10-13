@@ -1,0 +1,64 @@
+# .deb and .rpm from the staged app folder (packaging/stage.sh linux-x64 ...
+# dist/orchard-commander), built in CI from the repository root:
+#   VERSION=2.0.0 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
+name: orchard-commander
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: Stephan Lengl <lengl.stephan@gmail.com>
+description: |
+  Two-panel file manager in the spirit of Norton and Total Commander.
+  Previews for code, images, PDFs, audio and video; archives and SFTP, SMB,
+  WebDAV and S3 servers as folders; find files, multi-rename and a built-in
+  terminal.
+vendor: Stephan Lengl
+homepage: https://sandboxly.github.io/orchard-commander/
+license: MIT and LGPL-3.0-or-later and BSD-3-Clause and UnRAR
+contents:
+  # The executable, libpdfium.so, lib/ (FFmpeg) and licenses/.
+  - src: dist/orchard-commander
+    dst: /opt/orchard-commander
+    type: tree
+  - src: /opt/orchard-commander/orchard-commander
+    dst: /usr/bin/orchard-commander
+    type: symlink
+  - src: packaging/linux/orchard-commander.desktop
+    dst: /usr/share/applications/orchard-commander.desktop
+  - src: packaging/linux/orchard-commander.png
+    dst: /usr/share/icons/hicolor/256x256/apps/orchard-commander.png
+  - src: dist/orchard-commander/licenses
+    dst: /usr/share/doc/orchard-commander
+    type: tree
+overrides:
+  deb:
+    depends:
+      # Linked: ALSA (audio output), D-Bus (Secret Service for passwords).
+      - libasound2 | libasound2t64
+      - libdbus-1-3
+      # Loaded at run time: keyboard handling, GPU (Vulkan or EGL/OpenGL), fonts.
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libvulkan1 | libegl1
+      - fontconfig
+    recommends:
+      - mesa-vulkan-drivers
+      - libegl-mesa0
+      - libwayland-client0
+      - libx11-xcb1
+      - fonts-dejavu-core
+  rpm:
+    depends:
+      - alsa-lib
+      - dbus-libs
+      - libxkbcommon
+      - libxkbcommon-x11
+      - (vulkan-loader or mesa-libEGL)
+      - fontconfig
+    recommends:
+      - mesa-vulkan-drivers
+      - mesa-libEGL
+      - dejavu-sans-mono-fonts
+rpm:
+  group: Applications/File

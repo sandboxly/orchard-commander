@@ -193,8 +193,9 @@ fn command_palette_lists_like_1x() {
     let text = app.top_modal_text().unwrap();
     let titles: Vec<&str> = text.lines().collect();
     assert_eq!(titles[..4], ["Toggle preview", "Next preview view", "Edit", "New file"]);
-    assert_eq!(titles.len(), 40, "{titles:?}");
-    for t in ["Menu", "Stop search", "Zoom in", "Right drive / location"] {
+    // 1.x's 40 plus About (1.x had only macOS's native About panel).
+    assert_eq!(titles.len(), 41, "{titles:?}");
+    for t in ["Menu", "Stop search", "Zoom in", "Right drive / location", "About Orchard Commander"] {
         assert!(titles.contains(&t), "{t}");
     }
     assert!(!titles.iter().any(|t| t.starts_with("Left: ") || t.starts_with("Right: ")), "{titles:?}");
