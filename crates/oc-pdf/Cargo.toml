@@ -1,0 +1,22 @@
+[package]
+name = "oc-pdf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PDF documents for previews: PDFium on a dedicated thread"
+
+[features]
+# Hand-written test PDFs (incl. encrypted ones) for this and other crates' tests.
+testing = ["dep:md-5"]
+
+[dependencies]
+thiserror.workspace = true
+log = "0.4"
+# The API level must match the PDFium release in scripts/fetch-pdfium.sh.
+# No `thread_safe`: every PDFium call happens on the one thread in engine.rs.
+pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }
+md-5 = { version = "0.10.6", optional = true }
+
+[dev-dependencies]
+oc-pdf = { path = ".", features = ["testing"] }
+tempfile.workspace = true

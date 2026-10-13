@@ -142,6 +142,9 @@ fn misnamed_images_decode_by_contents() {
 
 #[test]
 fn pdf_header_after_leading_junk() {
+    if !pdf_available() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("scan.pdf");
     std::fs::write(&p, [b"\r\n\0junk from a mail gateway\n".as_slice(), &pdf_bytes()].concat()).unwrap();

@@ -4,6 +4,8 @@ mod hex;
 mod image;
 mod listing;
 mod media;
+#[cfg(feature = "pdf")]
+mod pdf;
 mod text;
 
 use std::sync::Arc;
@@ -13,7 +15,9 @@ use crate::api::Previewer;
 pub use hex::HexPreviewer;
 pub use image::{ImagePreviewer, MAX_IMAGE_DIMENSION, decode_image, decode_image_as, decode_svg, supported_extensions};
 pub use listing::ListingPreviewer;
-pub use media::{MediaPreviewer, PdfPreviewer};
+pub use media::MediaPreviewer;
+#[cfg(feature = "pdf")]
+pub use pdf::PdfPreviewer;
 pub use text::{MarkdownPreviewer, TextPreviewer};
 
 /// Images (and other files without a direct path) are fetched whole only up to this size.
@@ -24,6 +28,7 @@ pub fn builtins() -> Vec<Arc<dyn Previewer>> {
     vec![
         Arc::new(ListingPreviewer),
         Arc::new(ImagePreviewer::default()),
+        #[cfg(feature = "pdf")]
         Arc::new(PdfPreviewer),
         Arc::new(MediaPreviewer),
         Arc::new(MarkdownPreviewer),

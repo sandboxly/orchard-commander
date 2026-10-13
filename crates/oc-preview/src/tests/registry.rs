@@ -241,6 +241,9 @@ fn cancelled_preview_reports_nothing() {
 
 #[test]
 fn pdf_ranking_and_sniffing() {
+    if !pdf_available() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("doc.pdf"), pdf_bytes()).unwrap();
     std::fs::write(dir.path().join("download"), pdf_bytes()).unwrap(); // no extension: recognised by "%PDF-"
@@ -251,13 +254,16 @@ fn pdf_ranking_and_sniffing() {
 
 #[test]
 fn pdf_on_another_file_system_is_streamed() {
+    if !pdf_available() {
+        return;
+    }
     let cache = tempfile::tempdir().unwrap();
     let mem = Arc::new(MemFs::new());
-    mem.add("remote.pdf", pdf_bytes());
+    mem.add("remote.pdf", oc_pdf::testing::pdf_bytes(2));
     let ctx = LoadContext { cache_dir: Some(cache.path().to_path_buf()), ..LoadContext::default() };
     let outcome = Registry::with_builtins().preview(&mem.vpath("remote.pdf"), &ctx, None);
     let Some(Loaded { data: PreviewData::Pdf(pdf), .. }) = &outcome.loaded else { panic!("{outcome:?}") };
-    assert!(matches!(pdf.source, crate::DocumentSource::Stream(_)));
+    assert_eq!((outcome.previewer_id(), pdf.page_count, pdf.pages.page_count()), (Some("pdf"), 2, 2));
     assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 0); // nothing downloaded
 }
 
@@ -266,8 +272,18 @@ fn garbage_pdf_falls_back_to_hex() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("broken.pdf"), "this is not a pdf").unwrap();
     let o = Registry::with_builtins().preview(&LocalFs::vpath(&dir.path().join("broken.pdf")), &LoadContext::default(), None);
-    assert_eq!(o.previewer_id(), Some("hex"));
-    assert!(o.error.is_none());
+    assert_pdf_fallback(&o);
+}
+
+/// A PDF the PDF previewer refused: hex (the next candidate by name), or
+/// whatever sniffing finds when there is no PDF previewer.
+pub fn assert_pdf_fallback(o: &crate::Outcome) {
+    if pdf_available() {
+        assert_eq!(o.previewer_id(), Some("hex"));
+    } else {
+        assert!(o.previewer_id().is_some_and(|id| id != "pdf"), "{o:?}");
+    }
+    assert!(o.error.is_none(), "{o:?}");
 }
 
 // -- online-only cloud files (Dropbox, iCloud, OneDrive placeholders) ------------------------
@@ -296,7 +312,7 @@ fn big_online_only_file_is_not_downloaded() {
     fs.add("big.pdf", [pdf_bytes(), vec![0; 30 * 1024 * 1024]].concat());
     let allowed = LoadContext { download_limit: None, ..LoadContext::default() };
     let o = reg.preview(&fs.vpath("big.pdf"), &allowed, None); // the user asked for it
-    assert_eq!(o.previewer_id(), Some("pdf"));
+    assert_eq!(o.previewer_id(), Some(if pdf_available() { "pdf" } else { "hex" }));
     assert_eq!(fs.fetches.load(Ordering::SeqCst), 1); // fetched before reading
 }
 
@@ -322,7 +338,8 @@ fn stuck_cloud_download_times_out_with_explanation() {
     let err = o.error.as_ref().unwrap();
     assert!(matches!(err, PreviewError::CloudNotDelivered { .. }) && err.is_message());
     assert!(err.to_string().starts_with("report.pdf hasn't arrived from the cloud yet (waited 0 s)."), "{err}");
-    assert_eq!(o.candidate_ids(), ["pdf", "hex"]); // by name, without reading
+    let by_name: &[&str] = if pdf_available() { &["pdf", "hex"] } else { &["hex"] };
+    assert_eq!(o.candidate_ids(), by_name); // by name, without reading
     assert_eq!(fs.read(), 0);
 
     let cancelled = LoadContext { is_cancelled: Arc::new(|| true), ..ctx.clone() };
@@ -331,7 +348,10 @@ fn stuck_cloud_download_times_out_with_explanation() {
 
     deliver.store(true, Ordering::SeqCst); // the cloud app catches up: "Try again" works
     let o = reg.preview(&fs.vpath("report.pdf"), &ctx, None);
-    assert_eq!(o.previewer_id(), Some("pdf"));
+    assert!(o.loaded.is_some(), "{o:?}");
+    if pdf_available() {
+        assert_eq!(o.previewer_id(), Some("pdf"));
+    }
 }
 
 #[test]
