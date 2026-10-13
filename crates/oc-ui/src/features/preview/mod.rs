@@ -12,9 +12,15 @@
 //! Online-only cloud files: up to 25 MB they are fetched with "Downloading
 //! … from the cloud" and the seconds waited; bigger ones need a click on
 //! "Download and preview"; a fetch that times out offers "Try again".
+//!
+//! Audio and video play in [`media`]; when a file ends the pane moves the
+//! other panel's cursor to the next file it plays and starts it
+//! ([`finished_playing`], 1.x's `MainWindow._play_next`).
 
 pub mod image;
 pub mod markdown;
+pub mod media;
+mod media_paint;
 pub mod message;
 pub mod pdf;
 pub mod text;
@@ -26,8 +32,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use oc_grid::{Flags, Frame, Style};
-use oc_preview::{AUTO_DOWNLOAD_LIMIT, LoadContext, PreviewError, ext_for_name};
-use oc_vfs::{VPath, human_size};
+use oc_preview::{AUTO_DOWNLOAD_LIMIT, FileInfo, LoadContext, PreviewError, Score, ext_for_name};
+use oc_vfs::{Entry, VPath, human_size};
 
 use self::message::MessageView;
 use self::views::{ContentView, Handle, Prepared};
@@ -53,6 +59,7 @@ const CHIP_PAD: u16 = 3;
 
 pub fn register(reg: &mut Registry) {
     reg.add_side_view(|| Box::new(PreviewView::default()));
+    reg.on_settings_changed(media::settings_changed);
     reg.add(
         Command::new("preview.toggle", "Toggle preview", toggle_preview)
             .help("Preview the file under the cursor in the other panel")
@@ -104,6 +111,42 @@ pub fn refresh_all(app: &mut App) {
     }
 }
 
+/// A file in `side`'s preview played to its end: select the next file in
+/// the other panel that the same previewer plays, and play it (1.x's
+/// `MainWindow._play_next`). Nothing happens if the user moved on
+/// meanwhile, or after the last playable file.
+pub fn finished_playing(app: &mut App, side: usize, finished: &VPath) {
+    if app.main.sides[side].mode_id() != ID {
+        return;
+    }
+    let other = 1 - side;
+    let panel = &app.main.sides[other].panel;
+    if panel.cursor_target().as_ref() != Some(finished) {
+        return; // the user moved on meanwhile
+    }
+    let Some(pane) = main_window::view_as::<PreviewView>(app, side, ID) else { return };
+    if pane.path.as_ref() != Some(finished) {
+        return;
+    }
+    let Some(previewer) = pane.current.as_deref().and_then(|id| oc_preview::Registry::global().get(id)) else { return };
+    let rows: Vec<Option<&Entry>> = (0..panel.len()).map(|r| panel.entry_at(r)).collect();
+    let next = oc_media::next_to_play(&rows, panel.cursor(), |e| e.is_some_and(|e| plays(&*previewer, e)));
+    let Some(row) = next else { return };
+    app.main.sides[other].panel.set_cursor(row);
+    main_window::cursor_moved(app, other);
+    let target = app.main.sides[other].panel.cursor_target();
+    with_view_as::<PreviewView, _>(app, side, ID, |v, _| v.play_when_shown = target);
+}
+
+/// Whether `previewer` shows `entry` (by its name, without reading it).
+fn plays(previewer: &dyn oc_preview::Previewer, entry: &Entry) -> bool {
+    if entry.is_dir {
+        return false;
+    }
+    let info = FileInfo { mtime: entry.mtime, has_direct_path: true, ..FileInfo::file(entry.name.clone(), entry.size) };
+    previewer.score(&info) > Score::NO
+}
+
 /// "View as" choices by extension, for this run of the app (1.x's `_choice`).
 #[derive(Default)]
 struct Choices(HashMap<String, String>);
@@ -153,6 +196,8 @@ pub struct PreviewView {
     content: Option<Box<dyn ContentView>>,
     /// Counts contents (see [`Handle`]).
     serial: u64,
+    /// Start playing this file once it is shown (moving on to the next file).
+    pub play_when_shown: Option<VPath>,
 }
 
 impl PreviewView {
@@ -172,6 +217,10 @@ impl PreviewView {
 
     pub fn chip_ids(&self) -> Vec<&str> {
         self.chips.iter().map(|(id, _)| id.as_str()).collect()
+    }
+
+    pub fn content_mut_as<T: ContentView>(&mut self) -> Option<&mut T> {
+        self.content.as_mut()?.as_any_mut().downcast_mut::<T>()
     }
 
     /// A load is on its way.
@@ -256,6 +305,9 @@ impl PreviewView {
         if path == self.path && self.pending.is_none() {
             return;
         }
+        if path != self.play_when_shown {
+            self.play_when_shown = None; // the user went somewhere else
+        }
         let first = self.content.is_none() && self.path.is_none();
         self.pending = Some(path);
         if let Some(t) = self.debounce.take() {
@@ -325,6 +377,9 @@ impl PreviewView {
         }
         self.request += 1;
         let request = self.request;
+        if let Some(c) = self.content.as_mut() {
+            c.leaving(app);
+        }
         self.path = path.clone();
         let Some(path) = path else {
             self.current = None;
@@ -385,6 +440,7 @@ impl PreviewView {
 
     fn loaded(&mut self, app: &mut App, side: usize, request: u64, arrived: Option<Arrived>) {
         if request != self.request {
+            discard(arrived);
             return; // the cursor moved on meanwhile
         }
         self.token = None;
@@ -411,6 +467,13 @@ impl PreviewView {
             }
         };
         self.set_content(app, side, content);
+        if self.play_when_shown.is_some() && self.play_when_shown == self.path {
+            self.play_when_shown = None;
+            let h = self.handle(side);
+            if let Some(c) = self.content.as_mut() {
+                c.play(app, h);
+            }
+        }
     }
 
     /// A message while waiting, counting the seconds.
@@ -461,10 +524,19 @@ impl PreviewView {
         self.serial += 1;
         self.path = None;
         self.pending = None;
+        self.play_when_shown = None;
         self.current = None;
         self.chips.clear();
         self.title.clear();
         self.info.clear();
+    }
+}
+
+/// Drop a result nobody wants; media data may hold open streams on a
+/// server, which are closed off the UI thread.
+fn discard(arrived: Option<Arrived>) {
+    if let Some(Arrived { body: Ok((Prepared::Media(data), _)), .. }) = arrived {
+        let _ = std::thread::Builder::new().name("oc-preview drop".into()).spawn(move || drop(data));
     }
 }
 

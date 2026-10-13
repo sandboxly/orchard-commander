@@ -9,7 +9,9 @@ oc-vfs.workspace = true
 oc-local.workspace = true
 oc-config.workspace = true
 oc-grid.workspace = true
-oc-preview.workspace = true
+oc-preview = { workspace = true, features = ["media"] }
+oc-media = { path = "../oc-media" }
+serde_json = "1.0"
 image = { version = "0.25.6", default-features = false }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }

@@ -223,7 +223,7 @@ What shows below the chips is a `views::ContentView`, one per kind of
 `PreviewData`: `text.rs` (highlighted text, hex, listings, plus the shared
 painting and scrolling helpers), `markdown.rs`, `image.rs` (right-click
 Open/Copy via `dialogs::PopupMenu`, `Clipboard::set_image`), `pdf.rs`,
-`message.rs`.
+`media.rs` (the audio/video player, below), `message.rs`.
 
 ```rust
 pub trait ContentView: Any {
@@ -232,6 +232,8 @@ pub trait ContentView: Any {
     fn handle_event(&mut self, app: &mut App, h: Handle, ev: &Event, area: Rect) -> Outcome;  // keys after Tab; mouse
     fn shown(&mut self, app: &mut App, h: Handle, area: Rect);     // upload images, start timers / playback
     fn resized(&mut self, app: &mut App, h: Handle, area: Rect);
+    fn leaving(&mut self, app: &mut App);                          // another file is loading: stop the sound
+    fn play(&mut self, app: &mut App, h: Handle);                  // play-next moved on to this file
     fn clear(&mut self, app: &mut App);                            // remove images, cancel timers, stop playback
     fn text(&self) -> Option<String>;                              // tests
     fn as_any(&self) -> &dyn Any;  fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -242,14 +244,26 @@ h.with::<MyContent, _>(app, |view, app, area| …);
 
 Loading is two steps: `views::prepare(PreviewData) -> Prepared` runs on the
 worker (put expensive preparation there), `views::make(Prepared, &VPath)`
-builds the view on the UI thread. **The media player's slot:**
-`Prepared::Media(MediaData)` is passed through and `make` shows a message
-for it for now; the player view replaces that one arm (a new
-`features/preview/media.rs`). Its settings go in `Settings.extra` as
-`preview.media.<key>` (`oc_media::MediaPrefs`), video frames go through the
-image store (`set` on one key), `shown` / `clear` start and stop playback.
-For "play the next file" the view needs a way to ask the pane to move the
-other panel's cursor (add it to the pane then).
+builds the view on the UI thread. Two more `ContentView` hooks, both with
+no-op defaults: `leaving(app)` (the pane started loading another file while
+this view stays shown: stop the sound) and `play(app, h)` (start playback).
+
+**The media player: `media.rs`** (+ `media_paint.rs`, pixel painting with
+fill rects). `shown` opens an `oc_media::Player` (and, for audio, a
+`WaveformAnalyzer`) with a waker that `tasks.post`s one wake-up at a time to
+`pump` (events, latest video frame). Timers run only while something moves:
+the spectrum at 60 fps while playing or falling, the video frame timer at
+`Player::next_frame_in` while playing. Video frames go into the image store
+under one key (`impl Pixels for oc_media::VideoFrame`, no copy). `clear`
+drops player and analyzer (neither waits for its threads). Mute/autoplay
+live in `Settings.extra` `preview.media.muted` / `preview.media.autoplay`;
+`media::settings_changed` (an `on_settings_changed` hook) makes shown
+players follow mute and `play_next` (looping). At the end of a file the view
+calls `preview::finished_playing` (`app.later`), which moves the other
+panel's cursor to the next file the same previewer scores and sets the
+pane's `play_when_shown`; the pane calls `play` once that file is shown.
+`MediaOptions` (an app state) picks the audio output: tests and
+`--screenshot` call `media::silence(app)`.
 
 ## Dialogs: `modal.rs`, `dialogs/`
 
@@ -350,7 +364,8 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 
 * `orchard-commander [LEFT] [RIGHT]`.
 * `--self-test`: renderer (offscreen GPU device), fonts, archive opener on a
-  tiny zip, syntect, PDFium (loads and renders a page), config dir. Exit 0
+  tiny zip, syntect, PDFium (loads and renders a page), FFmpeg (probes and
+  decodes a 2 s MP3), config dir. Exit 0
   when all pass. CI runs it.
 * `--screenshot OUT.png [--size COLSxROWS] [--scale F] [--keys "Down Space F5"]
   [LEFT] [RIGHT]`: headless app with the user's settings (nothing written),

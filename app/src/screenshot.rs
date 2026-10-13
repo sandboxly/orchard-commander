@@ -20,6 +20,7 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     cfg.persist = false;
     cfg.clipboard = Box::new(oc_ui::clipboard::MemoryClipboard::default());
     let mut app = App::new(cfg);
+    oc_ui::features::preview::media::silence(&mut app); // previews play, but not out loud
     let (cols, rows) = args.size;
     app.resize(MAIN_WINDOW, cols, rows);
     let created = t0.elapsed();

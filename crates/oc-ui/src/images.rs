@@ -24,7 +24,7 @@ use oc_grid::{Frame, GridRenderer, ImageId};
 use crate::app::App;
 
 /// Straight (not premultiplied) RGBA8, `width * height * 4` bytes, rows top
-/// to bottom. Implemented for `Vec<u8>` and rendered PDF pages, so their
+/// to bottom. Implemented for `Vec<u8>`, rendered PDF pages and video frames, so their
 /// buffers go into the store as they are.
 pub trait Pixels: Send + Sync {
     fn rgba(&self) -> &[u8];
@@ -37,6 +37,12 @@ impl Pixels for Vec<u8> {
 }
 
 impl Pixels for oc_preview::RenderedPage {
+    fn rgba(&self) -> &[u8] {
+        &self.rgba
+    }
+}
+
+impl Pixels for oc_media::VideoFrame {
     fn rgba(&self) -> &[u8] {
         &self.rgba
     }

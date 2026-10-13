@@ -49,6 +49,14 @@ pub trait ContentView: Any {
     /// The pane changed size (window resized, font zoomed, chips row shown).
     fn resized(&mut self, _app: &mut App, _h: Handle, _area: Rect) {}
 
+    /// The pane started loading another file (or this one again); the
+    /// view stays shown until the next one is ready. Stop the sound.
+    fn leaving(&mut self, _app: &mut App) {}
+
+    /// Start playing (the pane moved on to this file at the end of the
+    /// previous one).
+    fn play(&mut self, _app: &mut App, _h: Handle) {}
+
     /// Replaced or the pane closed: remove images from the store, cancel
     /// timers, stop playback. The view is dropped right after.
     fn clear(&mut self, _app: &mut App) {}
@@ -85,7 +93,7 @@ pub enum Prepared {
     Image(super::image::ImagePrep),
     Pdf(PdfData),
     Message(String),
-    /// Audio and video: the player view's slot.
+    /// Audio and video: the player ([`super::media`]) opens it when shown.
     Media(MediaData),
 }
 
@@ -111,10 +119,6 @@ pub fn make(prepared: Prepared, path: &VPath) -> Box<dyn ContentView> {
         Prepared::Image(i) => Box::new(super::image::ImageView::new(i, path.clone())),
         Prepared::Pdf(p) => Box::new(super::pdf::PdfView::new(p)),
         Prepared::Message(m) => Box::new(super::message::MessageView::new(m, None)),
-        // The media player view plugs in here.
-        Prepared::Media(m) => Box::new(super::message::MessageView::new(
-            format!("{}\n\nPlaying audio and video is not available in this version yet.", m.name),
-            None,
-        )),
+        Prepared::Media(m) => Box::new(super::media::MediaView::new(m, path.clone())),
     }
 }
