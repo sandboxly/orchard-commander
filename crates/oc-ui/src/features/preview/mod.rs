@@ -23,6 +23,7 @@ pub mod media;
 mod media_paint;
 pub mod message;
 pub mod pdf;
+pub mod select;
 pub mod text;
 pub mod views;
 
@@ -277,6 +278,11 @@ impl PreviewView {
 
     fn area(&self, app: &App, side: usize) -> Rect {
         self.split(main_window::layout(app).frames[side]).1
+    }
+
+    /// Where the content goes when the pane is drawn into `frame` (clicks in tests).
+    pub fn content_rect(&self, frame: Rect) -> Rect {
+        self.split(frame).1
     }
 
     /// Where chip `i` is when the pane is drawn into `frame` (clicks in tests).

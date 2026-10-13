@@ -1,7 +1,8 @@
 //! Text previews: syntax-highlighted source, plain text, hex dumps and
 //! folder/archive listings (port of `textview.py`'s plain and highlighted
 //! modes). Lines are drawn as they are (no wrapping) with a horizontal
-//! scrollbar for long ones; only the visible rows are painted.
+//! scrollbar for long ones; only the visible rows are painted. Text can be
+//! selected with the mouse and copied ([`super::select`]).
 //!
 //! Also the painting helpers the Markdown view shares: style resolution
 //! (syntax roles → the scheme's Pygments palette, theme roles → scheme
@@ -16,10 +17,11 @@ use oc_preview::{Color, StyledLine, StyledText, TextStyle, ThemeRole};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use super::select::{self, MenuChoice, RowText, Selection};
 use super::views::{ContentView, Handle};
 use crate::app::{App, Outcome};
 use crate::geom::Rect;
-use crate::input::{Event, Key, MouseKind};
+use crate::input::{Event, Key, MouseButton, MouseKind};
 use crate::theme::Colors;
 use crate::widgets::{DrawCtx, Scrollbar};
 
@@ -216,6 +218,7 @@ pub struct TextView {
     pub doc: TextDoc,
     pub top: usize,
     pub left: usize,
+    pub selection: Selection,
 }
 
 /// Where the text rows go, the horizontal scrollbar's row and the text width.
@@ -227,7 +230,46 @@ struct TextLayout {
 
 impl TextView {
     pub fn new(doc: TextDoc) -> Self {
-        TextView { doc, top: 0, left: 0 }
+        TextView { doc, top: 0, left: 0, selection: Selection::default() }
+    }
+
+    /// The selected text, tabs kept.
+    pub fn selected_text(&self) -> String {
+        self.selection.text(|r| self.doc.lines.get(r).map(|l| RowText { text: l.text.as_str().into(), lead: 0, joiner: "\n" }))
+    }
+
+    /// Mouse selection and the context menu; None if the event is neither.
+    fn mouse(&mut self, app: &mut App, h: Handle, ev: &Event, l: &TextLayout) -> Option<Outcome> {
+        let Event::Mouse(m) = ev else { return None };
+        let inside = Rect { w: l.text_w, ..l.rows }.contains(m.col, m.row);
+        match m.kind {
+            MouseKind::Down(MouseButton::Right) | MouseKind::DoubleClick(MouseButton::Right) if inside => {
+                select::context_menu(app, m, !self.selection.is_empty(), false, move |app, choice| {
+                    h.with::<TextView, _>(app, |v, app, _| match choice {
+                        MenuChoice::Copy => select::copy(app, &v.selected_text()),
+                        MenuChoice::SelectAll => v.selection.select_all(v.doc.lines.len()),
+                        MenuChoice::CopyLink => {}
+                    });
+                });
+                Some(Outcome::Consumed)
+            }
+            MouseKind::Down(MouseButton::Left) | MouseKind::DoubleClick(MouseButton::Left) if !inside => None,
+            MouseKind::Down(MouseButton::Left)
+            | MouseKind::DoubleClick(MouseButton::Left)
+            | MouseKind::Up(MouseButton::Left)
+            | MouseKind::Move => {
+                let dragging = self.selection.is_dragging();
+                let top = clamp_top(self.top, self.doc.lines.len(), l.rows.h as usize);
+                let left = self.left.min(self.doc.max_width.saturating_sub(l.text_w as usize));
+                let pos = select::pos_at(m, l.rows, top, left);
+                let lines = &self.doc.lines;
+                let changed = self.selection.mouse(m, pos, |(r, c)| lines.get(r).and_then(|l| select::word_at(&l.text, c)));
+                // Hovering changes nothing on screen.
+                let mine = changed || dragging || m.kind != MouseKind::Move;
+                Some(if mine { Outcome::Consumed } else { Outcome::Ignored })
+            }
+            _ => None,
+        }
     }
 
     fn layout(&self, area: Rect) -> TextLayout {
@@ -259,7 +301,11 @@ impl ContentView for TextView {
         let max_x = l.rows.x + l.text_w;
         for (i, line) in self.doc.lines.iter().skip(top).take(visible).enumerate() {
             let pieces = line.segments().map(|(t, ts, _)| (t, painter.style(ts, base)));
-            paint(f, l.rows.x, l.rows.y + i as u16, max_x, left, pieces);
+            let y = l.rows.y + i as u16;
+            paint(f, l.rows.x, y, max_x, left, pieces);
+            if let Some(cells) = self.selection.cells_in_row(top + i, line_width(&line.text)) {
+                select::paint(f, ctx, cells, l.rows.x, y, left, max_x);
+            }
         }
         Scrollbar { total, visible, top }.draw(f, l.rows, ctx);
         if let Some(bar) = l.hbar {
@@ -267,8 +313,17 @@ impl ContentView for TextView {
         }
     }
 
-    fn handle_event(&mut self, _app: &mut App, _h: Handle, ev: &Event, area: Rect) -> Outcome {
+    fn handle_event(&mut self, app: &mut App, h: Handle, ev: &Event, area: Rect) -> Outcome {
         let l = self.layout(area);
+        if let Some(outcome) = self.mouse(app, h, ev, &l) {
+            return outcome;
+        }
+        if let Event::Key(k) = ev
+            && select::is_copy(k)
+        {
+            select::copy(app, &self.selected_text());
+            return Outcome::Consumed;
+        }
         if scroll_event(&mut self.top, ev, self.doc.lines.len(), l.rows.h as usize) {
             return Outcome::Consumed;
         }
