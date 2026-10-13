@@ -4,7 +4,7 @@
 
 pub mod fileops;
 pub mod navigation;
-pub mod preview_stub;
+pub mod preview;
 pub mod window;
 
 use crate::commands::Registry;
@@ -12,4 +12,4 @@ use crate::commands::Registry;
 /// Every feature's registration, in the order their commands should appear
 /// (menus and the palette keep registration order within a section).
 pub const ALL: &[fn(&mut Registry)] =
-    &[crate::main_window::register, window::register, preview_stub::register, fileops::register, navigation::register];
+    &[crate::main_window::register, window::register, preview::register, fileops::register, navigation::register];

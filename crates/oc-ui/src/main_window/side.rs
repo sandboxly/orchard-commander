@@ -5,6 +5,8 @@
 //! registered with [`Registry::add_side_view`](crate::commands::Registry::add_side_view).
 //! Each side gets its own instance; its tab appears after "Files".
 
+use std::any::Any;
+
 use oc_grid::Frame;
 use oc_vfs::VPath;
 
@@ -44,6 +46,20 @@ pub trait SideView {
 
     /// The side switched away from this view (stop playback, free memory…).
     fn deactivated(&mut self, _app: &mut App, _side: usize) {}
+
+    /// The window (or the font) changed size while shown; `frame` is the
+    /// new area (render a page or image again at the new size…).
+    fn resized(&mut self, _app: &mut App, _side: usize, _frame: Rect) {}
+
+    /// The view as its own type, for [`with_view_as`] / [`view_as`] (timers
+    /// and task results reaching their view; tests). `Some(self)` to opt in.
+    fn as_any(&self) -> Option<&dyn Any> {
+        None
+    }
+
+    fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
+        None
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,4 +126,22 @@ pub fn with_view<R>(app: &mut App, side: usize, i: usize, f: impl FnOnce(&mut dy
     let r = f(view.as_mut(), app);
     app.main.sides[side].views[i] = Some(view);
     Some(r)
+}
+
+/// Run `f` with `side`'s view `id` as a `T` (see [`SideView::as_any_mut`]),
+/// taken out of the app meanwhile. None if there is no such view (or it is
+/// taken out already, i.e. `f` would re-enter it).
+pub fn with_view_as<T: 'static, R>(app: &mut App, side: usize, id: &str, f: impl FnOnce(&mut T, &mut App) -> R) -> Option<R> {
+    let i = app.main.sides[side].view_index(id)?;
+    let mut view = app.main.sides[side].views.get_mut(i)?.take()?;
+    let r = view.as_any_mut().and_then(|a| a.downcast_mut::<T>()).map(|v| f(v, app));
+    app.main.sides[side].views[i] = Some(view);
+    r
+}
+
+/// `side`'s view `id` as a `T`, shown or not (drawing helpers, tests).
+pub fn view_as<'a, T: 'static>(app: &'a App, side: usize, id: &str) -> Option<&'a T> {
+    let s = &app.main.sides[side];
+    let i = s.view_index(id)?;
+    s.views.get(i)?.as_ref()?.as_any()?.downcast_ref::<T>()
 }

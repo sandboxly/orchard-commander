@@ -8,11 +8,13 @@
 mod input;
 mod message;
 mod picker;
+mod popup;
 mod progress;
 
 pub use input::InputBox;
 pub use message::MessageBox;
 pub use picker::{Picker, PickerItem, fuzzy_score};
+pub use popup::PopupMenu;
 pub use progress::{ProgressBox, ProgressState};
 
 use oc_grid::Frame;

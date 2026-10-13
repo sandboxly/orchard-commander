@@ -20,6 +20,7 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     cfg.persist = false;
     cfg.clipboard = Box::new(oc_ui::clipboard::MemoryClipboard::default());
     let mut app = App::new(cfg);
+    oc_ui::features::preview::media::silence(&mut app); // previews play, but not out loud
     let (cols, rows) = args.size;
     app.resize(MAIN_WINDOW, cols, rows);
     let created = t0.elapsed();
@@ -47,11 +48,14 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     let m = renderer.renderer().metrics();
     app.cell_px = (m.width as f32, m.height as f32);
     app.resize(MAIN_WINDOW, cols, rows);
+    // Views that render at the pane's pixel size (PDF pages) do it again.
+    wait_for_listings(&mut app, Duration::from_secs(60));
     let mut frame = Frame::new(cols, rows, app.theme.colors.background);
     let t_draw = Instant::now();
     app.draw(MAIN_WINDOW, &mut frame, app.cell_px);
     let drawn = t_draw.elapsed();
     let t_render = Instant::now();
+    oc_ui::images::ImageSync::default().sync(&app, &frame, renderer.renderer());
     let image = match renderer.render(&frame) {
         Ok(i) => i,
         Err(e) => {
@@ -81,14 +85,28 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Process task results until both panels are listed; returns how long it took.
+/// Timers due within this are waited for (debounced loads like the preview's).
+const SHORT_TIMER: Duration = Duration::from_millis(500);
+/// How long timers are waited for once nothing else is.
+const TIMER_BUDGET: Duration = Duration::from_secs(2);
+
+/// Process task results until both panels are listed, no background job is
+/// pending and no timer is about to fire; returns how long it took.
 fn wait_for_listings(app: &mut App, timeout: Duration) -> Duration {
     let t0 = Instant::now();
+    let mut idle_since: Option<Instant> = None;
     while t0.elapsed() < timeout {
         app.process_tasks();
         app.tick(Instant::now());
-        if app.tasks.pending() == 0 && app.main.sides.iter().all(|s| !s.panel.loading()) {
-            break;
+        let idle = app.tasks.pending() == 0 && app.main.sides.iter().all(|s| !s.panel.loading());
+        if idle {
+            // Only timers left: wait for them a moment, not for ever (an
+            // animation reschedules its timer endlessly).
+            let since = *idle_since.get_or_insert_with(Instant::now);
+            let timer_soon = app.next_deadline().is_some_and(|t| t <= Instant::now() + SHORT_TIMER);
+            if !timer_soon || since.elapsed() > TIMER_BUDGET {
+                break;
+            }
         }
         std::thread::sleep(Duration::from_millis(1));
     }

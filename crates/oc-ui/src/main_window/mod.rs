@@ -30,7 +30,7 @@ use crate::menus::{self, Menu, MenuBar};
 use crate::panel::{self, FilePanel, LoadOptions, PanelAction};
 use crate::widgets::boxframe::{draw_tabs, tab_at};
 use crate::widgets::{DrawCtx, Tab, fill, put, width};
-pub use side::{Side, SideMode, SideView, with_view};
+pub use side::{Side, SideMode, SideView, view_as, with_view, with_view_as};
 
 pub const SIDE_NAMES: [&str; 2] = ["left", "right"];
 
@@ -144,6 +144,12 @@ pub(crate) fn start(app: &mut App) {
 
 pub(crate) fn resized(app: &mut App, _cols: u16, _rows: u16) {
     sync_rows(app);
+    let frames = layout(app).frames;
+    for (side, frame) in frames.into_iter().enumerate() {
+        if let SideMode::View(i) = app.main.sides[side].mode {
+            with_view(app, side, i, |v, app| v.resized(app, side, frame));
+        }
+    }
 }
 
 /// A panel went somewhere else: remember the folder, tell the views.

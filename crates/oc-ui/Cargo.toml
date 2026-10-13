@@ -9,9 +9,13 @@ oc-vfs.workspace = true
 oc-local.workspace = true
 oc-config.workspace = true
 oc-grid.workspace = true
+oc-preview = { workspace = true, features = ["media"] }
+oc-media = { path = "../oc-media" }
+serde_json = "1.0"
+image = { version = "0.25.6", default-features = false }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
-arboard = { version = "3.6", default-features = false }
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
 log = "0.4"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
@@ -19,3 +23,4 @@ unicode-width = "0.2.2"
 [dev-dependencies]
 tempfile.workspace = true
 oc-archive.workspace = true
+oc-pdf = { path = "../oc-pdf", features = ["testing"] }

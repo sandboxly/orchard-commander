@@ -41,6 +41,8 @@ struct Win {
     last_cell: (u16, u16),
     scroll_px: f64,
     ime_allowed: bool,
+    /// Which of the app's images this window's renderer has.
+    images: oc_ui::images::ImageSync,
 }
 
 impl Win {
@@ -189,6 +191,7 @@ impl Platform {
             last_cell: (u16::MAX, u16::MAX),
             scroll_px: 0.0,
             ime_allowed: false,
+            images: Default::default(),
         };
         let cell = win.cell_px();
         let app = self.app();
@@ -306,6 +309,7 @@ impl Platform {
         let t_draw = Instant::now();
         app.draw(w.id, &mut w.frame, cell);
         let t_render = Instant::now();
+        w.images.sync(app, &w.frame, w.gpu.renderer_mut());
         let rendered = w.gpu.render(&w.frame);
         if self.timing && !self.first_frame {
             eprintln!(
