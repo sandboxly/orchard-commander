@@ -3981,6 +3981,7 @@ dependencies = [
 name = "orchard-commander"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "log",
  "muda",
  "objc2 0.6.5",

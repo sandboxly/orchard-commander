@@ -19,7 +19,7 @@ use winit::keyboard::ModifiersState;
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 use winit::window::{Window, WindowId};
 
-use crate::Args;
+use crate::{Args, geometry};
 
 /// Messages to the event loop from other threads.
 #[derive(Debug, Clone)]
@@ -303,38 +303,52 @@ impl Platform {
         }
     }
 
+    /// The saved 1.x geometry (Qt's blob, see `geometry`), as of now.
+    fn previous_geometry(&mut self) -> Option<geometry::Geometry> {
+        self.app().settings.extra.get("geometry").and_then(|v| v.as_str()).and_then(geometry::decode)
+    }
+
     fn save_geometry(&mut self) {
         let Some(k) = self.win_for(MAIN_WINDOW) else { return };
         let w = &self.windows[&k].window;
         let scale = w.scale_factor();
-        let size = w.inner_size().to_logical::<f64>(scale);
-        let pos = w.outer_position().ok().map(|p| p.to_logical::<f64>(scale));
-        let mut geo = serde_json::Map::new();
-        geo.insert("width".into(), serde_json::json!(size.width.round() as i64));
-        geo.insert("height".into(), serde_json::json!(size.height.round() as i64));
-        if let Some(p) = pos {
-            geo.insert("x".into(), serde_json::json!(p.x.round() as i64));
-            geo.insert("y".into(), serde_json::json!(p.y.round() as i64));
-        }
-        let value = serde_json::Value::Object(geo);
+        let rect = |pos: Option<PhysicalPosition<i32>>, size: PhysicalSize<u32>| {
+            let p = pos.unwrap_or_default().to_logical::<f64>(scale);
+            let s = size.to_logical::<f64>(scale);
+            geometry::Rect { x: p.x.round() as i32, y: p.y.round() as i32, w: s.width.round() as i32, h: s.height.round() as i32 }
+        };
+        let frame = rect(w.outer_position().ok(), w.outer_size());
+        let client = rect(w.inner_position().ok(), w.inner_size());
+        let (maximized, full_screen) = (w.is_maximized(), w.fullscreen().is_some());
+        let screen_width = w.current_monitor().map_or(0, |m| m.size().to_logical::<f64>(m.scale_factor()).width.round() as i32);
+        // Maximized: the size to go back to is the one saved before.
+        let normal = match self.previous_geometry() {
+            Some(old) if maximized || full_screen => old.normal,
+            _ => client,
+        };
+        let value = geometry::encode(&geometry::Geometry { frame, normal, client, screen_width, maximized, full_screen });
         self.app().update_settings(move |s| {
-            s.extra.insert("window_geometry".into(), value.clone());
+            s.extra.insert("geometry".into(), value.clone().into());
         });
     }
 
-    fn saved_geometry(&mut self) -> (LogicalSize<f64>, Option<LogicalPosition<f64>>) {
-        let extra = &self.app().settings.extra;
-        let geo = extra.get("window_geometry");
-        let num = |k: &str| geo.and_then(|g| g.get(k)).and_then(|v| v.as_f64());
-        let size = match (num("width"), num("height")) {
-            (Some(w), Some(h)) if w >= 200.0 && h >= 150.0 => LogicalSize::new(w, h),
-            _ => LogicalSize::new(1280.0, 800.0),
+    /// Size, position and whether to maximize / go full screen, from the
+    /// geometry 1.x (or we) saved; 1280×800 where the system likes without.
+    fn saved_geometry(&mut self) -> (LogicalSize<f64>, Option<LogicalPosition<f64>>, bool, bool) {
+        let Some(g) = self.previous_geometry() else {
+            return (LogicalSize::new(1280.0, 800.0), None, false, false);
         };
-        let pos = match (num("x"), num("y")) {
-            (Some(x), Some(y)) => Some(LogicalPosition::new(x, y)),
-            _ => None,
+        let zoomed = g.maximized || g.full_screen;
+        let content = if zoomed { g.normal } else { g.client };
+        // The position is the frame's (title bar included), the size the content's.
+        let (dx, dy) = (g.client.x - g.frame.x, g.client.y - g.frame.y);
+        let size = if content.w >= 200 && content.h >= 150 {
+            LogicalSize::new(content.w as f64, content.h as f64)
+        } else {
+            LogicalSize::new(1280.0, 800.0)
         };
-        (size, pos)
+        let pos = LogicalPosition::new((content.x - dx) as f64, (content.y - dy) as f64);
+        (size, Some(pos), g.maximized, g.full_screen)
     }
 
     fn redraw(&mut self, key: WindowId) {
@@ -436,8 +450,17 @@ impl ApplicationHandler<AppEvent> for Platform {
         }
         let app = self.create_app();
         self.app = Some(app);
-        let (size, pos) = self.saved_geometry();
+        let (size, pos, maximized, full_screen) = self.saved_geometry();
         self.open_window(el, MAIN_WINDOW, oc_config::APP_NAME, size, pos);
+        if let Some(k) = self.win_for(MAIN_WINDOW) {
+            let w = &self.windows[&k].window;
+            if maximized {
+                w.set_maximized(true);
+            }
+            if full_screen {
+                w.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+            }
+        }
         #[cfg(target_os = "macos")]
         {
             crate::macos::set_app_icon();
