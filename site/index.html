@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Orchard Commander: a two-panel file manager for macOS, Windows and Linux</title>
-<meta name="description" content="A two-panel file manager for macOS, Windows and Linux in the tradition of Norton Commander and Total Commander. Free and open source.">
+<title>Orchard Commander: the classic two-panel workflow on macOS, Windows and Linux</title>
+<meta name="description" content="Orchard Commander is a two-panel file manager for getting file work done fast. It works the same way on every operating system, so you only learn it once.">
 <meta name="theme-color" content="#1d2021">
-<meta property="og:title" content="Orchard Commander">
-<meta property="og:description" content="A two-panel file manager for macOS, Windows and Linux in the tradition of Norton Commander and Total Commander. Free and open source.">
+<meta property="og:title" content="Orchard Commander: the classic two-panel workflow on macOS, Windows and Linux">
+<meta property="og:description" content="Orchard Commander is a two-panel file manager for getting file work done fast. It works the same way on every operating system, so you only learn it once.">
 <meta property="og:image" content="https://sandboxly.github.io/orchard-commander/screenshots/photos.webp">
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,12 +36,12 @@
 
 <main id="main">
   <section class="hero wrap">
-    <p class="kicker">Version 1.1 · free and open source</p>
-    <h1>A two-panel file manager <span>for macOS, Windows and Linux</span></h1>
-    <p class="lede">Orchard Commander shows two folders side by side. F5 copies the selected files from one panel to the other, F6 moves them, F7 creates a folder and F8 moves files to the trash. F4 opens a file in the text editor. If you have used Norton Commander or Total Commander, you already know how it works.</p>
+    <p class="kicker">Version 1.1</p>
+    <h1>The classic two-panel workflow on macOS, Windows and Linux</h1>
+    <p class="lede">Orchard Commander is a two-panel file manager for getting file work done fast. It works the same way on every operating system, so you only learn it once.</p>
     <div class="cta">
       <a class="btn btn-primary" href="#download" data-hero-dl><i class="ph ph-download-simple" aria-hidden="true"></i><span>Download</span></a>
-      <span class="mute"><a href="#download">Other systems and packages</a></span>
+      <span class="mute">Free and open source · <a href="#download">Other platforms</a></span>
     </div>
 
     <div class="stage">
@@ -74,149 +74,107 @@
             </div>
           </div>
         </div>
-        <div class="fbar" aria-hidden="true">
-          <span><b>F3</b>Preview</span><span><b>F4</b>Edit</span><span><b>F5</b>Copy</span><span><b>F6</b>Move</span><span><b>F7</b>MkDir</span><span><b>F8</b>Trash</span><span><b>F9</b>Menu</span><span><b>F10</b>Quit</span>
-          <span class="right"><span><b>⌘K</b>Connect</span><span><b>⌘P</b>Commands</span></span>
-        </div>
       </div>
     </div>
   </section>
 
   <div id="features" class="features wrap">
-    <article class="feature">
+    <section class="feature" aria-labelledby="f-window">
       <div>
-        <p class="kicker"><i class="ph ph-eye" aria-hidden="true"></i>Preview</p>
-        <h2>Preview files in the other panel</h2>
-        <p>Press F3 and the other side shows the file under the cursor: source code with syntax highlighting, Markdown, images, PDFs, audio and video. The preview changes as you move through the list. Videos and music on a server start playing while they are still loading.</p>
-        <ul class="marks"><li>Highlighting follows the app's color scheme</li><li>Turn PDF pages with the arrow keys or the scroll wheel</li><li>Files of any other type open in a hex view</li></ul>
+        <h2 id="f-window">All your file work in one window</h2>
+        <p>Source and destination sit side by side, so copying or moving takes one keystroke. Previews, archives, servers, batch renaming and a terminal are built in, and you rarely need to open another app.</p>
       </div>
-      <button class="frame shot" type="button" data-name="code.webp" aria-label="Enlarge screenshot: code preview">
-        <span class="chip">Preview</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-        <img src="screenshots/code.webp" alt="A Python file previewed with syntax highlighting" loading="lazy">
+      <button class="frame shot" type="button" data-name="terminal.webp" aria-label="Enlarge screenshot: panels with a terminal">
+        <span class="chip">Panels and terminal</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
+        <img src="screenshots/terminal.webp" alt="Two file panels with a terminal below them, showing grep output" loading="lazy" width="2880" height="1720">
       </button>
-    </article>
+    </section>
 
-    <article class="feature">
-      <div>
-        <p class="kicker"><i class="ph ph-pencil-simple-line" aria-hidden="true"></i>Editor</p>
-        <h2>Edit text files with F4</h2>
-        <p>F4 opens the file under the cursor in an editor window with syntax highlighting in the app's color scheme. It works on your disk and on servers: a file in an SFTP panel is read over SFTP and saved back there. <kbd>⇧F4</kbd> creates a new file in the current folder.</p>
-        <ul class="marks"><li>Find and replace, go to line, unlimited undo</li><li>Keeps the file's encoding and line endings, including CRLF</li><li>Saves to a temporary file first, so a crash can't leave half a file</li></ul>
-      </div>
-      <button class="frame shot" type="button" data-name="editor.webp" aria-label="Enlarge screenshot: text editor">
-        <span class="chip">Editor</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-        <img src="screenshots/editor.webp" alt="The text editor showing a Python file with syntax highlighting and the search bar" loading="lazy">
-      </button>
-    </article>
+    <section class="platforms" aria-labelledby="f-platforms">
+      <h2 id="f-platforms">Same workflow on macOS, Windows and Linux</h2>
+      <p>Orchard Commander looks and behaves the same on all three systems. Shortcuts and layout don't change, so switching between machines doesn't mean relearning anything.</p>
+      <ul class="os-list" aria-label="Supported systems">
+        <li class="frame">macOS</li>
+        <li class="frame">Windows</li>
+        <li class="frame">Linux</li>
+      </ul>
+    </section>
 
-    <article class="feature">
+    <section class="keys" aria-labelledby="f-keys">
       <div>
-        <p class="kicker"><i class="ph ph-magnifying-glass" aria-hidden="true"></i>Find files</p>
-        <h2>Search results open as a folder</h2>
-        <p>Alt+F7 or <kbd>⌘F</kbd> searches by name, content, size and date, on your disk, on servers and inside zip files. Matches appear in the panel as a folder while the search is still running. You can preview them, mark them all with <kbd>+</kbd> and move them elsewhere with F6.</p>
-        <ul class="marks"><li><code>*.py;*.md</code> finds Python and Markdown files</li><li><code>*.zip|*old*</code> finds zip files without “old” in the name</li><li>Content search can also list the files that lack a phrase</li></ul>
+        <h2 id="f-keys">Shortcuts you may already know</h2>
+        <p>Copy, move, rename and search each have their own key, as in classic two-panel file managers. If that style is new to you, the common keys are quick to learn, and the mouse works too.</p>
       </div>
-      <button class="frame shot" type="button" data-name="find-files.webp" aria-label="Enlarge screenshot: search results">
-        <span class="chip">Find files</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-        <img src="screenshots/find-files.webp" alt="Search results for files containing TODO, shown as a folder with a preview of one hit" loading="lazy">
-      </button>
-    </article>
+      <div class="fbar" aria-hidden="true">
+        <span><b>F3</b>Preview</span><span><b>F4</b>Edit</span><span><b>F5</b>Copy</span><span><b>F6</b>Move</span><span><b>F7</b>MkDir</span><span><b>F8</b>Trash</span><span><b>F9</b>Menu</span><span><b>F10</b>Quit</span>
+      </div>
+    </section>
 
-    <article class="feature">
-      <div>
-        <p class="kicker"><i class="ph ph-textbox" aria-hidden="true"></i>Multi-rename</p>
-        <h2>Rename many files with one pattern</h2>
-        <p><kbd>⌘M</kbd> opens a multi-rename tool that uses Total Commander's placeholders: <code>[N]</code> for the old name, <code>[C]</code> for a counter, <code>[Y]-[M]-[D]</code> for the date. It also reads metadata, such as the artist of an MP3 or the date a photo was taken. You see every new name before you start, and <kbd>⌘Z</kbd> undoes the whole batch.</p>
-        <ul class="marks"><li><code>IMG_[C:4]</code> gives IMG_0001.jpg, IMG_0002.jpg and so on</li><li><code>[=track] [=artist] - [=title]</code> names songs from their tags</li><li>Duplicate names are caught before anything is renamed</li></ul>
-      </div>
-      <button class="frame shot" type="button" data-name="multi-rename.webp" aria-label="Enlarge screenshot: multi-rename dialog">
-        <span class="chip">Multi-rename</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-        <img src="screenshots/multi-rename.webp" alt="The multi-rename dialog renaming six music files from their tags" loading="lazy">
-      </button>
-    </article>
-
-    <article class="feature">
-      <div>
-        <p class="kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i>Terminal</p>
-        <h2>A shell below the panels</h2>
-        <p><kbd>⌘J</kbd> opens your usual shell under the panels: zsh, bash, fish or PowerShell. Each side has its own session. When you type <code>cd</code>, the panel goes to the same folder, and when you change folders in the panel, the shell follows. vim, htop and tmux work, including the mouse.</p>
-        <ul class="marks"><li>Prompt themes like powerlevel10k keep their icons</li><li>Files you delete with <code>rm</code> disappear from the panel</li><li>Esc, Tab and Ctrl+C go to the shell</li></ul>
-      </div>
-      <button class="frame shot" type="button" data-name="terminal.webp" aria-label="Enlarge screenshot: terminal">
-        <span class="chip">Terminal</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-        <img src="screenshots/terminal.webp" alt="The terminal panel below both file panels, showing grep output" loading="lazy">
-      </button>
-    </article>
-
-    <article class="feature">
-      <div>
-        <p class="kicker"><i class="ph ph-file-zip" aria-hidden="true"></i>Archives &amp; servers</p>
-        <h2>Archives and servers open in a panel</h2>
-        <p>Press Enter on a zip, tar, 7z or rar file to look inside, even if it is inside another archive, and copy out what you need. Connections to SFTP, SMB, WebDAV and S3 servers open in a panel and work with the same keys as your disk. Passwords are stored in the system keychain.</p>
-        <ul class="marks"><li>Bookmarks can point to folders on servers</li><li>Copy from a server straight into a folder on another server</li><li>Archives are read-only</li></ul>
-      </div>
-      <div class="app small" data-filelist role="group" aria-label="Interactive demo: browsing inside a zip archive">
-        <div class="app-panes">
-          <div class="pane">
-            <div class="frame active">
-              <span class="chip">sweden-2026.zip/west-coast</span>
-              <ul class="files live" role="listbox" tabindex="0" aria-label="Files in sweden-2026.zip/west-coast">
-                <li id="z0" role="option" class="cols dir" data-name=".." aria-selected="false"><span>..</span><span>&lt;UP&gt;</span><span></span></li>
-                <li id="z1" role="option" class="cols" data-name="forest-ravine.jpeg" data-src="photos/forest-ravine.webp" data-meta="2048×1536 · JPEG · 3.9 M" data-alt="A wooden stairway descending through pine forest to a lake between cliffs" aria-selected="false"><span>forest-ravine.jpeg</span><span>3.9 M</span><span>2026-09-14 16:02</span></li>
-                <li id="z2" role="option" class="cols" data-name="gamla-stan.jpeg" data-src="photos/gamla-stan.webp" data-meta="2048×1536 · JPEG · 4.6 M" data-alt="Colourful gabled houses on Stortorget in Gamla Stan, Stockholm" aria-selected="false"><span>gamla-stan.jpeg</span><span>4.6 M</span><span>2026-08-22 11:37</span></li>
-                <li id="z3" role="option" class="cols" data-name="red-cottage.jpeg" data-src="photos/red-cottage.webp" data-meta="1024×768 · JPEG · 2.1 M" data-alt="A red wooden cottage under oak trees at sunset" aria-selected="false"><span>red-cottage.jpeg</span><span>2.1 M</span><span>2026-08-03 20:48</span></li>
-                <li id="z4" role="option" class="cols" data-name="west-coast.png" data-src="photos/west-coast.webp" data-meta="1024×768 · PNG · 4.6 M" data-alt="Smooth granite rocks along the Swedish west coast" aria-selected="true"><span>west-coast.png</span><span>4.6 M</span><span>2026-07-19 13:05</span></li>
-              </ul>
-              <span class="chip chip-end">zip · 15.2 M</span>
-            </div>
+    <section class="tools" aria-labelledby="f-tools">
+      <h2 id="f-tools">Tools that save a trip to another app</h2>
+      <div class="tool-grid">
+        <article class="frame tool tool-wide">
+          <div class="tool-text">
+            <h3>Previews</h3>
+            <p>Code, Markdown, PDFs, images, audio and video show up in the other panel, including files on a server.</p>
           </div>
-          <div class="pane">
-            <div class="frame">
-              <span class="chip" data-preview-title>west-coast.png</span>
-              <div class="preview" data-preview aria-live="polite"><img src="photos/west-coast.webp" alt="Smooth granite rocks along the Swedish west coast"></div>
-              <span class="chip chip-end" data-preview-meta>1024×768 · PNG · 4.6 M</span>
-            </div>
+          <div class="tool-shots">
+            <button class="shot" type="button" data-name="code.webp" aria-label="Enlarge screenshot: code preview">
+              <img src="screenshots/code.webp" alt="A Python file previewed with syntax highlighting" loading="lazy" width="2880" height="1720">
+            </button>
+            <button class="shot" type="button" data-name="pdf.webp" aria-label="Enlarge screenshot: PDF preview">
+              <img src="screenshots/pdf.webp" alt="A PDF report previewed next to the Documents folder" loading="lazy" width="2880" height="1720">
+            </button>
+            <button class="shot" type="button" data-name="audio.webp" aria-label="Enlarge screenshot: audio preview">
+              <img src="screenshots/audio.webp" alt="Playing an MP3 with a live spectrum and the waveform of the whole track" loading="lazy" width="2880" height="1720">
+            </button>
           </div>
-        </div>
+        </article>
+        <article class="frame tool">
+          <h3>Batch rename</h3>
+          <p>Name files by date, counter or music tags. You see every new name before it's applied and can undo the whole batch.</p>
+          <button class="shot" type="button" data-name="multi-rename.webp" aria-label="Enlarge screenshot: batch rename">
+            <img src="screenshots/multi-rename.webp" alt="The batch rename dialog renaming six music files from their tags" loading="lazy" width="3840" height="2000">
+          </button>
+        </article>
+        <article class="frame tool">
+          <h3>Search</h3>
+          <p>Results appear as a folder, so you can preview, select and move them together.</p>
+          <button class="shot" type="button" data-name="find-files.webp" aria-label="Enlarge screenshot: search results">
+            <img src="screenshots/find-files.webp" alt="Search results for files containing TODO, shown as a folder with a preview of one hit" loading="lazy" width="2880" height="1720">
+          </button>
+        </article>
+        <article class="frame tool">
+          <h3>Archives and servers</h3>
+          <p>Zip, 7z and rar files open like folders. SFTP, SMB, WebDAV and S3 work like your local disk.</p>
+          <button class="shot" type="button" data-name="archive.webp" aria-label="Enlarge screenshot: browsing a zip archive">
+            <img src="screenshots/archive.webp" alt="Photos inside a zip archive listed like a folder, with one of them previewed" loading="lazy" width="2880" height="1720">
+          </button>
+        </article>
+        <article class="frame tool">
+          <h3>Terminal</h3>
+          <p>It opens below the panels in the current folder and follows along as you browse.</p>
+        </article>
       </div>
-    </article>
+    </section>
 
-    <div class="gallery">
-      <figure>
-        <button class="frame shot" type="button" data-name="audio.webp" aria-label="Enlarge screenshot: audio preview">
-          <span class="chip">audio.webp</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-          <img src="screenshots/audio.webp" alt="Playing an MP3 with a live spectrum and the waveform of the whole track" loading="lazy">
-        </button>
-        <figcaption>Audio preview with a spectrum and the waveform of the track</figcaption>
-      </figure>
-      <figure>
-        <button class="frame shot" type="button" data-name="pdf.webp" aria-label="Enlarge screenshot: PDF preview">
-          <span class="chip">pdf.webp</span><span class="zoom ph ph-arrows-out" aria-hidden="true"></span>
-          <img src="screenshots/pdf.webp" alt="A PDF report previewed next to the Documents folder" loading="lazy">
-        </button>
-        <figcaption>PDF preview</figcaption>
-      </figure>
-    </div>
-
-    <div class="facts">
-      <div class="frame fact"><span class="chip">Keys and mouse</span><i class="ph ph-keyboard" aria-hidden="true"></i><p>Most commands have a shortcut, and the command palette on <kbd>⌘P</kbd> finds the ones you forget. You can also do everything with the mouse.</p></div>
-      <div class="frame fact"><span class="chip">Color schemes</span><i class="ph ph-brackets-square" aria-hidden="true"></i><p>Eight schemes are built in, gruvbox among them, and you can add your own. The app can switch with the system between light and dark.</p></div>
-      <div class="frame fact"><span class="chip">Three systems</span><i class="ph ph-devices" aria-hidden="true"></i><p>The same app runs on macOS, Windows and Linux. The shortcuts are the same too, with ⌘ in place of Ctrl on a Mac.</p></div>
-      <div class="frame fact"><span class="chip">Open source</span><i class="ph ph-git-branch" aria-hidden="true"></i><p>Orchard Commander is MIT licensed. Add-ons can bring new previews, connection types and rename fields.</p></div>
-    </div>
+    <section class="why" aria-labelledby="f-why">
+      <h2 id="f-why">Made for working across systems</h2>
+      <p>Orchard Commander is meant for people who use more than one operating system and want to manage files the same way on each of them. It is free and open source, and the source code is on <a href="https://github.com/sandboxly/orchard-commander">GitHub</a>.</p>
+    </section>
   </div>
 
   <section id="download" class="download" aria-labelledby="dl-title">
     <div class="wrap">
       <p class="kicker">Version 1.1.1</p>
-      <h2 id="dl-title">Download</h2>
+      <h2 id="dl-title">Download Orchard Commander</h2>
       <div class="dl-grid">
         <div class="frame dl" data-os="macos" data-label="macOS">
           <span class="chip">macOS</span><span class="badge">Your system</span>
           <i class="ph ph-apple-logo" aria-hidden="true"></i>
           <p class="req">Apple silicon · macOS 14 or later</p>
           <div class="actions">
-            <a class="btn" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg"><span>Signed and notarized disk image</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
+            <a class="btn btn-primary" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg"><span>Download for macOS</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
             <span class="file">Orchard-Commander-macOS.dmg</span>
             <div class="cmd"><code id="brew">brew install --cask sandboxly/tap/orchard-commander</code><button type="button" data-copy="brew" aria-label="Copy command"><i class="ph ph-copy" aria-hidden="true"></i></button></div>
           </div>
@@ -226,7 +184,7 @@
           <i class="ph ph-windows-logo" aria-hidden="true"></i>
           <p class="req">Windows 10 and 11 · 64-bit</p>
           <div class="actions">
-            <a class="btn" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe"><span>Installer</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
+            <a class="btn btn-primary" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe"><span>Download for Windows</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
             <span class="file">Orchard-Commander-Setup.exe</span>
             <div class="alts"><span>Also:</span><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip">Portable .zip</a></div>
           </div>
@@ -236,13 +194,13 @@
           <i class="ph ph-linux-logo" aria-hidden="true"></i>
           <p class="req">x86-64 · Ubuntu 22.04, Fedora 36, Debian 12 or newer</p>
           <div class="actions">
-            <a class="btn" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage"><span>AppImage</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
+            <a class="btn btn-primary" data-primary href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage"><span>Download for Linux</span><i class="ph ph-download-simple" aria-hidden="true"></i></a>
             <span class="file">Orchard-Commander-Linux-x86_64.AppImage</span>
             <div class="alts"><span>Also:</span><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb">.deb</a><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm">.rpm</a><a href="https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz">.tar.gz</a></div>
           </div>
         </div>
       </div>
-      <p class="dl-note">Release notes and earlier versions are on <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. The <a href="manual/01-getting-started.html">getting started guide</a> covers installation and the first steps.</p>
+      <p class="dl-note">Release notes and older versions are on <a href="https://github.com/sandboxly/orchard-commander/releases">GitHub</a>. The <a href="manual/01-getting-started.html">getting started guide</a> covers installation and the first steps.</p>
     </div>
   </section>
 </main>

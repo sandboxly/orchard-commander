@@ -44,9 +44,13 @@
     show(cur);
   });
 
-  // Highlight the visitor's platform.
-  const ua = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '').toLowerCase();
-  const os = ua.includes('win') ? 'windows' : (ua.includes('linux') || ua.includes('x11')) && !ua.includes('android') ? 'linux' : ua.includes('mac') ? 'macos' : null;
+  // Highlight the visitor's platform and point the hero button at its download.
+  // Phones and tablets get the plain "Download" link (Android reports Linux,
+  // iPads can report MacIntel).
+  const agent = (navigator.userAgent || '').toLowerCase();
+  const mobile = navigator.userAgentData?.mobile || /android|iphone|ipad|ipod/.test(agent) || (navigator.maxTouchPoints > 1 && /mac/.test(agent));
+  const ua = (navigator.userAgentData?.platform || navigator.platform || agent).toLowerCase();
+  const os = mobile ? null : ua.includes('win') ? 'windows' : ua.includes('mac') ? 'macos' : ua.includes('linux') || ua.includes('x11') ? 'linux' : null;
   if (os) {
     const card = document.querySelector(`.dl[data-os="${os}"]`);
     card?.classList.add('active');

@@ -101,37 +101,48 @@ kbd { display: inline-block; font-size: 0.8em; line-height: 1.5; padding: 0 6px;
 .preview img { max-height: 320px; width: auto; border-radius: 2px; }
 .preview .folder-info { color: var(--dir); text-align: center; display: grid; gap: 6px; justify-items: center; }
 .preview .folder-info i { font-size: 40px; }
-.fbar { display: flex; flex-wrap: wrap; gap: 0 18px; padding: 4px 12px; background: var(--bar-bg); color: var(--bar-fg); }
+
+/* F-key bar (decoration in "Shortcuts you may already know") */
+.fbar { display: flex; flex-wrap: wrap; gap: 0 18px; padding: 4px 12px; background: var(--bar-bg); color: var(--bar-fg); font: 400 13px/1.6 var(--mono); border-radius: var(--r); }
 .fbar b { color: var(--bar-key); font-weight: 700; margin-right: 6px; }
-.fbar .right { margin-left: auto; display: flex; gap: 18px; }
-.app.small .pane .frame { min-height: 260px; padding-top: 16px; }
-.app.small .app-panes { padding-top: 14px; }
-.app.small .preview img { max-height: 220px; }
-.app.small .cols { grid-template-columns: minmax(0, 1fr) 8ch; }
-.app.small .cols > :nth-child(3) { display: none; }
 
 /* features */
-.features { padding-top: 120px; padding-bottom: 40px; display: grid; gap: 112px; }
+.features { padding-top: 120px; padding-bottom: 40px; display: grid; gap: 120px; }
+.features h2 { font-size: clamp(24px, 3vw, 32px); margin: 0 0 16px; }
 .feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; }
-.feature h2 { font-size: clamp(24px, 3vw, 32px); margin: 14px 0 16px; }
-.feature p { color: var(--text); }
-.marks { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 8px; font: 400 14px/1.5 var(--mono); }
-.marks li { display: flex; gap: 10px; align-items: baseline; }
-.marks li::before { content: "›"; color: var(--accent); font-weight: 700; }
 .shot { display: block; width: 100%; padding: 14px 10px 10px; cursor: zoom-in; font: inherit; color: inherit; text-align: left; }
 .shot:hover { border-color: color-mix(in srgb, var(--border-active) 60%, var(--border)); }
 .shot img { width: 100%; height: auto; border-radius: 2px; }
 .shot .zoom { position: absolute; right: 10px; top: 0; transform: translateY(-50%); padding: 0 6px; background: var(--surface); color: var(--mute); font-size: 14px; line-height: 1.4; }
-.gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 32px; }
-.gallery figure { margin: 0; display: grid; gap: 12px; }
-.gallery figcaption { font: 400 13px var(--mono); color: var(--mute); }
 
-/* facts */
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 28px 20px; padding-top: 16px; }
-.fact { padding: 26px 20px 20px; display: grid; gap: 8px; align-content: start; background: transparent; }
-.fact i { font-size: 22px; color: var(--accent); }
-.fact p { font-size: 15px; color: var(--text); }
-.fact .chip { background: var(--bg); }
+/* same workflow everywhere: centred, with plain system labels */
+.platforms { max-width: 720px; margin: 0 auto; text-align: center; }
+.platforms p { font-size: 17px; }
+.os-list { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin: 32px 0 0; padding: 0; }
+.os-list li { padding: 8px 22px; font: 500 14px/1.4 var(--mono); color: var(--text); background: transparent; }
+
+/* shortcuts: the F-key bar left of the text (the first section has its picture on the right) */
+.keys { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: center; }
+.keys .fbar { order: -1; }
+.keys .fbar { justify-content: center; padding: 14px 18px; gap: 10px 20px; font-size: 15px; border: 1px solid var(--border); }
+
+/* tools grid */
+.tools > h2 { margin-bottom: 36px; }
+.tool-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.tool { padding: 22px 20px 20px; display: flex; flex-direction: column; gap: 10px; background: transparent; }
+.tool h3 { font-size: 17px; font-weight: 700; color: var(--text); }
+.tool p { font-size: 15px; }
+.tool > .shot, .tool-shots .shot { padding: 0; margin-top: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); overflow: hidden; }
+.tool > .shot { margin-top: 8px; }
+.tool-wide { grid-column: span 2; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 24px; align-items: start; }
+.tool-text { display: grid; gap: 10px; }
+.tool-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tool-shots .shot:first-child { grid-column: span 2; }
+
+/* made for working across systems: a short statement with an accent rule */
+.why { max-width: 760px; margin: 0 auto; width: 100%; padding: 4px 0 4px 26px; border-left: 3px solid var(--accent); }
+.why h2 { font-size: clamp(22px, 2.6vw, 28px); }
+.why p { font-size: clamp(17px, 1.8vw, 19px); line-height: 1.65; }
 
 /* download */
 .download { margin-top: 96px; padding: 88px 0 96px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface); }
@@ -172,23 +183,30 @@ kbd { display: inline-block; font-size: 0.8em; line-height: 1.5; padding: 0 6px;
 .lightbox .close { position: absolute; right: 10px; top: 0; transform: translateY(-50%); border: 0; background: var(--surface); color: var(--text); font: 500 12px var(--mono); padding: 2px 8px; cursor: pointer; border-radius: 2px; }
 .lightbox .close:hover { color: var(--accent); }
 
+@media (max-width: 960px) {
+  .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tool-wide { grid-column: 1 / -1; }
+}
 @media (max-width: 860px) {
-  .feature { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .feature, .keys { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .keys .fbar { order: 0; }
   .features { gap: 88px; padding-top: 88px; }
 }
 @media (max-width: 680px) {
   .app-panes { grid-template-columns: minmax(0, 1fr); }
   .pane .frame { min-height: 0; }
   .pane + .pane .tabs { display: none; }
-  .fbar .right { display: none; }
   .hero { padding-top: 48px; }
+  .tool-grid { grid-template-columns: minmax(0, 1fr); }
+  .tool-wide { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 480px) {
-  .wrap { padding: 0 16px; }
-  .cols { grid-template-columns: minmax(0, 1fr) 8ch; }
-  .cols > :nth-child(3) { display: none; }
+  .wrap { padding-left: 16px; padding-right: 16px; }
   .site-nav { gap: 14px; }
   .site-nav .gh-label { display: none; }
+  .keys .fbar { font-size: 13px; gap: 6px 14px; }
+  .cols { grid-template-columns: minmax(0, 1fr) 8ch; }
+  .cols > :nth-child(3) { display: none; }
   .app { font-size: 12px; }
   .tab { padding: 0 12px; }
 }
