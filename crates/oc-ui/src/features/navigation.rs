@@ -127,7 +127,7 @@ pub fn same_dir(app: &mut App) {
     panel::load(app, 1 - side, loc, LoadOptions::default());
 }
 
-/// Total Commander's Ctrl+Left / Ctrl+Right. From the other side: open the
+/// Ctrl+Left / Ctrl+Right (⌘← / ⌘→). From the other side: open the
 /// folder (or archive) under the cursor in `dest`, or that side's folder if
 /// the cursor is on a file. From `dest` itself: show the other side's folder.
 pub fn transfer(app: &mut App, dest: usize) {

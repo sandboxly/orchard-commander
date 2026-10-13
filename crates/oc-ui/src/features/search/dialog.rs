@@ -1,4 +1,4 @@
-//! The Find files dialog (Total Commander's Alt+F7; port of `ui/search_ui.py`).
+//! The Find files dialog (Alt+F7; port of `ui/search_ui.py`).
 //!
 //! Three sections like 1.x: Names (masks, RegEx, case, where, depth, kinds,
 //! hidden files, inside archives), Contents (text, RegEx, case, whole words,

@@ -1,4 +1,4 @@
-//! Bookmarks: Total Commander's Directory Hotlist (port of `bookmarks_ui.py`
+//! Bookmarks: a directory hotlist (port of `bookmarks_ui.py`
 //! and the bookmark part of `main_window.py`).
 //!
 //! * ⌘D / Ctrl+D (or a click on a panel's path): the bookmark menu

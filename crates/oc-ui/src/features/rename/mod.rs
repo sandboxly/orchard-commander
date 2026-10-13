@@ -1,4 +1,4 @@
-//! Multi-rename (Total Commander's Ctrl+M) on `oc_rename`: ⌘M opens the
+//! Multi-rename (Ctrl+M) on `oc_rename`: ⌘M opens the
 //! dialog for the marked items (or the one under the cursor), the batch runs
 //! on a worker, ⌘Z gives the last batch its old names back. Port of the
 //! multi-rename half of `main_window.py` plus `ui/rename_ui.py`.
@@ -41,7 +41,7 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
 pub fn register(reg: &mut Registry) {
     reg.add(
         Command::new("files.multi_rename", "Multi-rename", multi_rename)
-            .help("Rename marked files with a pattern: [N], [C], dates, search & replace (Total Commander: Ctrl+M)")
+            .help("Rename marked files with a pattern: [N], [C], dates, search & replace")
             .keys(&["Primary+M"])
             .menu(Menu::Files, "ops"),
     );
