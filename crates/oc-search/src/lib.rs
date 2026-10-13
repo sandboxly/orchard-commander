@@ -219,13 +219,27 @@ pub struct Hit {
     pub snippet: String,
 }
 
+/// An invalid "Search for" or "Containing" pattern.
+///
+/// Regular expressions are compiled with the `regex` crate when it accepts
+/// them (fast, linear time); look-around and back-references, which Python's
+/// `re` supports, fall back to `fancy_regex`, whose error is reported when
+/// both reject the pattern.
+#[derive(Debug, thiserror::Error)]
+pub enum PatternError {
+    #[error(transparent)]
+    Regex(#[from] regex::Error),
+    #[error(transparent)]
+    Fancy(#[from] fancy_regex::Error),
+}
+
 /// Why a search couldn't start; reported before anything is walked.
 #[derive(Debug, thiserror::Error)]
 pub enum SearchError {
     #[error("invalid name pattern: {0}")]
-    NamePattern(regex::Error),
+    NamePattern(PatternError),
     #[error("invalid text pattern: {0}")]
-    TextPattern(regex::Error),
+    TextPattern(PatternError),
     #[error("could not start the search: {0}")]
     Thread(std::io::Error),
 }

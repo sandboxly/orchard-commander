@@ -3806,6 +3806,7 @@ dependencies = [
 name = "oc-search"
 version = "0.1.0"
 dependencies = [
+ "fancy-regex",
  "indexmap",
  "memchr",
  "oc-vfs",

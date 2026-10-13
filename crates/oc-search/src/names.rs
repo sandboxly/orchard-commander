@@ -7,6 +7,8 @@
 
 use regex::{Regex, RegexBuilder};
 
+use crate::PatternError;
+
 /// Matches entry names against the "Search for" field.
 #[derive(Clone, Debug)]
 pub struct NameMatcher {
@@ -19,19 +21,24 @@ enum Kind {
     All,
     /// `re.search` semantics: the pattern may match anywhere in the name.
     Regex(Regex),
+    /// The same with look-around or back-references, which `regex` lacks.
+    Fancy(fancy_regex::Regex),
     Masks { include: Option<Regex>, exclude: Option<Regex> },
 }
 
 impl NameMatcher {
     /// `pattern` is a regular expression if `regex`, otherwise masks separated
     /// by spaces or ";" with one "|" separating included from excluded masks.
-    pub fn new(pattern: &str, regex: bool, case: bool) -> Result<Self, regex::Error> {
+    pub fn new(pattern: &str, regex: bool, case: bool) -> Result<Self, PatternError> {
         if regex {
             if pattern.trim().is_empty() {
                 return Ok(NameMatcher { kind: Kind::All });
             }
-            let re = RegexBuilder::new(pattern).case_insensitive(!case).build()?;
-            return Ok(NameMatcher { kind: Kind::Regex(re) });
+            let kind = match RegexBuilder::new(pattern).case_insensitive(!case).build() {
+                Ok(re) => Kind::Regex(re),
+                Err(_) => Kind::Fancy(fancy_regex::RegexBuilder::new(pattern).case_insensitive(!case).build()?),
+            };
+            return Ok(NameMatcher { kind });
         }
         let (include, exclude) = pattern.split_once('|').unwrap_or((pattern, ""));
         let include: Vec<&str> = split_masks(include).collect();
@@ -53,6 +60,8 @@ impl NameMatcher {
         match &self.kind {
             Kind::All => true,
             Kind::Regex(re) => re.is_match(name),
+            // Errors only mean the backtrack limit was hit: no match.
+            Kind::Fancy(re) => re.is_match(name).unwrap_or(false),
             Kind::Masks { include, exclude } => {
                 include.as_ref().is_none_or(|re| re.is_match(name))
                     && !exclude.as_ref().is_some_and(|re| re.is_match(name))
@@ -248,5 +257,17 @@ mod tests {
     fn invalid_regex_is_an_error() {
         assert!(NameMatcher::new("(", true, false).is_err());
         assert!(NameMatcher::new("(", false, false).is_ok());
+        assert!(NameMatcher::new(r"(?<=x", true, false).is_err());
+    }
+
+    #[test]
+    fn python_look_around_and_back_references() {
+        let nm = NameMatcher::new(r"^(?!report).*pdf", true, false).unwrap();
+        assert!(nm.matches("invoice.pdf"));
+        assert!(!nm.matches("Report-2026.pdf")); // case-insensitive like the rest
+        assert!(NameMatcher::new(r"(?<=v)\d", true, true).unwrap().matches("v2.txt"));
+        assert!(!NameMatcher::new(r"(?<=v)\d", true, true).unwrap().matches("x2.txt"));
+        let twice = NameMatcher::new(r"^(\w+)-\1\.", true, true).unwrap();
+        assert!(twice.matches("abc-abc.txt") && !twice.matches("abc-abd.txt"));
     }
 }
