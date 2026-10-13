@@ -133,7 +133,11 @@ fn dialog_options_build_the_query() {
     for _ in 0..4 {
         press(&mut app, Key::Tab);
     }
-    press(&mut app, Key::Right); // Depth: This folder only
+    // Choices are combo boxes as in 1.x: ↑/↓ change them without wrapping
+    // around and ←/→ do nothing, so this ends on the second option.
+    press(&mut app, Key::Up);
+    press(&mut app, Key::Right);
+    press(&mut app, Key::Down); // Depth: This folder only
     for _ in 0..4 {
         press(&mut app, Key::Tab);
     }
@@ -178,7 +182,12 @@ fn dialog_options_build_the_query() {
     for _ in 0..4 {
         press(&mut app, Key::Tab);
     }
-    press(&mut app, Key::Left); // back to All subfolders
+    press(&mut app, Key::End);
+    press(&mut app, Key::Home); // back to All subfolders
+    press(&mut app, Key::F(4)); // opens the list…
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Escape); // …which Esc closes without picking
+    assert_eq!(app.modal_titles(), ["Find files"], "F4 opened the list, Esc closed only it");
     for _ in 0..4 {
         press(&mut app, Key::Tab);
     }
@@ -194,6 +203,28 @@ fn dialog_options_build_the_query() {
     let results = wait_results(&mut app, 0);
     assert_eq!(names(&app, 0), ["docs/one.txt", "docs/two.md", "sub/c.txt"], "several roots: named below each root");
     assert_eq!(results.query().roots.len(), 2);
+}
+
+#[test]
+fn regex_options_accept_python_look_around() {
+    // 1.x compiles both patterns with Python's `re`: look-around works.
+    let e = env();
+    let mut app = app(&e);
+    press_with(&mut app, Key::Char('f'), Mods::primary());
+    type_text(&mut app, r"^(?!a).*\.txt$");
+    press(&mut app, Key::Tab);
+    press(&mut app, Key::Space); // RegEx
+    for _ in 0..7 {
+        press(&mut app, Key::Tab);
+    }
+    type_text(&mut app, "(?<=nee)dle"); // Containing
+    press(&mut app, Key::Tab);
+    press(&mut app, Key::Space); // RegEx
+    press(&mut app, Key::Enter);
+    assert!(app.modal_titles().is_empty(), "{:?}", app.top_modal_text());
+    let results = wait_results(&mut app, 0);
+    assert!(results.query().name_regex && results.query().text_regex);
+    assert_eq!(names(&app, 0), ["docs/one.txt"]);
 }
 
 #[test]

@@ -5,8 +5,9 @@
 //! NOT containing, cloud-only files) and Size and date ("500k" / "10M" /
 //! "1.5G" limits, modification presets). The entries are kept for the
 //! session ([`Form`]). Keys: Tab / Shift+Tab or ↑/↓ move between fields,
-//! Space toggles a checkbox or opens a choice (←/→ cycle it), Enter
-//! searches, Esc cancels.
+//! except that ↑/↓ change a choice (combo boxes in 1.x); Space toggles a
+//! checkbox or opens a choice (so do F4 and Alt+↓), Enter searches, Esc
+//! cancels.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -122,10 +123,16 @@ impl Default for Form {
     }
 }
 
-/// The gist of a regex error ("…\nerror: unclosed group" → "unclosed group").
+/// The gist of a regex error ("…\nerror: unclosed group" → "unclosed group",
+/// "Parsing error at position 3: Invalid escape" → "Invalid escape at position 3"),
+/// short enough for the dialog's error line.
 fn regex_problem(message: &str) -> String {
     let last = message.lines().map(str::trim).rfind(|l| !l.is_empty()).unwrap_or(message);
-    last.strip_prefix("error: ").unwrap_or(last).to_owned()
+    let last = last.strip_prefix("error: ").or_else(|| last.strip_prefix("Error compiling regex: ")).unwrap_or(last);
+    if let Some((at, problem)) = last.strip_prefix("Parsing error ").and_then(|rest| rest.split_once(": ")) {
+        return format!("{problem} {at}");
+    }
+    last.to_owned()
 }
 
 /// The query for `form` searching `roots` (`now`: seconds since the epoch,
@@ -284,11 +291,6 @@ impl Choice {
     fn new(options: Vec<&'static str>, index: usize) -> Self {
         let index = index.min(options.len().saturating_sub(1));
         Choice { options, index }
-    }
-
-    fn cycle(&mut self, delta: isize) {
-        let n = self.options.len() as isize;
-        self.index = (self.index as isize + delta).rem_euclid(n.max(1)) as usize;
     }
 
     fn draw(&self, f: &mut Frame, r: Rect, ctx: &DrawCtx, focused: bool) {
@@ -599,11 +601,12 @@ impl FindFilesDialog {
                 self.move_focus(-1);
                 return ModalOutcome::Consumed;
             }
-            Key::Up if plain => {
+            // Up/Down change a choice (1.x: combo boxes), else move the focus.
+            Key::Up if plain && self.choice(self.focus).is_none() => {
                 self.move_focus(-1);
                 return ModalOutcome::Consumed;
             }
-            Key::Down if plain => {
+            Key::Down if plain && self.choice(self.focus).is_none() => {
                 self.move_focus(1);
                 return ModalOutcome::Consumed;
             }
@@ -632,11 +635,15 @@ impl FindFilesDialog {
             }
             return ModalOutcome::Consumed;
         }
-        if self.choice(focus).is_some() {
+        if let Some(c) = self.choice(focus) {
+            // Like a Qt combo box: no wrapping around, Left/Right do nothing.
+            let last = c.options.len().saturating_sub(1);
             match k.key {
-                Key::Left if plain => self.choice(focus).expect("a choice").cycle(-1),
-                Key::Right if plain => self.choice(focus).expect("a choice").cycle(1),
-                Key::Space if plain => self.open_popup(focus, content),
+                Key::Up | Key::PageUp if plain => c.index = c.index.saturating_sub(1),
+                Key::Down | Key::PageDown if plain => c.index = (c.index + 1).min(last),
+                Key::Home if plain => c.index = 0,
+                Key::End if plain => c.index = last,
+                Key::Space | Key::F(4) if plain => self.open_popup(focus, content),
                 _ => {}
             }
             return ModalOutcome::Consumed;
@@ -848,8 +855,12 @@ mod tests {
 
         let bad = |form: Form| build_query(&form, vec![root.clone()], 0.0).unwrap_err();
         assert!(bad(Form { max_size: "lots".into(), ..Form::default() }).contains("Not a size"));
-        assert!(bad(Form { names: "(".into(), name_regex: true, ..Form::default() }).starts_with("Search for:"));
+        let unclosed = bad(Form { names: "(?<=x".into(), name_regex: true, ..Form::default() });
+        assert_eq!(unclosed, "Search for: Opening parenthesis without closing parenthesis at position 5");
         assert!(bad(Form { text: "[".into(), text_regex: true, ..Form::default() }).starts_with("Containing:"));
+        // Python `re` features (1.x): look-around and back-references.
+        let python = Form { names: "^(?!report).*pdf".into(), name_regex: true, text: r"(\w)\1".into(), text_regex: true, ..Form::default() };
+        assert!(build_query(&python, vec![root.clone()], 0.0).is_ok());
         assert_eq!(build_query(&Form::default(), vec![], 0.0).unwrap_err(), "Enter a folder to search in.");
     }
 

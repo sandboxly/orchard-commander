@@ -1,6 +1,7 @@
 //! Content matching: finds text in a stream chunk by chunk.
 //!
-//! Works on raw bytes (`regex::bytes`, or `memchr::memmem` for plain
+//! Works on raw bytes (`regex::bytes`, `fancy_regex` in its Unicode bytes
+//! mode for look-around and back-references, or `memchr::memmem` for plain
 //! case-sensitive text) so nothing is decoded unless there is a hit, and
 //! stops at the first match. Memory stays bounded at one chunk plus the
 //! overlap that is carried over so matches across chunk borders are found.
@@ -9,6 +10,8 @@ use std::io::{self, Read};
 
 use memchr::memmem;
 use regex::bytes::{Regex, RegexBuilder};
+
+use crate::PatternError;
 
 /// Bytes read per step.
 pub const CHUNK: usize = 1024 * 1024;
@@ -28,6 +31,8 @@ enum Engine {
     /// Case-sensitive plain text: SIMD substring search.
     Literal(memmem::Finder<'static>),
     Regex(Regex),
+    /// Python `re` features the `regex` crate lacks (look-around, back-references).
+    Fancy(fancy_regex::Regex),
 }
 
 /// Result of searching one stream.
@@ -42,7 +47,7 @@ pub(crate) enum Outcome {
 impl TextMatcher {
     /// `text` is a regular expression if `regex`, else literal text. Matching is
     /// multi-line (`^`/`$` match at line breaks), as in the Python version.
-    pub fn new(text: &str, regex: bool, case: bool, whole_words: bool) -> Result<Self, regex::Error> {
+    pub fn new(text: &str, regex: bool, case: bool, whole_words: bool) -> Result<Self, PatternError> {
         if !regex && case && !whole_words {
             let finder = memmem::Finder::new(text.as_bytes()).into_owned();
             return Ok(TextMatcher { engine: Engine::Literal(finder) });
@@ -59,14 +64,26 @@ impl TextMatcher {
             worded = format!(r"\b(?:{pattern})\b");
             pattern = &worded;
         }
-        let re = RegexBuilder::new(pattern).case_insensitive(!case).multi_line(true).build()?;
-        Ok(TextMatcher { engine: Engine::Regex(re) })
+        let engine = match RegexBuilder::new(pattern).case_insensitive(!case).multi_line(true).build() {
+            Ok(re) => Engine::Regex(re),
+            Err(e) if !regex => return Err(e.into()),
+            Err(_) => Engine::Fancy(
+                fancy_regex::RegexBuilder::new(pattern)
+                    .case_insensitive(!case)
+                    .multi_line(true)
+                    .bytes_mode(fancy_regex::BytesMode::UnicodeBytes)
+                    .build()?,
+            ),
+        };
+        Ok(TextMatcher { engine })
     }
 
     fn find(&self, haystack: &[u8]) -> Option<(usize, usize)> {
         match &self.engine {
             Engine::Literal(f) => f.find(haystack).map(|s| (s, s + f.needle().len())),
             Engine::Regex(re) => re.find(haystack).map(|m| (m.start(), m.end())),
+            // Errors only mean the backtrack limit was hit: no match.
+            Engine::Fancy(re) => re.find(haystack).ok().flatten().map(|m| (m.start(), m.end())),
         }
     }
 
@@ -164,6 +181,20 @@ mod tests {
         assert_eq!(first_line(&m, b"x\ndef main():\n").as_deref(), Some("def main():"));
         let m = TextMatcher::new(r"^b", true, true, false).unwrap(); // multi-line
         assert_eq!(first_line(&m, b"a\nbee\n").as_deref(), Some("bee"));
+    }
+
+    #[test]
+    fn python_look_around_and_back_references() {
+        let m = TextMatcher::new(r"foo(?!bar)", true, false, false).unwrap();
+        assert_eq!(first_line(&m, b"FOObar\nfoobaz\n").as_deref(), Some("foobaz"));
+        let m = TextMatcher::new(r"^(?<=\n)b", true, true, false).unwrap(); // multi-line
+        assert_eq!(first_line(&m, b"a\nbee\n").as_deref(), Some("bee"));
+        let m = TextMatcher::new(r"(\w)\1", true, true, true).unwrap(); // whole words
+        assert_eq!(first_line(&m, b"a bb c\n").as_deref(), Some("a bb c"));
+        assert_eq!(first_line(&m, b"abba\n"), None);
+        let m = TextMatcher::new(r"(?<=ä)pfel", true, false, false).unwrap();
+        assert_eq!(first_line(&m, b"\xff\n\xc3\x84PFEL").as_deref(), Some("ÄPFEL")); // not UTF-8 elsewhere
+        assert!(TextMatcher::new(r"(?<=x", true, false, false).is_err());
     }
 
     #[test]

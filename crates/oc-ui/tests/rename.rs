@@ -48,6 +48,25 @@ fn names(app: &App, side: usize) -> Vec<String> {
     app.main.sides[side].panel.entries.iter().map(|e| e.name.replace(MAIN_SEPARATOR, "/")).collect()
 }
 
+#[test]
+fn files_menu_keeps_the_1x_order() {
+    // 1.x main_window.py: Multi-rename and Undo rename sit between Move / rename
+    // and Make directory, in one group with the other file operations.
+    let e = env();
+    let app = app(&e);
+    let labels: Vec<&str> = oc_ui::menus::menu_items(&app, oc_ui::menus::Menu::Files)
+        .into_iter()
+        .map(|id| id.map_or("-", |id| app.registry.get(id).unwrap().label_in_menu()))
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            "Select all", "Clear selection", "-", "Copy", "Move / rename", "Multi-rename", "Undo rename",
+            "Make directory", "Move to trash", "-", "Find files", "Last search results", "-", "Quit",
+        ]
+    );
+}
+
 fn mark(app: &mut App, side: usize, names: &[&str]) {
     let p = &mut app.main.sides[side].panel;
     for n in names {
@@ -211,6 +230,14 @@ fn search_replace_case_and_counter_fields() {
     press(&mut app, Key::Down);
     press(&mut app, Key::Enter);
     assert_eq!(new_names(&app), ["Holiday my photo.jpg"], "First letter uppercase");
+    // Home / End / F4 as in a Qt combo box.
+    press(&mut app, Key::Home);
+    assert_eq!(new_names(&app), ["Holiday My photo.JPG"], "Unchanged");
+    press(&mut app, Key::End);
+    press(&mut app, Key::F(4));
+    press(&mut app, Key::Up);
+    press(&mut app, Key::Enter);
+    assert_eq!(new_names(&app), ["Holiday my photo.jpg"], "one above Every Word Uppercase");
     // Counter fields: typed and stepped with ↑/↓, used by [C].
     rename::with_open_dialog(&mut app, |d, app| {
         d.name_mask.set_text("[C]");
