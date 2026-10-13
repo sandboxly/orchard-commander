@@ -150,17 +150,28 @@ impl Action {
 /// `text_key` handles the same way: Home / End go to the start / end of the
 /// document (as ⌘↑ / ⌘↓), ⌃← / ⌃→, ⌃A / ⌃E and ⌥↑ / ⌥↓ to the start / end
 /// of the line (as ⌘← / ⌘→), and the emacs keys ⌃F ⌃B ⌃N ⌃P (arrows),
-/// ⌃V ⌃↑ ⌃↓ ⌃/⌥PgUp/PgDn (pages), ⌃H / ⌃D (backspace / delete). Shift
-/// still selects.
+/// ⌃V ⌃↑ ⌃↓ ⌃/⌥PgUp/PgDn (pages), ⌃H / ⌃D (backspace / delete), ⌃O /
+/// ⌃↩ (a line break without indentation, as ⇧↩). Shift selects with the
+/// Home / End and line keys only; Qt has no shifted emacs or page keys
+/// (⇧⌃N, ⇧⌃↓ do nothing).
 fn mac_text_alias(k: &KeyEvent) -> Option<KeyEvent> {
     use crate::input::Mods;
     let shift = k.mods.shift;
     let cmd = Mods { shift, logo: true, ..Mods::NONE };
-    let plain = Mods { shift, ..Mods::NONE };
+    let plain = Mods::NONE;
     let ctrl = k.mods.ctrl && !k.mods.alt && !k.mods.logo;
     let alt = k.mods.alt && !k.mods.ctrl && !k.mods.logo;
     let none = !k.mods.ctrl && !k.mods.alt && !k.mods.logo;
+    let emacs = match k.key {
+        Key::Char('f' | 'b' | 'n' | 'p' | 'v' | 'h' | 'd' | 'o') | Key::Up | Key::Down | Key::Enter => ctrl,
+        Key::PageUp | Key::PageDown => ctrl || alt,
+        _ => false,
+    };
+    if emacs && shift {
+        return Some(KeyEvent::new(Key::Other, Mods::NONE));
+    }
     let (key, mods) = match k.key {
+        Key::Char('o') | Key::Enter if ctrl => (Key::Enter, Mods::SHIFT),
         Key::Home if none => (Key::Up, cmd),
         Key::End if none => (Key::Down, cmd),
         Key::Left if ctrl => (Key::Left, cmd),
@@ -975,11 +986,13 @@ impl EditorWindow {
                 }
             }
             Key::Delete if edit && (m.is_empty() || word) => b.delete_forward(word),
-            Key::Enter if edit && (m.is_empty() || m == crate::input::Mods::SHIFT) => {
+            Key::Enter if edit && m.is_empty() => {
                 // Enter keeps the line's indentation (1.x).
                 let indent = b.indent_of_line(b.line_of(b.cursor));
                 b.insert(&format!("\n{indent}"), true);
             }
+            // Qt's line separator (saved as a newline): no indentation.
+            Key::Enter if edit && m == crate::input::Mods::SHIFT => b.insert("\n", true),
             Key::Tab if edit && m.is_empty() => b.insert("\t", true),
             Key::Backspace | Key::Delete | Key::Enter | Key::Tab => return Outcome::Consumed,
             _ => match k.typed_text() {

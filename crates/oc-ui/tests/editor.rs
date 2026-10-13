@@ -482,6 +482,10 @@ fn enter_keeps_the_indentation() {
     key(&mut app, id, Key::Down, primary_mods_doc_end());
     type_in(&mut app, id, "\ny");
     assert_eq!(text(&app, id), "def f():\n    x = 1\n    y");
+    // Shift+Enter is Qt's line separator: a newline without indentation.
+    key(&mut app, id, Key::Enter, Mods::SHIFT);
+    type_in(&mut app, id, "z");
+    assert_eq!(text(&app, id), "def f():\n    x = 1\n    y\nz");
 }
 
 #[test]
@@ -629,6 +633,16 @@ fn mac_cocoa_editing_keys() {
     key(&mut app, id, Key::End, Mods::NONE);
     key(&mut app, id, Key::Char('y'), ctrl);
     assert_eq!(text(&app, id), "\nthree four\nfivee two");
+    // Qt has no shifted emacs / page keys: ⇧⌃B, ⇧⌃↑ neither move nor select.
+    let before = at(&app);
+    key(&mut app, id, Key::Char('b'), Mods { shift: true, ..ctrl });
+    key(&mut app, id, Key::Up, Mods { shift: true, ..ctrl });
+    assert_eq!(at(&app), before);
+    assert!(ed(&app, id).buf.selection().is_none());
+    // ⌃O / ⌃↩: a line break without indentation (Qt's line separator).
+    key(&mut app, id, Key::Char('o'), ctrl);
+    key(&mut app, id, Key::Enter, ctrl);
+    assert_eq!(text(&app, id), "\nthree four\nfivee two\n\n");
     // ⌘F4 closes like ⌘W (asking first: there are changes).
     key(&mut app, id, Key::F(4), primary());
     wait_dialog(&mut app, "Unsaved changes");
