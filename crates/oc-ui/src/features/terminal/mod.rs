@@ -553,7 +553,13 @@ pub fn pre_event(app: &mut App, ev: &Event) -> Outcome {
     if !is_visible(app) {
         return Outcome::Ignored;
     }
-    app.later(ensure_side); // after the window handled it (Tab, clicks may change the active side)
+    // A native menu command may have switched sides since the last event.
+    ensure_side(app);
+    // After the window handled it: Tab and clicks may change the active side.
+    // (Only for those: a queued `later` makes the app redraw, so not on every hover.)
+    if matches!(ev, Event::Key(_)) || matches!(ev, Event::Mouse(m) if matches!(m.kind, MouseKind::Down(_) | MouseKind::DoubleClick(_))) {
+        app.later(ensure_side);
+    }
     let focused = app.state::<Terminal>().focused;
     match ev {
         Event::Mouse(m) => mouse(app, m),
@@ -689,7 +695,7 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
         if pressed {
             set_focus(app, true);
         }
-        return Outcome::Consumed;
+        return if m.kind == MouseKind::Move { Outcome::Ignored } else { Outcome::Consumed };
     }
     let side = app.main.active;
     let Some(s) = session(app, side) else {
@@ -723,13 +729,15 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
     if pressed {
         set_focus(app, true);
     }
+    let redraw = matches!(action, MouseAction::Redraw);
     match action {
         MouseAction::None => {}
         MouseAction::Send(bytes) => send(app, side, bytes, Input::Raw),
         MouseAction::Redraw => app.redraw(),
         MouseAction::Paste => paste(app),
     }
-    Outcome::Consumed
+    // Hovering (or motion reported to a program) changes nothing on screen: no redraw.
+    if m.kind == MouseKind::Move && !redraw { Outcome::Ignored } else { Outcome::Consumed }
 }
 
 #[cfg(test)]

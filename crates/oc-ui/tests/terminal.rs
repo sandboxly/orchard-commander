@@ -388,3 +388,39 @@ fn a_small_window_keeps_room_for_the_panels_and_the_height_comes_back() {
     assert_eq!(app.main.bottom_rows, rows);
     wait_until(&mut app, "the shell resized back", WAIT, |app| s.lock().lines() == grid_size(app).1);
 }
+
+#[test]
+fn hovering_over_the_terminal_does_not_redraw() {
+    let e = env();
+    let mut app = app(&e);
+    toggle(&mut app);
+    started(&mut app, 0);
+    let (x, y) = cell(&app, 3, 1);
+    let border = layout(&app).bottom.y;
+    app.take_redraw();
+    mouse(&mut app, MouseKind::Move, x, y, Mods::NONE);
+    mouse(&mut app, MouseKind::Move, x + 1, y, Mods::NONE);
+    mouse(&mut app, MouseKind::Move, x, border, Mods::NONE);
+    let panel = layout(&app).frames[1];
+    mouse(&mut app, MouseKind::Move, panel.x + 4, panel.y + 4, Mods::NONE); // over a panel, too
+    assert!(!app.take_redraw());
+    // A drag that selects does redraw.
+    mouse(&mut app, MouseKind::Down(MouseButton::Left), x, y, Mods::NONE);
+    app.take_redraw();
+    mouse(&mut app, MouseKind::Move, x + 4, y, Mods::NONE);
+    assert!(app.take_redraw());
+    mouse(&mut app, MouseKind::Up(MouseButton::Left), x + 4, y, Mods::NONE);
+}
+
+#[test]
+fn a_symlinked_panel_folder_keeps_its_spelling() {
+    let e = env();
+    let link = e.src.parent().unwrap().join("lnk");
+    std::os::unix::fs::symlink(&e.src, &link).unwrap();
+    let (mut app, s) = linked(&e);
+    oc_ui::panel::load(&mut app, 0, oc_local::local(&link), Default::default());
+    settle(&mut app);
+    run(&mut app, "cd sub");
+    wait_until(&mut app, "the panel in lnk/sub", WAIT, |app| panel_at(app, 0) == link.join("sub"));
+    assert_eq!(shell_dir(&s), Some(real(&e.src.join("sub"))));
+}

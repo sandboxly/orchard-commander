@@ -7,6 +7,9 @@
 //! many commands ran — and posts to the UI thread only when that changed, so
 //! an idle terminal costs no wake-ups and no redraws. On the UI thread:
 //!
+//! Paths are resolved (symlinks, `/tmp` → `/private/tmp`) off the UI thread:
+//! the shell's folder on the link thread, the panel's in a background task.
+//!
 //! * the shell moved (`cd` in the terminal) → the panel opens that folder,
 //!   written relative to the panel's path where it is the same place
 //!   ([`as_seen_from`]: a panel in /tmp goes to /tmp/sub, not /private/tmp/sub);
@@ -27,12 +30,20 @@ use crate::panel::{self, LoadOptions};
 /// How often the shells are looked at.
 pub const INTERVAL: Duration = Duration::from_millis(300);
 
+/// A folder as written and as resolved (`None`: it doesn't resolve).
+type Dir = (PathBuf, Option<PathBuf>);
+
+/// Whether two folders (as written, resolved) are the same.
+fn same(a: &Dir, b: &Dir) -> bool {
+    a.0 == b.0 || (a.1.is_some() && a.1 == b.1)
+}
+
 /// Per side: the shell's folder as last seen, a `cd` waiting for the prompt,
 /// the commands counted when one last finished.
 #[derive(Default, Debug)]
 pub struct Link {
-    shell_dirs: [Option<PathBuf>; 2],
-    pending_cd: [Option<PathBuf>; 2],
+    shell_dirs: [Option<Dir>; 2],
+    pending_cd: [Option<Dir>; 2],
     commands_seen: [u64; 2],
 }
 
@@ -46,7 +57,7 @@ impl Link {
 
     /// The shell's folder as last seen (tests).
     pub fn shell_dir(&self, side: usize) -> Option<&Path> {
-        self.shell_dirs[side].as_deref()
+        self.shell_dirs[side].as_ref().map(|d| d.0.as_path())
     }
 }
 
@@ -73,12 +84,16 @@ pub struct Probe {
     pub at_prompt: bool,
     pub commands: u64,
     pub cwd: Option<PathBuf>,
+    /// `cwd` resolved, if it is a folder (looked up on the link thread).
+    pub real: Option<PathBuf>,
 }
 
 impl Probe {
     fn of(s: &Session) -> Probe {
         let alive = s.alive();
-        Probe { alive, at_prompt: alive && s.at_prompt(), commands: s.commands(), cwd: if alive { s.current_dir() } else { None } }
+        let cwd = if alive { s.current_dir() } else { None };
+        let real = cwd.as_deref().and_then(real).filter(|r| r.is_dir());
+        Probe { alive, at_prompt: alive && s.at_prompt(), commands: s.commands(), cwd, real }
     }
 }
 
@@ -135,25 +150,23 @@ pub fn synced(app: &mut App, side: usize, generation: u64, p: Probe) {
         finished = true;
     }
     if app.settings.terminal_link_enabled()
-        && let Some(now) = p.cwd
+        && let Some(cwd) = p.cwd
     {
+        let now: Dir = (cwd, p.real);
         let t = app.state::<Terminal>();
         let seen = t.link.shell_dirs[side].clone();
-        if !seen.as_deref().is_some_and(|s| same_dir(&now, s)) {
+        if !seen.as_ref().is_some_and(|s| same(&now, s)) {
             // The shell moved (cd in the terminal).
             t.link.shell_dirs[side] = Some(now.clone());
-            let panel_dir = panel_dir(app, side);
-            if seen.is_some() && !panel_dir.as_deref().is_some_and(|d| same_dir(&now, d)) && now.is_dir() {
-                app.state::<Terminal>().link.pending_cd[side] = None;
-                let target = as_seen_from(&now, panel_dir.as_deref());
-                panel::load(app, side, oc_local::local(target), LoadOptions::default());
+            if seen.is_some() && now.1.is_some() {
+                follow_shell(app, side, generation, now);
             }
         } else if p.at_prompt
             && let Some(pending) = t.link.pending_cd[side].take()
-            && !same_dir(&pending, &now)
+            && !same(&pending, &now)
         {
             // The panel moved while a program ran: catch up now.
-            let cd = oc_term::cd_command(session.argv(), &pending);
+            let cd = oc_term::cd_command(session.argv(), &pending.0);
             super::send(app, side, cd.into_bytes(), super::Input::Typed);
         }
     }
@@ -167,30 +180,78 @@ pub fn synced(app: &mut App, side: usize, generation: u64, p: Probe) {
     }
 }
 
+/// The shell moved to `now` (resolved): the panel opens it, written as the
+/// panel spells it ([`as_seen_from`], resolved in the background), unless it is there.
+fn follow_shell(app: &mut App, side: usize, generation: u64, now: Dir) {
+    let Some(dir) = panel_dir(app, side) else {
+        // A server, an archive, search results: the panel goes to the shell's folder.
+        app.state::<Terminal>().link.pending_cd[side] = None;
+        panel::load(app, side, oc_local::local(now.0), LoadOptions::default());
+        return;
+    };
+    let job_dir = dir.clone();
+    let shell = now.clone();
+    app.tasks.run_in_background(
+        move |_| {
+            let panel = (job_dir.clone(), real(&job_dir));
+            (!same(&shell, &panel)).then(|| as_seen_from(&shell.0, Some(&job_dir)))
+        },
+        move |app, target: Option<PathBuf>| {
+            let Some(target) = target else { return };
+            // Still the same shell there, and the panel didn't move meanwhile.
+            let t = app.state::<Terminal>();
+            let current = t.generations[side] == generation && t.link.shell_dirs[side].as_ref() == Some(&now);
+            if !current || panel_dir(app, side).as_ref() != Some(&dir) {
+                return;
+            }
+            app.state::<Terminal>().link.pending_cd[side] = None;
+            panel::load(app, side, oc_local::local(target), LoadOptions::default());
+        },
+    );
+}
+
 /// The panel of `side` arrived in another folder: take that side's shell
 /// along when it is idle at its prompt, else once it is (registered as a
-/// location hook).
+/// location hook). The folder is resolved in the background.
 pub fn panel_moved(app: &mut App, side: usize) {
     if !app.settings.terminal_link_enabled() {
         return;
     }
     let location = app.main.sides[side].panel.location.clone();
     let Some(t) = app.try_state::<Terminal>() else { return };
-    let Some(session) = t.session(side).cloned().filter(|s| s.alive()) else { return };
-    if !location.is_local() {
+    if t.session(side).is_none_or(|s| !s.alive()) || !location.is_local() {
         return; // servers, archives, search results: the shell stays where it is
     }
+    let generation = t.generations[side];
     let folder = PathBuf::from(&location.path);
-    if t.link.shell_dirs[side].as_deref().is_some_and(|d| same_dir(&folder, d)) {
+    if t.link.shell_dirs[side].as_ref().is_some_and(|d| d.0 == folder) {
         return; // already there (e.g. the shell moved the panel)
     }
-    if session.at_prompt() {
-        app.state::<Terminal>().link.pending_cd[side] = None;
-        let cd = oc_term::cd_command(session.argv(), &folder);
-        super::send(app, side, cd.into_bytes(), super::Input::Typed);
-    } else {
-        app.state::<Terminal>().link.pending_cd[side] = Some(folder); // don't type into vim or a running build
-    }
+    let job_folder = folder.clone();
+    app.tasks.run_in_background(
+        move |_| real(&job_folder),
+        move |app, resolved: Option<PathBuf>| {
+            if panel_dir(app, side).as_ref() != Some(&folder) {
+                return; // the panel moved on meanwhile: that move decides
+            }
+            let t = app.state::<Terminal>();
+            if t.generations[side] != generation {
+                return;
+            }
+            let Some(session) = t.session(side).cloned().filter(|s| s.alive()) else { return };
+            let wanted: Dir = (folder, resolved);
+            if t.link.shell_dirs[side].as_ref().is_some_and(|d| same(&wanted, d)) {
+                return; // already there
+            }
+            if session.at_prompt() {
+                t.link.pending_cd[side] = None;
+                let cd = oc_term::cd_command(session.argv(), &wanted.0);
+                super::send(app, side, cd.into_bytes(), super::Input::Typed);
+            } else {
+                t.link.pending_cd[side] = Some(wanted); // don't type into vim or a running build
+            }
+        },
+    );
 }
 
 fn panel_dir(app: &App, side: usize) -> Option<PathBuf> {

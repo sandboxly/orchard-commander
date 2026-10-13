@@ -205,7 +205,9 @@ impl SideView for MyView {
   key encoding. The grid renderer does bold/italic/underline/dim, wide
   chars, box/powerline glyphs and the Nerd Font fallback.
 * `link.rs`: linked folders. A "terminal link" thread probes the shells
-  every 300 ms and posts only when something changed (no idle wake-ups).
+  every 300 ms and posts only when something changed (no idle wake-ups);
+  paths are resolved (symlinks) there or in a background task, never on the
+  UI thread.
 * Session output wakes the UI only for the session on screen, coalesced to
   one post per wake-up. Tests: `terminal::record_input` / `take_recorded`
   capture what would be sent to the shell (`crates/oc-ui/tests/terminal.rs`).
