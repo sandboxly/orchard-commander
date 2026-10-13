@@ -161,7 +161,16 @@ pub fn start_sftp_server_with(root: &Path, opts: ServerOptions) -> SftpServer {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
     let mut server = Server { shared: shared.clone() };
     runtime.spawn(async move {
-        let _ = server.run_on_socket(config, &listener).await;
+        while let Ok((socket, peer)) = listener.accept().await {
+            let _ = socket.set_nodelay(true);
+            let handler = server.new_client(Some(peer));
+            let config = config.clone();
+            tokio::spawn(async move {
+                if let Ok(session) = russh::server::run_stream(config, QueuedWrites::new(socket), handler).await {
+                    let _ = session.await;
+                }
+            });
+        }
     });
     SftpServer {
         host: "127.0.0.1".into(),
@@ -171,6 +180,68 @@ pub fn start_sftp_server_with(root: &Path, opts: ServerOptions) -> SftpServer {
         host_key,
         shared,
         runtime: Some(runtime),
+    }
+}
+
+/// The server's end of a connection, with writes queued (unbounded) and sent
+/// by a task of their own. russh's session loop doesn't read while it
+/// writes: with russh at both ends (the client under test), both sides can
+/// block writing into full socket buffers at once and never read again
+/// (Windows' small loopback buffers make that easy to hit). OpenSSH keeps
+/// reading while it writes; so does this. What is queued is bounded by the
+/// SSH channel windows.
+struct QueuedWrites {
+    read: tokio::net::tcp::OwnedReadHalf,
+    queue: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+}
+
+impl QueuedWrites {
+    fn new(socket: tokio::net::TcpStream) -> Self {
+        use tokio::io::AsyncWriteExt;
+        let (read, mut write) = socket.into_split();
+        let (queue, mut chunks) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        tokio::spawn(async move {
+            while let Some(chunk) = chunks.recv().await {
+                if write.write_all(&chunk).await.is_err() {
+                    return;
+                }
+            }
+            let _ = write.shutdown().await;
+        });
+        QueuedWrites { read, queue: Some(queue) }
+    }
+}
+
+impl tokio::io::AsyncRead for QueuedWrites {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        std::pin::Pin::new(&mut self.read).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for QueuedWrites {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<io::Result<usize>> {
+        let sent = self.queue.as_ref().is_some_and(|q| q.send(buf.to_vec()).is_ok());
+        std::task::Poll::Ready(if sent { Ok(buf.len()) } else { Err(io::ErrorKind::BrokenPipe.into()) })
+    }
+
+    fn poll_flush(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        self.queue = None; // the writer task sends what is queued, then shuts down
+        std::task::Poll::Ready(Ok(()))
     }
 }
 
