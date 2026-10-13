@@ -217,6 +217,16 @@ pub fn files_moved(app: &mut App, moved: &HashMap<VPath, VPath>) {
         hook(app, moved);
     }
 }
+/// Extra entries for the drive / location chooser (⌥F1 / ⌥F2) of side
+/// `side`, e.g. saved servers or bookmarks. Called on the UI thread when the
+/// chooser opens: no I/O, only what the feature already has in memory.
+pub type LocationSource = fn(&App, usize) -> Vec<crate::features::navigation::LocationItem>;
+/// A panel's listing of `location` failed with `error`: return true if the
+/// hook takes care of it (e.g. reconnects to the server and lists again)
+/// instead of the usual error toast. Args: app, side, location, error.
+pub type LoadErrorHook = fn(&mut App, usize, &oc_vfs::VPath, &oc_vfs::VfsError) -> bool;
+/// Runs in `App::shutdown` (closing server connections…); keep it bounded.
+pub type ShutdownHook = fn(&mut App);
 
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
@@ -231,6 +241,9 @@ pub struct Registry {
     pub(crate) on_resized: Vec<ResizeHook>,
     pub(crate) on_files_changed: Vec<FilesChangedHook>,
     pub(crate) on_files_moved: Vec<MovedHook>,
+    pub(crate) location_sources: Vec<LocationSource>,
+    pub(crate) on_load_error: Vec<LoadErrorHook>,
+    pub(crate) on_shutdown: Vec<ShutdownHook>,
 }
 
 impl Registry {
@@ -296,6 +309,22 @@ impl Registry {
     /// Called with old -> new locations after files were renamed or moved.
     pub fn on_files_moved(&mut self, hook: MovedHook) -> &mut Self {
         self.on_files_moved.push(hook);
+        self
+    }
+
+    /// More entries for the ⌥F1 / ⌥F2 chooser (after the drives, in registration order).
+    pub fn add_location_source(&mut self, source: LocationSource) -> &mut Self {
+        self.location_sources.push(source);
+        self
+    }
+
+    pub fn on_load_error(&mut self, hook: LoadErrorHook) -> &mut Self {
+        self.on_load_error.push(hook);
+        self
+    }
+
+    pub fn on_shutdown(&mut self, hook: ShutdownHook) -> &mut Self {
+        self.on_shutdown.push(hook);
         self
     }
 

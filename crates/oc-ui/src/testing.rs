@@ -19,7 +19,10 @@ pub fn headless_app(config_dir: &Path, left: &Path, right: &Path) -> App {
     cfg.right = Some(right.to_path_buf());
     cfg.clipboard = Box::new(MemoryClipboard::default());
     cfg.watch = false;
-    App::new(cfg)
+    let mut app = App::new(cfg);
+    // Never the real keychain from tests.
+    crate::connections::use_credential_store(&mut app, Arc::new(oc_config::MemoryCredentials::new()));
+    app
 }
 
 /// Process tasks and timers until `done(app)` or `timeout` (then panics

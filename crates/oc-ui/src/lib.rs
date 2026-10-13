@@ -18,6 +18,7 @@
 pub mod app;
 pub mod clipboard;
 pub mod commands;
+pub mod connections;
 pub mod dialogs;
 pub mod features;
 pub mod geom;

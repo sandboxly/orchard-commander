@@ -455,18 +455,19 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
     });
     let shown = location.display();
     app.tasks.run_in_background(
-        move |_| -> Result<Listed, String> {
+        move |_| -> Result<Listed, (String, Option<oc_vfs::VfsError>)> {
             let mut loc = Some(location.clone());
             if opts.walk_up {
                 while let Some(l) = &loc {
-                    if l.exists() {
-                        break;
+                    match l.stat() {
+                        Err(e) if e.is_not_found() => loc = l.parent(),
+                        // There, or unreachable (a lost connection): list it for the real error.
+                        _ => break,
                     }
-                    loc = l.parent();
                 }
             }
-            let loc = loc.ok_or_else(|| format!("{shown} no longer exists"))?;
-            let entries = loc.list_dir(list_opts).map_err(|e| e.to_string())?;
+            let loc = loc.ok_or_else(|| (format!("{shown} no longer exists"), None))?;
+            let entries = loc.list_dir(list_opts).map_err(|e| (e.to_string(), Some(e)))?;
             let has_parent = loc.parent().is_some();
             let free = loc.fs.free_space(&loc.path);
             Ok(Listed { location: loc, entries, has_parent, free })
@@ -475,7 +476,13 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
     );
 }
 
-fn listed(app: &mut App, side: usize, request: u64, opts: LoadOptions, result: Result<Listed, String>) {
+fn listed(
+    app: &mut App,
+    side: usize,
+    request: u64,
+    opts: LoadOptions,
+    result: Result<Listed, (String, Option<oc_vfs::VfsError>)>,
+) {
     let p = panel_mut(app, side);
     if request != p.request {
         return; // superseded by a newer load
@@ -484,9 +491,17 @@ fn listed(app: &mut App, side: usize, request: u64, opts: LoadOptions, result: R
     p.loading_hint = false;
     let listed = match result {
         Ok(l) => l,
-        Err(e) => {
-            let what = p.loading_location.display();
-            app.error(format!("Cannot open {what}: {e}"));
+        Err((e, error)) => {
+            let location = p.loading_location.clone();
+            if let Some(error) = &error {
+                let hooks = app.registry.on_load_error.clone();
+                for hook in hooks {
+                    if hook(app, side, &location, error) {
+                        return;
+                    }
+                }
+            }
+            app.error(format!("Cannot open {}: {e}", location.display()));
             return;
         }
     };

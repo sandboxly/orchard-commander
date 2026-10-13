@@ -15,8 +15,11 @@ use crate::commands::Registry;
 
 /// Every feature's registration, in the order their commands should appear
 /// (menus and the palette keep registration order within a section).
+/// `connections` comes before `window` so its "⌘K Connect" sits left of
+/// "⌘P Commands" at the right end of the F-key bar, as in 1.x.
 pub const ALL: &[fn(&mut Registry)] = &[
     crate::main_window::register,
+    crate::connections::register,
     window::register,
     preview::register,
     fileops::register,
