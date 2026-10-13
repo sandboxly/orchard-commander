@@ -11,7 +11,7 @@ use swash::zeno::{Angle, Format, Transform};
 use unicode_width::UnicodeWidthChar;
 
 use crate::atlas::{Atlas, AtlasFull};
-use crate::fonts::{BOLD, FaceIdx, FontSet, ITALIC, StyleBits};
+use crate::fonts::{BOLD, FaceIdx, FontSet, ITALIC, STRONG, StyleBits};
 use crate::special;
 
 /// Hinting sharpens stems at small sizes on Windows/Linux; macOS renders
@@ -87,8 +87,8 @@ impl GlyphCache {
     /// nothing in any font).
     #[inline]
     pub fn glyph(&mut self, ch: char, style: StyleBits) -> Result<Option<AtlasGlyph>, AtlasFull> {
-        let style = style & 3;
         if ch.is_ascii() {
+            let style = style & 3;
             let i = (style as usize) << 7 | ch as usize;
             return match self.ascii[i] {
                 Slot::Glyph(g) => Ok(Some(g)),
@@ -100,6 +100,8 @@ impl GlyphCache {
                 }
             };
         }
+        // STRONG only matters for box-drawing lines.
+        let style = if style & STRONG != 0 && special::is_line(ch) { (style & 3) | STRONG } else { style & 3 };
         if let Some(&g) = self.chars.get(&(ch, style)) {
             return Ok(g);
         }
@@ -129,27 +131,38 @@ impl GlyphCache {
         style: StyleBits,
     ) -> Result<Option<AtlasGlyph>, AtlasFull> {
         let (cw, chh) = (self.fonts.metrics.width, self.fonts.metrics.height);
-        if special::handles(ch) && style != 0 {
-            // Drawn geometrically, the same in every style: share one atlas entry.
-            return self.glyph(ch, 0);
+        let strong = style & STRONG;
+        if special::handles(ch) && style != strong {
+            // Drawn geometrically, the same in bold and italic: share one atlas entry.
+            return self.glyph(ch, strong);
         }
         if special::handles(ch) {
-            let mask = special::rasterize(ch, cw, chh).expect("handled");
-            let (x, y) = self.mask.insert(cw, chh, mask)?;
-            return Ok(Some(AtlasGlyph {
-                uv: [x as u16, y as u16, cw as u16, chh as u16],
-                dest: [0.0, 0.0, cw as f32, chh as f32],
-                color: false,
-            }));
+            let mask = special::rasterize_strong(ch, cw, chh, strong != 0).expect("handled");
+            return self.insert_cell_mask(mask).map(Some);
         }
         if ch == ' ' || ch.is_control() {
             return Ok(None);
         }
         let Some((face, gid)) = self.fonts.resolve(ch, style) else {
-            return Ok(None);
+            // No font has it: a few characters the UI relies on are drawn.
+            return match special::rasterize_fallback(ch, cw, chh) {
+                Some(mask) => self.insert_cell_mask(mask).map(Some),
+                None => Ok(None),
+            };
         };
         let span = ch.width().unwrap_or(1).clamp(1, 2) as u32;
         self.rasterize_glyph(face, gid, style, span, 0.0, 0.0)
+    }
+
+    /// A coverage mask exactly one cell in size, into the atlas.
+    fn insert_cell_mask(&mut self, mask: Vec<u8>) -> Result<AtlasGlyph, AtlasFull> {
+        let (cw, chh) = (self.fonts.metrics.width, self.fonts.metrics.height);
+        let (x, y) = self.mask.insert(cw, chh, mask)?;
+        Ok(AtlasGlyph {
+            uv: [x as u16, y as u16, cw as u16, chh as u16],
+            dest: [0.0, 0.0, cw as f32, chh as f32],
+            color: false,
+        })
     }
 
     /// Rasterize one glyph; `dx`/`dy` offset it from the pen position (cluster shaping).

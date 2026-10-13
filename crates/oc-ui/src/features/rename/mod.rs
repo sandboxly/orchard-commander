@@ -265,7 +265,7 @@ fn refresh(app: &mut App, side: usize, moved: &HashMap<VPath, VPath>) {
     // location changes, so "keep the cursor" alone would reset it).
     let keep_cursor = renamed.is_none();
     let select = renamed.or_else(|| p.cursor_name().filter(|n| *n != panel::PARENT).map(str::to_owned));
-    panel::load(app, side, shown, LoadOptions { select, keep_cursor, walk_up: true });
+    panel::load(app, side, shown, LoadOptions { select, keep_cursor, walk_up: true, ..Default::default() });
 }
 
 /// "Renaming 120 of 3000" with a bar; no Cancel (a batch stops only between

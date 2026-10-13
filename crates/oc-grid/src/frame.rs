@@ -31,6 +31,9 @@ impl Flags {
     pub const WIDE: Flags = Flags(1 << 6);
     /// The second half of a double-width character: draws its background, never a glyph.
     pub const WIDE_CONT: Flags = Flags(1 << 7);
+    /// Box-drawing lines one step thicker (the focused panel's frame, dialog
+    /// frames — the Python version's 2 px pen). Other characters ignore it.
+    pub const STRONG: Flags = Flags(1 << 8);
 
     pub const fn bits(self) -> u16 {
         self.0
@@ -68,7 +71,7 @@ impl std::ops::BitOrAssign for Flags {
 
 impl std::fmt::Debug for Flags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const NAMES: [&str; 8] = [
+        const NAMES: [&str; 9] = [
             "BOLD",
             "ITALIC",
             "UNDERLINE",
@@ -77,8 +80,9 @@ impl std::fmt::Debug for Flags {
             "INVERSE",
             "WIDE",
             "WIDE_CONT",
+            "STRONG",
         ];
-        let names: Vec<&str> = (0..8)
+        let names: Vec<&str> = (0..9)
             .filter(|i| self.0 & (1 << i) != 0)
             .map(|i| NAMES[i])
             .collect();

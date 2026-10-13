@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use oc_config::themes::{self, FONT_SIZE_RANGE};
+use oc_config::themes::FONT_SIZE_RANGE;
 
 use crate::app::App;
 use crate::commands::{Command, MenuRole, Registry};
@@ -95,7 +95,13 @@ pub fn command_palette(app: &mut App) {
 /// Pick a scheme for the current mode (light or dark when following the
 /// system), previewing each as it is highlighted.
 pub fn choose_color_scheme(app: &mut App) {
-    let schemes = Rc::new(themes::all_schemes(&app.paths.color_schemes_dir()));
+    // Re-read the folder first (in the background): scheme files may have
+    // been added by hand.
+    app.refresh_color_schemes(show_color_schemes);
+}
+
+fn show_color_schemes(app: &mut App) {
+    let schemes = Rc::new(app.color_schemes());
     let appearance = app.settings.appearance();
     let slot = appearance.scheme_setting(app.system_dark);
     let current = appearance.scheme_name(app.system_dark).to_owned();

@@ -40,13 +40,38 @@ pub struct MainWindow {
     pub active: usize,
     /// Rows reserved below the sides for a bottom pane (the terminal).
     pub bottom_rows: u16,
+    /// Where a side goes if its saved folder can't be listed at start (1.x:
+    /// the current folder on the left, home on the right). The check runs
+    /// with the first listing, on a worker: a saved folder on a dead network
+    /// mount must not hang the window.
+    startup_fallback: [Option<PathBuf>; 2],
 }
 
 impl MainWindow {
     pub fn new(settings: &Settings, registry: &Rc<Registry>, left: Option<PathBuf>, right: Option<PathBuf>) -> Self {
-        let saved = |p: &str| (!p.is_empty() && Path::new(p).is_dir()).then(|| PathBuf::from(p));
-        let left = left.or_else(|| saved(&settings.left_path)).or_else(|| std::env::current_dir().ok()).unwrap_or_else(oc_local::home_dir);
-        let right = right.or_else(|| saved(&settings.right_path)).unwrap_or_else(oc_local::home_dir);
+        let saved = |p: &str| (!p.is_empty() && Path::new(p).is_absolute()).then(|| PathBuf::from(p));
+        let cwd_or_home = || std::env::current_dir().unwrap_or_else(|_| oc_local::home_dir());
+        let mut startup_fallback = [None, None];
+        let left = match left {
+            Some(l) => l,
+            None => match saved(&settings.left_path) {
+                Some(p) => {
+                    startup_fallback[0] = Some(cwd_or_home());
+                    p
+                }
+                None => cwd_or_home(),
+            },
+        };
+        let right = match right {
+            Some(r) => r,
+            None => match saved(&settings.right_path) {
+                Some(p) => {
+                    startup_fallback[1] = Some(oc_local::home_dir());
+                    p
+                }
+                None => oc_local::home_dir(),
+            },
+        };
         let hidden = settings.hidden_visible();
         let make = |i: usize, path: PathBuf| {
             let mut p = FilePanel::new(i, oc_local::local(path), hidden);
@@ -57,7 +82,7 @@ impl MainWindow {
             p.reverse = settings.extra.get(&format!("{name}_sort_reverse")).and_then(|v| v.as_bool()).unwrap_or(false);
             Side::new(name, p, &registry.side_views)
         };
-        MainWindow { sides: [make(0, left), make(1, right)], active: 0, bottom_rows: 0 }
+        MainWindow { sides: [make(0, left), make(1, right)], active: 0, bottom_rows: 0, startup_fallback }
     }
 
     /// The side file operations act on: the active one, or the other if it shows a view.
@@ -128,7 +153,8 @@ pub(crate) fn start(app: &mut App) {
     sync_rows(app);
     for side in 0..2 {
         let loc = app.main.sides[side].panel.location.clone();
-        panel::load(app, side, loc, LoadOptions::default());
+        let fallback = app.main.startup_fallback[side].take().map(oc_local::local);
+        panel::load(app, side, loc, LoadOptions { fallback, ..Default::default() });
     }
     for (side, name) in SIDE_NAMES.iter().enumerate() {
         let mode = app.settings.extra.get(&format!("{name}_mode")).and_then(|v| v.as_str()).map(str::to_owned);

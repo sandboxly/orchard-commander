@@ -9,6 +9,7 @@ pub mod navigation;
 pub mod preview;
 pub mod rename;
 pub mod search;
+pub mod settings;
 pub mod terminal;
 pub mod window;
 
@@ -21,6 +22,7 @@ use crate::commands::Registry;
 pub const ALL: &[fn(&mut Registry)] = &[
     crate::main_window::register,
     crate::connections::register,
+    settings::register,
     window::register,
     preview::register,
     fileops::register,

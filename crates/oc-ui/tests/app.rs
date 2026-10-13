@@ -168,8 +168,17 @@ fn menu_strip_runs_commands() {
     press(&mut app, Key::Right);
     press(&mut app, Key::Right);
     press(&mut app, Key::Right); // Options
-    press(&mut app, Key::Enter); // first item: Choose color scheme…
-    assert_eq!(app.modal_titles(), ["Color scheme"]);
+    press(&mut app, Key::Enter); // first item: Settings…
+    assert_eq!(app.modal_titles(), ["Settings"]);
+    press(&mut app, Key::Escape);
+    // The second: Choose color scheme… (the list is re-read in the background first).
+    press(&mut app, Key::F(9));
+    for _ in 0..3 {
+        press(&mut app, Key::Right);
+    }
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Enter);
+    wait_until(&mut app, "the scheme picker", Duration::from_secs(10), |app| app.modal_titles() == ["Color scheme"]);
     press(&mut app, Key::Escape);
 }
 

@@ -31,7 +31,8 @@ use crate::input::{Event, MouseButton, MouseKind};
 use crate::main_window::MainWindow;
 use crate::modal::{Modal, ModalEntry, ModalId, ModalOutcome};
 use crate::tasks::{self, CancelToken, TaskQueue, Tasks, Waker};
-use crate::theme::Theme;
+use crate::theme::{SchemeCache, Theme, default_scheme};
+use oc_config::ColorScheme;
 use crate::widgets::DrawCtx;
 
 /// A window of the app. The main window is [`MAIN_WINDOW`]; others (editors…)
@@ -259,7 +260,14 @@ impl App {
     /// reading the settings file (listings run in the background).
     pub fn new(cfg: AppConfig) -> App {
         let settings = Settings::load(&cfg.paths.settings_file());
-        let theme = Theme::new(&settings.appearance(), &cfg.paths.color_schemes_dir(), cfg.system_dark);
+        // A built-in scheme needs no disk; a user scheme is read now (the
+        // first frame needs it), every other scheme in the background.
+        let appearance = settings.appearance();
+        let mut schemes = SchemeCache::default();
+        if !oc_config::themes::is_builtin(appearance.scheme_name(cfg.system_dark)) {
+            schemes.all = Some(oc_config::themes::all_schemes(&cfg.paths.color_schemes_dir()));
+        }
+        let theme = Theme::with_scheme(&appearance, schemes.get(appearance.scheme_name(cfg.system_dark)).unwrap_or_else(default_scheme));
         let (tasks, queue) = tasks::channel(cfg.wake);
         let registry = Rc::new(Registry::build(cfg.features));
         let main = MainWindow::new(&settings, &registry, cfg.left, cfg.right);
@@ -296,6 +304,11 @@ impl App {
             quit_pending: false,
             states: HashMap::new(),
         };
+        let loaded = schemes.all.is_some();
+        app.put_state(schemes);
+        if !loaded {
+            app.refresh_color_schemes(|_| {});
+        }
         crate::main_window::start(&mut app);
         let hooks = app.registry.on_start.clone();
         for hook in hooks {
@@ -450,6 +463,7 @@ impl App {
             self.window_focused = focused;
             if focused {
                 self.focused = win;
+                self.request(PlatformRequest::MenusChanged);
             }
             self.redraw = true;
             return;
@@ -689,25 +703,42 @@ impl App {
         self.run_later();
     }
 
-    /// A native menu item was chosen. With a dialog open, its first shortcut
-    /// goes to the dialog as a key instead (so ⌘A selects the text in a
-    /// field rather than marking all files); global commands always run.
+    /// A native menu item was clicked. While a dialog is open only global
+    /// commands (Quit) run, like Qt's menus under a modal dialog: a click on
+    /// "Copy" must not reach the dialog as F5.
     pub fn menu_activated(&mut self, id: &str) {
+        self.menu_item(id, false);
+    }
+
+    /// A native menu item's key equivalent was pressed (macOS hands those to
+    /// the menu, not the window). With a dialog open the key goes to the
+    /// dialog as the key it is (⌘A selects the text in a field rather than
+    /// marking all files); otherwise the command runs.
+    pub fn menu_key_equivalent(&mut self, id: &str) {
+        self.menu_item(id, true);
+    }
+
+    fn menu_item(&mut self, id: &str, by_key: bool) {
         let win = self.focused;
         let Some(cmd) = self.registry.get(id) else {
-            // A window's own menu item: its shortcut, as a key press.
+            // A window's own menu item (the editor's): its shortcut, as a key press.
             let item = self.window_menus(win).into_iter().flat_map(|m| m.items).flatten().find(|i| i.id == id);
             if let Some(s) = item.and_then(|i| i.shortcut) {
                 self.handle_event(win, Event::Key(s.to_event()));
             }
             return;
         };
-        // Main window commands reach other windows (and dialogs) as their keys.
-        if (self.has_modal(win) || win != MAIN_WINDOW) && !cmd.global {
-            if let Some(s) = cmd.shortcuts.first().copied() {
-                self.handle_event(win, Event::Key(s.to_event()));
+        if !cmd.global {
+            if self.has_modal(win) && !by_key {
+                return;
             }
-            return;
+            // Main window commands reach dialogs and other windows as their keys.
+            if self.has_modal(win) || win != MAIN_WINDOW {
+                if let Some(s) = cmd.shortcuts.iter().find(|s| s.mods.logo).or(cmd.shortcuts.first()).copied() {
+                    self.handle_event(win, Event::Key(s.to_event()));
+                }
+                return;
+            }
         }
         let id: CommandId = cmd.id;
         self.run_command(id);
@@ -777,10 +808,46 @@ impl App {
         }
     }
 
+    /// Re-resolve the theme from the settings (schemes from the cache; see
+    /// [`SchemeCache`]).
     pub fn reload_theme(&mut self) {
-        self.theme = Theme::new(&self.settings.appearance(), &self.paths.color_schemes_dir(), self.system_dark);
+        let appearance = self.settings.appearance();
+        let scheme = self.color_scheme(appearance.scheme_name(self.system_dark));
+        self.theme = Theme::with_scheme(&appearance, scheme);
         self.request(PlatformRequest::ThemeChanged);
         self.redraw = true;
+    }
+
+    /// The color scheme called `name` (the default if there is none).
+    pub fn color_scheme(&mut self, name: &str) -> ColorScheme {
+        if let Some(s) = self.state::<SchemeCache>().get(name) {
+            return s;
+        }
+        // A user scheme before the background read finished: read it now.
+        let all = oc_config::themes::all_schemes(&self.paths.color_schemes_dir());
+        self.state::<SchemeCache>().all = Some(all);
+        self.state::<SchemeCache>().get(name).unwrap_or_else(default_scheme)
+    }
+
+    /// Every color scheme as last read (built-ins only until the user's
+    /// folder has been read).
+    pub fn color_schemes(&self) -> Vec<ColorScheme> {
+        match self.try_state::<SchemeCache>().and_then(|c| c.all.clone()) {
+            Some(all) => all,
+            None => oc_config::themes::builtin_schemes().to_vec(),
+        }
+    }
+
+    /// Re-read the user's color schemes in the background, then run `then`.
+    pub fn refresh_color_schemes(&mut self, then: impl FnOnce(&mut App) + Send + 'static) {
+        let dir = self.paths.color_schemes_dir();
+        self.tasks.run_in_background(
+            move |_| oc_config::themes::all_schemes(&dir),
+            move |app, all| {
+                app.state::<SchemeCache>().all = Some(all);
+                then(app);
+            },
+        );
     }
 
     /// The OS switched between light and dark mode.

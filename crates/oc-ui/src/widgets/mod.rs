@@ -22,7 +22,7 @@ pub use menu::{DropdownMenu, MenuEntry, MenuOutcome};
 pub use scrollbar::Scrollbar;
 pub use text_input::TextInput;
 
-use oc_grid::{Area, FillRect, Flags, Frame, PxRect, Rgba, Style};
+use oc_grid::{Area, FillRect, Flags, Frame, ImagePlacement, PxRect, Rgba, Style};
 use unicode_width::UnicodeWidthStr;
 
 use crate::geom::Rect;
@@ -47,7 +47,8 @@ impl<'a> DrawCtx<'a> {
 /// Hide what was drawn so far as pixel overlays under `r`: a dialog, menu
 /// or toast drawn over a panel must not let the panel's pixel strips and
 /// scrollbars (which the renderer paints after all cell backgrounds) show
-/// through. Rects are cut around `r`; images touching it are dropped.
+/// through. Rects are cut around `r`; images are clipped to what stays
+/// visible around it (an image placement may be split into up to four).
 pub fn cover(f: &mut Frame, r: Rect, ctx: &DrawCtx) {
     let (cw, ch) = ctx.cell_px;
     let to_px = |a: Area| match a {
@@ -61,7 +62,18 @@ pub fn cover(f: &mut Frame, r: Rect, ctx: &DrawCtx) {
             f.rects.push(FillRect { area: Area::Px(piece), ..fr });
         }
     }
-    f.images.retain(|img| to_px(img.dest).intersect(&hole).is_empty());
+    let old = std::mem::take(&mut f.images);
+    for img in old {
+        let dest = to_px(img.dest);
+        let visible = img.clip.map_or(dest, |c| dest.intersect(&to_px(c)));
+        if visible.intersect(&hole).is_empty() {
+            f.images.push(img);
+            continue;
+        }
+        for piece in subtract(visible, hole) {
+            f.images.push(ImagePlacement { clip: Some(Area::Px(piece)), ..img });
+        }
+    }
 }
 
 /// `a` minus `b`, as up to four rectangles.
@@ -187,6 +199,31 @@ mod tests {
         let area: f32 = parts.iter().map(|r| r.w * r.h).sum();
         assert_eq!((parts.len(), area), (4, 84.0));
         assert!(subtract(a, PxRect::new(-1.0, -1.0, 20.0, 20.0)).is_empty());
+    }
+
+    #[test]
+    fn cover_clips_images_around_the_hole() {
+        let theme = crate::theme::Theme::default_dark();
+        let ctx = DrawCtx::new(&theme, (10.0, 20.0));
+        let mut f = Frame::new(20, 10, Rgba::BLACK);
+        // An image over cells 0..10 x 0..5 (100 x 100 px), another far away.
+        let id = image_id;
+        f.add_image(ImagePlacement::new(id(1), PxRect::new(0.0, 0.0, 100.0, 100.0)));
+        f.add_image(ImagePlacement::new(id(2), PxRect::new(150.0, 150.0, 20.0, 20.0)));
+        // A dialog over cells 2..6 x 1..3 (px 20..60 x 20..60).
+        cover(&mut f, Rect::new(2, 1, 4, 2), &ctx);
+        let first: Vec<_> = f.images.iter().filter(|i| i.image == id(1)).collect();
+        assert_eq!(first.len(), 4, "split around the hole, not dropped");
+        let area: f32 = first.iter().map(|i| match i.clip { Some(Area::Px(p)) => p.w * p.h, _ => 0.0 }).sum();
+        assert_eq!(area, 100.0 * 100.0 - 40.0 * 40.0);
+        assert!(f.images.iter().any(|i| i.image == id(2) && i.clip.is_none()), "untouched images stay as they are");
+    }
+
+    /// An `ImageId` for tests (only renderers make real ones; its field is private).
+    fn image_id(n: u64) -> oc_grid::ImageId {
+        assert_eq!(std::mem::size_of::<oc_grid::ImageId>(), std::mem::size_of::<u64>());
+        // SAFETY: ImageId is a plain `u64` newtype; the id is only compared here.
+        unsafe { std::mem::transmute::<u64, oc_grid::ImageId>(n) }
     }
 
     #[test]

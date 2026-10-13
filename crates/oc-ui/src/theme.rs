@@ -63,6 +63,35 @@ impl Colors {
     }
 }
 
+/// Every color scheme (built-ins, then the user's `color-schemes/*.toml`),
+/// read once in the background and kept in the app's state store, so a
+/// theme change (zoom steps, the system going dark) never reads the disk on
+/// the UI thread. Refreshed when the scheme editor saves or deletes, and
+/// when the color scheme picker opens.
+#[derive(Clone, Debug, Default)]
+pub struct SchemeCache {
+    /// `None` until the folder has been read.
+    pub all: Option<Vec<ColorScheme>>,
+}
+
+impl SchemeCache {
+    /// The scheme called `name`: a built-in, a cached user scheme, or the
+    /// default. `None` only when `name` is a user scheme and the folder
+    /// hasn't been read yet.
+    pub fn get(&self, name: &str) -> Option<ColorScheme> {
+        if let Some(s) = oc_config::themes::builtin_scheme(name) {
+            return Some(s.clone());
+        }
+        let all = self.all.as_ref()?;
+        Some(all.iter().find(|s| s.name == name).cloned().unwrap_or_else(default_scheme))
+    }
+}
+
+/// The default scheme (monokai).
+pub fn default_scheme() -> ColorScheme {
+    oc_config::themes::builtin_scheme(oc_config::themes::DEFAULT_SCHEME).cloned().expect("default scheme is built in")
+}
+
 /// Everything drawing needs to know about the look.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {

@@ -450,6 +450,8 @@ impl CellMetrics {
 pub(crate) type StyleBits = u8;
 pub(crate) const BOLD: StyleBits = 1;
 pub(crate) const ITALIC: StyleBits = 2;
+/// Box-drawing lines thicker ([`crate::Flags::STRONG`]); only geometric glyphs use it.
+pub(crate) const STRONG: StyleBits = 4;
 
 pub(crate) type FaceIdx = u16;
 

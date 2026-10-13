@@ -41,7 +41,7 @@ png = "0.18"
 muda = { version = "0.21", default-features = false }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSData", "NSString"] }
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSImage", "NSResponder", "NSRunningApplication"] }
 
 [dev-dependencies]
 tempfile.workspace = true

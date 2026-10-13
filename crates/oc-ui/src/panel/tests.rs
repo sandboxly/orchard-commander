@@ -122,6 +122,13 @@ fn quick_search() {
     assert_eq!(p.cursor_name(), Some("bravo"), "the same letter again cycles");
     assert!(!p.quick_search("zzz", t1 + Duration::from_secs(5)));
     assert_eq!(p.cursor_name(), Some("bravo"), "no match: the cursor stays");
+    // Qt's keyboard search interval: 400 ms (300 ms extends, 500 ms starts over).
+    let t2 = t1 + Duration::from_secs(20);
+    p.handle_key(&KeyEvent::typed("c"), t2);
+    p.handle_key(&KeyEvent::typed("h"), t2 + Duration::from_millis(300));
+    assert_eq!(p.cursor_name(), Some("charlie"));
+    p.handle_key(&KeyEvent::typed("b"), t2 + Duration::from_millis(800));
+    assert_eq!(p.cursor_name(), Some("beta"), "after 500 ms \"b\" is a new search");
 }
 
 #[test]
@@ -138,4 +145,55 @@ fn local_anchor_of_archives_is_their_folder() {
     assert_eq!(local_anchor(&v), Some(oc_local::absolute(t.path())));
     let mem = MemFS::new().root();
     assert_eq!(local_anchor(&mem), None);
+}
+
+/// Process tasks and timers for `d` (the watcher's debounce runs on timers).
+fn run_for(app: &mut App, d: Duration) {
+    let end = Instant::now() + d;
+    while Instant::now() < end {
+        app.process_tasks();
+        app.tick(Instant::now());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn watcher_reloads_skip_what_our_own_reload_already_shows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (cfg, l, r) = (tmp.path().join("c"), tmp.path().join("l"), tmp.path().join("r"));
+    for d in [&cfg, &l, &r] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let mut app = crate::testing::headless_app(&cfg, &l, &r);
+    crate::testing::settle(&mut app);
+    let quiet = WATCH_DEBOUNCE * 3;
+
+    // A change the panel hasn't seen: the watcher reloads.
+    let before = panel(&app, 0).request;
+    directory_changed(&mut app, 0);
+    run_for(&mut app, quiet);
+    crate::testing::settle(&mut app);
+    assert_eq!(panel(&app, 0).request, before + 1);
+
+    // Our own reload (after a file operation) started after the change: no second listing.
+    std::thread::sleep(Duration::from_millis(2));
+    directory_changed(&mut app, 0);
+    std::thread::sleep(Duration::from_millis(2));
+    reload(&mut app, 0);
+    crate::testing::settle(&mut app);
+    let after_ours = panel(&app, 0).request;
+    run_for(&mut app, quiet);
+    assert_eq!(panel(&app, 0).request, after_ours, "redundant watcher reload");
+    assert!(!reload_pending(&app, 0));
+
+    // While our operation runs, changes wait for its end instead of reloading mid-way.
+    app.operation = Some(crate::tasks::CancelToken::new());
+    directory_changed(&mut app, 0);
+    run_for(&mut app, quiet);
+    assert_eq!(panel(&app, 0).request, after_ours);
+    assert!(reload_pending(&app, 0));
+    app.operation = None;
+    run_for(&mut app, quiet);
+    crate::testing::settle(&mut app);
+    assert_eq!(panel(&app, 0).request, after_ours + 1, "nobody reloaded it: the watcher does");
 }

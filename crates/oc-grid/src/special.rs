@@ -7,7 +7,7 @@
 //! rasterize them ourselves at the exact cell size into a coverage mask that
 //! goes into the glyph atlas like any other glyph.
 
-use tiny_skia::{FillRule, LineCap, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
+use tiny_skia::{FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 /// Box drawing: char -> (left, right, up, down) with 1 = light, 2 = heavy, 3 = double.
 fn box_arms(ch: char) -> Option<[u8; 4]> {
@@ -78,13 +78,44 @@ pub fn thin(w: u32) -> u32 {
     ((w as f32 / 8.0).round() as u32).max(1)
 }
 
+/// Whether `ch` is a box-drawing line (light, heavy, double or rounded),
+/// the characters [`rasterize_strong`] draws thicker.
+pub fn is_line(ch: char) -> bool {
+    box_arms(ch).is_some() || round_arms(ch).is_some()
+}
+
+/// Characters drawn geometrically only when no installed font has them:
+/// the check marks the file panel and menus use for marked items.
+pub fn has_fallback(ch: char) -> bool {
+    matches!(ch, '✓' | '✔')
+}
+
+/// A drawing of one of the [`has_fallback`] characters, a `w`×`h` coverage
+/// mask like [`rasterize`]'s.
+pub fn rasterize_fallback(ch: char, w: u32, h: u32) -> Option<Vec<u8>> {
+    if !has_fallback(ch) || w == 0 || h == 0 {
+        return None;
+    }
+    let mut canvas = Canvas::new(w, h, false);
+    canvas.check(ch == '✔');
+    Some(canvas.into_mask())
+}
+
 /// Rasterize `ch` (one for which [`handles`] is true) into a `w`×`h` coverage
 /// mask, row-major, 0 = empty, 255 = full. `None` for other characters.
 pub fn rasterize(ch: char, w: u32, h: u32) -> Option<Vec<u8>> {
+    rasterize_strong(ch, w, h, false)
+}
+
+/// Like [`rasterize`]; with `strong`, box-drawing lines are one step thicker
+/// (light lines twice the thin width, heavy three times, double lines twice):
+/// the focused panel's and dialogs' frames, like the Python version's 2 px
+/// pen. Other characters ignore `strong`.
+pub fn rasterize_strong(ch: char, w: u32, h: u32, strong: bool) -> Option<Vec<u8>> {
     if !handles(ch) || w == 0 || h == 0 {
         return None;
     }
-    let mut canvas = Canvas::new(w, h);
+    let mut canvas = Canvas::new(w, h, strong && is_line(ch));
     let cp = ch as u32;
     if (0xE0B0..=0xE0BF).contains(&cp) {
         canvas.powerline(cp);
@@ -101,16 +132,55 @@ pub fn rasterize(ch: char, w: u32, h: u32) -> Option<Vec<u8>> {
 struct Canvas {
     w: u32,
     h: u32,
+    /// Lines one step thicker.
+    strong: bool,
     pixmap: Pixmap,
 }
 
 impl Canvas {
-    fn new(w: u32, h: u32) -> Self {
+    fn new(w: u32, h: u32, strong: bool) -> Self {
         Canvas {
             w,
             h,
+            strong,
             pixmap: Pixmap::new(w, h).expect("non-zero cell"),
         }
+    }
+
+    /// The light line width.
+    fn line(&self) -> u32 {
+        if self.strong {
+            2 * thin(self.w)
+        } else {
+            thin(self.w)
+        }
+    }
+
+    /// A check mark: a short stroke down, a long one up, in a square box
+    /// centred in the cell like a font's ✓.
+    fn check(&mut self, heavy: bool) {
+        let (w, h) = (self.w as f32, self.h as f32);
+        let size = w.min(h * 0.6);
+        let (x0, y0) = ((w - size) / 2.0, (h - size) / 2.0 + size * 0.05);
+        let mut pb = PathBuilder::new();
+        pb.move_to(x0 + size * 0.1, y0 + size * 0.55);
+        pb.line_to(x0 + size * 0.4, y0 + size * 0.85);
+        pb.line_to(x0 + size * 0.92, y0 + size * 0.12);
+        let Some(path) = pb.finish() else { return };
+        let width = (thin(self.w) as f32 * if heavy { 2.0 } else { 1.3 }).max(1.0);
+        let stroke = Stroke {
+            width,
+            line_cap: LineCap::Round,
+            line_join: LineJoin::Round,
+            ..Stroke::default()
+        };
+        self.pixmap.stroke_path(
+            &path,
+            &Self::paint(255, true),
+            &stroke,
+            Transform::identity(),
+            None,
+        );
     }
 
     fn into_mask(self) -> Vec<u8> {
@@ -148,7 +218,8 @@ impl Canvas {
         if arms.contains(&3) {
             return self.double(arms);
         }
-        let weight = |a: u8| if a == 2 { 2 * t } else { t };
+        let (light, heavy) = if self.strong { (2 * t, 3 * t) } else { (t, 2 * t) };
+        let weight = |a: u8| if a == 2 { heavy } else { light };
         // Horizontal arms.
         for (on, is_left) in [(left, true), (right, false)] {
             if on == 0 {
@@ -180,7 +251,7 @@ impl Canvas {
     /// and T-junctions show both an outer and an inner corner.
     fn double(&mut self, arms: [u8; 4]) {
         let (w, h) = (self.w as i32, self.h as i32);
-        let t = thin(self.w) as i32;
+        let t = self.line() as i32;
         let d = ((t as f32 * 1.5).round() as i32).max(1);
         let [left, right, up, down] = arms.map(|a| a != 0);
         // Upper/lower horizontal lines (y) and left/right vertical lines (x), top/left edges.
@@ -269,7 +340,7 @@ impl Canvas {
     /// lines so `╭──` joins exactly.
     fn rounded(&mut self, (right, down): (bool, bool)) {
         let (w, h) = (self.w as f32, self.h as f32);
-        let t = thin(self.w);
+        let t = self.line();
         let cx = ((self.w - t) / 2) as f32 + t as f32 / 2.0;
         let cy = ((self.h - t) / 2) as f32 + t as f32 / 2.0;
         let hx = if right { w + 1.0 } else { -1.0 };
@@ -406,6 +477,31 @@ mod tests {
 
     fn row_full(f: &impl Fn(u32, u32) -> bool, y: u32) -> bool {
         (0..10).all(|x| f(x, y))
+    }
+
+    #[test]
+    fn strong_lines_are_thicker_and_still_centred() {
+        let count = |mask: &[u8]| mask.iter().filter(|&&a| a > 128).count();
+        for ch in ['─', '│', '━', '╭', '═', '┼'] {
+            let normal = rasterize(ch, 16, 32).unwrap();
+            let strong = rasterize_strong(ch, 16, 32, true).unwrap();
+            assert!(count(&strong) > count(&normal), "{ch}");
+        }
+        // Thickness 2 → 4 at a 16 px cell; the line stays on the centre rows.
+        let strong = rasterize_strong('─', 16, 32, true).unwrap();
+        let rows: Vec<u32> = (0..32).filter(|y| strong[(y * 16) as usize] > 128).collect();
+        assert_eq!(rows, [14, 15, 16, 17]);
+        // Blocks don't change.
+        assert_eq!(rasterize('█', 16, 32), rasterize_strong('█', 16, 32, true));
+    }
+
+    #[test]
+    fn check_mark_fallback() {
+        assert!(has_fallback('✓') && !handles('✓') && !has_fallback('x'));
+        let mask = rasterize_fallback('✓', 10, 20).unwrap();
+        let painted = mask.iter().filter(|&&a| a > 100).count();
+        assert!(painted > 10 && painted < 100, "{painted}");
+        assert!(rasterize_fallback('a', 10, 20).is_none());
     }
 
     #[test]
