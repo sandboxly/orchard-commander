@@ -1,6 +1,6 @@
 # Orchard Commander User Guide
 
-This guide covers Orchard Commander 1.1 on macOS, Windows and Linux.
+This guide covers Orchard Commander 2.0 on macOS, Windows and Linux.
 
 ## Contents
 

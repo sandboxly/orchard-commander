@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "app"]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+license = "MIT"
+authors = ["Stephan Lengl <lengl.stephan@gmail.com>"]
+rust-version = "1.85"
+
+[workspace.dependencies]
+oc-vfs = { path = "crates/oc-vfs" }
+oc-local = { path = "crates/oc-local" }
+oc-archive = { path = "crates/oc-archive" }
+oc-config = { path = "crates/oc-config" }
+oc-rename = { path = "crates/oc-rename" }
+oc-search = { path = "crates/oc-search" }
+oc-term = { path = "crates/oc-term" }
+oc-preview = { path = "crates/oc-preview" }
+oc-grid = { path = "crates/oc-grid" }
+oc-ui = { path = "crates/oc-ui" }
+thiserror = "2"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2

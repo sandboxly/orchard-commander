@@ -7,7 +7,7 @@ trash. It previews code, images, PDFs, audio and video, edits text files (F4),
 opens archives and SFTP, SMB, WebDAV and S3 servers in a panel, and has a file
 search, a multi-rename tool and a terminal.
 
-The app is written in Python with Qt (PySide6) and drawn to look like a
+The app is written in Rust, drawn on the GPU (wgpu) and made to look like a
 terminal program.
 
 Website: https://sandboxly.github.io/orchard-commander/
@@ -16,7 +16,7 @@ Website: https://sandboxly.github.io/orchard-commander/
 
 | System | Download | Package manager |
 | --- | --- | --- |
-| macOS 14 or later, Apple silicon | [Orchard-Commander-macOS.dmg](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg) | `brew install --cask sandboxly/tap/orchard-commander` |
+| macOS 12 or later, Apple silicon | [Orchard-Commander-macOS.dmg](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg) | `brew install --cask sandboxly/tap/orchard-commander` |
 | Windows 10 and 11, 64-bit | [Installer](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe), [portable zip](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip) | |
 | Linux, x86-64 | [AppImage](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage), [.deb](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb), [.rpm](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm), [.tar.gz](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz) | |
 
@@ -33,146 +33,117 @@ everything from the first start to the keyboard reference. Its source is in
 ## Run from source
 
 ```sh
-uv run orchard-commander [LEFT_DIR] [RIGHT_DIR]
+cargo run -p orchard-commander -- [LEFT_DIR] [RIGHT_DIR]
 ```
 
-Needs [uv](https://docs.astral.sh/uv/) and Python 3.12 or later.
+Needs Rust 1.90 or later. PDFium (PDF previews) and FFmpeg (audio and video)
+are native libraries outside Cargo; fetch them into `vendor/` once:
+
+```sh
+scripts/fetch-pdfium.sh                # debug builds find vendor/pdfium on their own
+scripts/fetch-ffmpeg.sh                # Windows and Linux: LGPL shared libraries
+packaging/macos/build-ffmpeg.sh        # macOS: LGPL build from source
+```
+
+Build against them with `FFMPEG_DIR=vendor/ffmpeg/<platform>` and put the
+libraries on the library path for `cargo run` and `cargo test` (`PATH` on
+Windows, `LD_LIBRARY_PATH` on Linux). bindgen needs libclang
+(`libclang-dev` on Linux, `LIBCLANG_PATH` on Windows).
 
 ## Building the app
 
+Windows and Linux packages (installer, zip, AppImage, .deb, .rpm, tar.gz) are
+built by CI; the macOS app is built, signed and notarized locally:
+
 ```sh
-uv run python packaging/build.py
+packaging/macos/package.sh --notarize
 ```
 
-PyInstaller produces `dist/Orchard Commander.app` on macOS (about 140 MB, mostly Qt and
-FFmpeg) and `dist/orchard-commander/` with the `orchard-commander` executable on Linux
-and Windows; build on each platform for that platform. Check a build with
-`"dist/Orchard Commander.app/Contents/MacOS/orchard-commander" --self-test`
-(or `dist/orchard-commander/orchard-commander --self-test`),
-which loads everything the app imports on demand.
+It produces `dist/Orchard Commander.app` and `dist/Orchard-Commander-macOS.dmg`.
+Check any build with `orchard-commander --self-test`, which exercises the
+renderer, fonts, archives, PDFium, FFmpeg, the config folder and the server
+connection types.
 
-On macOS the app bundle matters beyond convenience: macOS only grants *Local
-Network* access (needed for servers on your LAN) to programs with a
-proper identity, and asks for it using the `NSLocalNetworkUsageDescription`
-set in `packaging/orchard-commander.spec`. `uv run orchard-commander` runs on a bare Python binary,
-which macOS may silently block from the local network ("No route to host").
-macOS ties those permissions (and Keychain access to saved passwords) to the
-app's code signature, so the build signs with a stable identity: the
-`FCMD_CODESIGN_IDENTITY` environment variable or `--sign IDENTITY`, otherwise
-the first "Developer ID Application" (then "Apple Development") certificate in
-your keychain, with the hardened runtime and `packaging/entitlements.plist`.
-Without a certificate it falls back to ad-hoc signing (or use `--adhoc`), and
-macOS then treats every build as a new app and asks again. Distributing the
-app additionally requires notarization (`xcrun notarytool`).
+On macOS the signature matters beyond distribution: macOS grants *Local
+Network* access (needed for servers on the LAN) and Keychain access to saved
+passwords per code signature. An ad-hoc signed build counts as a new app every
+time, and an unbundled `cargo run` binary may be silently blocked from the
+local network ("No route to host"). `package.sh` signs with
+`$OC_CODESIGN_IDENTITY` or `--identity NAME`, otherwise the first
+"Developer ID Application" certificate in the keychain.
 
-Regenerate the app icons (macOS `.icns`, Windows `.ico`, window icon) from
-`packaging/icons/source.png` with `uv run python packaging/make_icons.py`.
+Versioning, native libraries, licenses, CI and the release steps:
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Development
 
 ```sh
-uv run pytest
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-The SFTP tests run a real SSH server (asyncssh), the SMB tests impacket's
-SMB2 server, the WebDAV tests WsgiDAV (Basic, Digest, and HTTPS with a
-self-signed certificate) and the S3 tests moto (request signatures are checked
-against botocore and AWS's documented examples), all on localhost. Full SMB read/write tests run against Samba in
-Docker and are skipped when Docker isn't available.
+The SFTP tests run an in-process SSH server; the WebDAV, S3 and SMB tests use
+WsgiDAV, moto and impacket from a Python environment (`OC_TEST_PYTHON`) and
+Samba, OpenSSH and MinIO in Docker. Tests whose server isn't available skip.
 
-| Module | Role |
+| Crate | Role |
 | --- | --- |
-| `vfs.py` | Virtual file system: `FileSystem` interface, `VPath`, `LocalFS`, `ArchiveFS`, copy/move/trash across file systems |
-| `fs.py` | Native local-disk operations: listing, copy, move, trash, open (used by `LocalFS`) |
-| `archives.py` | Archive format readers (zip/tar/7z/rar/gz/bz2/xz) and the extraction cache (used by `ArchiveFS`) |
-| `fsproviders.py` | Connection types: `FileSystemProvider` interface, registry, entry-point discovery |
-| `remote/sftp.py`, `remote/smb.py`, `remote/webdav.py`, `remote/s3.py` | SFTP (paramiko), SMB (smbprotocol), WebDAV and S3 (standard library HTTP) file systems |
-| `remote/httpclient.py` | HTTP(S) shared by WebDAV and S3: per-thread keep-alive connections, system trust store, pinned certificates, ranged reads |
-| `remote/providers.py` | The built-in SFTP, SMB, WebDAV and S3 connection types |
-| `connections.py` | Provider-agnostic connections, saved connections, keychain passwords, live sessions |
-| `bookmarks.py`, `locations.py` | Bookmark tree and storage; serializable location specs (local, server, archive) |
-| `rename.py`, `ui/rename_ui.py` | Multi-rename: TC masks, search & replace, checks, safe two-phase renames, undo |
-| `terminal.py`, `ui/terminal_view.py` | Shell sessions (pseudo-terminal + pyte screen) and the terminal panel |
-| `search.py`, `ui/search_ui.py` | Find files on any file system; results as a virtual folder (`SearchResultsFS`); the dialog |
-| `testing.py` | Contract checks for file system implementations (also for add-on authors) |
-| `preview/api.py` | The previewer plugin interface: `Previewer`, `PreviewView`, `Access`, `Score`, … |
-| `preview/registry.py` | Registration, entry-point discovery, scoring, fallback |
-| `preview/source.py` | `PreviewSource`: head / stream / local file through the generic file system interface |
-| `preview/builtin/` | Built-in previewers: listing, image, PDF, media, Markdown, text, hex |
-| `preview/content.py` | Qt-free helpers: text detection and decoding, hex dumps, listings |
-| `themes.py`, `config.py` | Color schemes (built-in and user files), appearance, persisted settings |
-| `ui/settings_dialog.py` | Settings window, color scheme editor |
-| `ui/main_window.py` | Window, sides, commands and shortcuts, function-key bar |
-| `ui/panel.py` | File list model, row painting, key handling |
-| `ui/preview_pane.py` | Hosts previewer views, "View as" chips, background loading; no type-specific code |
-| `ui/boxframe.py` | The terminal-style box border |
-| `ui/dialogs.py`, `ui/operations.py` | Dialogs; file operations on a worker thread |
-| `ui/connect_dialogs.py` | Connection manager, editor, password and host-key prompts |
-| `ui/bookmarks_ui.py` | Bookmark menu with hotkeys, "add bookmark" dialog, organizer |
-| `ui/tasks.py` | Background jobs with callbacks on the UI thread; asking the UI from a worker |
+| `oc-vfs` | File system interface (`FileSystem`, `VPath`, capability flags), copy/move/trash across file systems, the file system contract (`testing`) |
+| `oc-local` | The local disk: listing, native copy, trash, open |
+| `oc-archive` | zip, tar (plain/gz/bz2/xz), gz/bz2/xz, 7z and RAR (vendored UnRAR), read-only |
+| `oc-provider` | Connection types: `FileSystemProvider`, registry, addresses |
+| `oc-sftp`, `oc-smb`, `oc-remote-http` | SFTP, SMB, WebDAV and S3 file systems |
+| `oc-config` | Settings, bookmarks, saved connections, keychain, color schemes (same files as 1.x) |
+| `oc-preview`, `oc-pdf`, `oc-media` | Previewer interface, registry and built-in previewers; PDFium; FFmpeg playback |
+| `oc-search`, `oc-rename`, `oc-term` | Find files, multi-rename, terminal sessions |
+| `oc-grid` | GPU character-grid renderer (wgpu) |
+| `oc-ui` | All UI state and logic: commands, menus, panels, dialogs, features |
+| `app` | The `orchard-commander` binary: event loop, windows, native menu |
 
-Plans for third-party add-ons and an add-on marketplace: [docs/addon-marketplace.md](docs/addon-marketplace.md).
+Where a UI feature goes and how it fits in:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Adding a file system
 
-Two parts, both discoverable like previewers:
+1. **The file system** implements `oc_vfs::FileSystem`: listing, `stat`, path
+   handling and `open_read`; writable ones add `mkdir`, `remove`,
+   `open_write` (and `rename`), declared through `capabilities()`
+   (`writable`, `can_trash`, `can_rename`, `watchable`). The UI only uses
+   `VPath` values and these flags, so copy/move, previews and archives stored
+   on it work without UI changes.
+2. **The connection type** implements `oc_provider::FileSystemProvider`: an
+   address scheme, the fields of its connection dialog (the form is generated
+   from them), `parse_url` / `format_url`, and `connect`, which returns the file
+   system and may ask the user through its `ConnectContext` (that is how SFTP
+   asks to trust a host key).
 
-1. **The file system** subclasses `vfs.FileSystem`: listing, `stat`, path
-   handling and `open_read`; writable ones add `mkdir`, `remove`, `open_write`
-   (and `rename` with `can_rename`). The UI only uses `vfs.VPath` values and
-   capability flags (`writable`, `can_trash`, `watchable`), so copy/move,
-   previews and browsing archives stored on it work without UI changes.
-2. **The connection type** subclasses `fsproviders.FileSystemProvider`: an
-   address scheme (`webdav://`), the fields of its connection dialog (the form
-   is generated from them), `parse_url` / `format_url`, and `connect(params,
-   secret, ctx)`, which returns the file system. It may ask the user questions
-   through `ctx.confirm(...)` (that's how SFTP asks to trust a host key) and
-   keep files in `ctx.data_dir`. See `remote/providers.py` for SFTP and SMB.
-
-Register providers in `fsproviders._builtin_providers()` or through an entry
-point (add-ons may override built-ins with the same scheme):
-
-```toml
-[project.entry-points."orchard_commander.filesystems"]
-webdav = "orchard_webdav:WebDavProvider"
-```
-
-Saved connections store the scheme plus the provider's params, so connection
-types need no changes elsewhere. Check an implementation with the contract in
-`orchard_commander.testing` (`check_filesystem(root)`), which every built-in
-file system passes (`tests/test_fs_contract.py`); `tests/test_vfs.py` has a
-small in-memory backend and `tests/test_fsproviders.py` a matching connection
-type as examples.
+Register it with `oc_provider::register` at start (see
+`register_connection_types` in `app/src/main.rs`). Check the implementation
+with `oc_vfs::testing::check_filesystem(root)`, which every built-in file
+system passes; `oc_vfs::testing::MemFS` is a small in-memory example.
 
 ### Adding a previewer
 
-A previewer is one class (see the docstring of `preview/api.py`):
+A previewer implements `oc_preview::Previewer` (see the docs of
+`crates/oc-preview/src/api.rs`):
 
-- `score(FileInfo)` says how well it fits a file: by extension, size, or the
-  first bytes if it sets `needs_head`. Highest score wins; `Score.FORMAT` (100)
-  for "this is my format", `Score.FALLBACK` (1) for "I can show anything".
-- `access` declares what it reads; `load(src, ctx)` gets it from the
-  `PreviewSource` (`head(n)`, `open_stream()`, `local_file(max_size)`) on a
-  worker thread and returns `Loaded(data, info)`. It never learns which file
-  system the file is on; the file system provides the bytes.
-- `create_view(ctx)` returns a `PreviewView` widget (created once, reused):
-  `show_data(data)`, `clear()`.
-- Raise `CannotPreview` to let the next previewer try (e.g. a corrupt file),
-  or `ShowMessage` to show a message instead (e.g. "too large to fetch").
-- `available()` returns False when an optional dependency is missing.
+- `score(&FileInfo)` says how well it fits a file: by extension, size, or the
+  first bytes if `needs_head` is true. Highest score wins; `Score::FORMAT`
+  (100) for "this is my format", `Score::FALLBACK` (1) for "I can show
+  anything".
+- `access()` declares what it reads; `load(src, ctx)` gets it from the
+  `PreviewSource` on a worker thread and returns `Loaded` (`PreviewData`
+  plus an info line). It never learns which file system the file is on.
+- Return `PreviewError::CannotPreview` to let the next previewer try, or
+  `ShowMessage` to show a message instead.
+- `available()` returns false when an optional dependency is missing.
 
-Register built-ins in `preview/builtin/__init__.py`; separate packages register
-through an entry point and may override built-ins with the same `id`:
-
-```toml
-[project.entry-points."orchard_commander.previewers"]
-pdf = "orchard_pdf:PdfPreviewer"
-```
-
-`tests/test_previewers.py` runs a contract against every registered previewer:
-empty, garbage and valid files, on the local disk and a non-local file system,
-so a new previewer is checked automatically.
+Register built-ins in `crates/oc-preview/src/builtin/mod.rs`. The contract
+test in `crates/oc-preview/src/tests/contract.rs` runs every built-in
+previewer against empty, garbage and valid files, so a new one is checked
+automatically.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The app bundles Qt (PySide6) and pyte under the LGPL.
+MIT, see [LICENSE](LICENSE). The packages bundle FFmpeg (LGPL), PDFium and
+UnRAR; their license texts are in [licenses](licenses).

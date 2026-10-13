@@ -16,21 +16,12 @@ and open the files inside, and copy files out of them.
 A single compressed file, such as `report.txt.gz`, opens as a folder that
 contains the uncompressed file (`report.txt`).
 
-Password-protected (encrypted) entries can't be read.
+All formats, including RAR and 7-Zip, are handled by Orchard Commander
+itself. No other program, such as `unrar` or 7-Zip, needs to be installed.
+All formats are read-only (see [Limitations](#limitations)).
 
-### RAR archives
-
-Orchard Commander lists the contents of RAR archives itself. To extract or
-preview files from a RAR archive, one of these programs must be installed:
-`unrar`, 7-Zip (`7z`) or `bsdtar`.
-
-- macOS includes `bsdtar`.
-- Windows 10 and later include it as `tar.exe`.
-- On Linux, install `unrar`, `7zip` or `libarchive-tools` with your package
-  manager.
-
-`bsdtar` handles RAR5 archives and most RAR4 archives. Solid RAR4 archives
-require `unrar` or 7-Zip.
+Password-protected (encrypted) entries can't be read. Encrypted 7-Zip and
+RAR archives can't be opened.
 
 ## Browsing an archive
 

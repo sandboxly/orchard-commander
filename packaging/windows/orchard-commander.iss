@@ -1,9 +1,12 @@
-; Windows installer (Inno Setup 6). Built in CI after PyInstaller:
-;   iscc /DAppVersion=1.0.0 packaging\windows\orchard-commander.iss
+; Windows installer (Inno Setup 6). Built in CI from the staged app folder
+; (packaging/stage.sh win-x64 ... dist\orchard-commander):
+;   iscc /DAppVersion=2.0.0 packaging\windows\orchard-commander.iss
 ; Output: dist\Orchard-Commander-Setup.exe
-; Installs for the current user or for all users (the user chooses), adds a
-; Start menu entry, an optional desktop shortcut and an uninstaller. Silent
-; installs (winget, Chocolatey): /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+; Installs for the current user or for all users (the user chooses; /CURRENTUSER
+; or /ALLUSERS on the command line), adds a Start menu entry, an optional
+; desktop shortcut and an uninstaller. Silent installs (winget, Chocolatey):
+; /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+; The AppId is the one of 1.x: 2.0 upgrades a 1.x installation in place.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -29,7 +32,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 LicenseFile=..\..\LICENSE
 SetupIconFile=..\icons\app.ico
-UninstallDisplayIcon={app}\orchard-commander.exe
+UninstallDisplayIcon={app}\orchard-commander.ico
 UninstallDisplayName=Orchard Commander
 WizardStyle=modern
 Compression=lzma2/max
@@ -46,14 +49,20 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\..\dist\orchard-commander\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The same icon as the one in the executable, as a file: shortcuts and Apps &
+; features point at it, so it can be replaced without rebuilding the exe.
+Source: "..\icons\app.ico"; DestDir: "{app}"; DestName: "orchard-commander.ico"; Flags: ignoreversion
 
 [InstallDelete]
-; A new version replaces the old bundle completely (no stale libraries left behind).
+; A new version replaces the old bundle completely: 1.x (PyInstaller) kept its
+; libraries in _internal, 2.x has DLLs next to the executable and licenses\.
 Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\licenses"
+Type: files; Name: "{app}\*.dll"
 
 [Icons]
-Name: "{autoprograms}\Orchard Commander"; Filename: "{app}\orchard-commander.exe"
-Name: "{autodesktop}\Orchard Commander"; Filename: "{app}\orchard-commander.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Orchard Commander"; Filename: "{app}\orchard-commander.exe"; IconFilename: "{app}\orchard-commander.ico"
+Name: "{autodesktop}\Orchard Commander"; Filename: "{app}\orchard-commander.exe"; IconFilename: "{app}\orchard-commander.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\orchard-commander.exe"; Description: "{cm:LaunchProgram,Orchard Commander}"; Flags: nowait postinstall skipifsilent

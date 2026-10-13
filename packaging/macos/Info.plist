@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: package.sh fills in @VERSION@ (workspace version from Cargo)
+     and @MIN_MACOS@ (MACOSX_DEPLOYMENT_TARGET from env.sh). -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>orchard-commander</string>
+    <key>CFBundleIconFile</key>
+    <string>app.icns</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.orchard-commander</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Orchard Commander</string>
+    <key>CFBundleDisplayName</key>
+    <string>Orchard Commander</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>@MIN_MACOS@</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Stephan Lengl. MIT License.</string>
+    <!-- As in 1.x: without it macOS never asks and silently blocks LAN access (SMB/SFTP to a NAS). -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Orchard Commander connects to file servers on your local network (SMB shares, SFTP servers) when you ask it to.</string>
+</dict>
+</plist>

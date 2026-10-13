@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "sftp",
+    "params": {
+      "host": "h\u00f6",
+      "port": 22,
+      "path": "/srv"
+    },
+    "name": "Prod \u2713",
+    "id": "c1"
+  },
+  {
+    "kind": "smb",
+    "params": {},
+    "name": "",
+    "id": "c2"
+  }
+]

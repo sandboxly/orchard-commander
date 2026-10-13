@@ -1,0 +1,46 @@
+[package]
+name = "oc-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oc-vfs.workspace = true
+oc-local.workspace = true
+oc-config.workspace = true
+oc-grid.workspace = true
+oc-preview = { workspace = true, features = ["media"] }
+oc-media = { path = "../oc-media" }
+serde_json = "1.0"
+image = { version = "0.25.6", default-features = false }
+oc-term.workspace = true
+oc-search.workspace = true
+oc-rename.workspace = true
+oc-provider = { path = "../oc-provider" }
+oc-remote-http = { path = "../oc-remote-http" }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+log = "0.4"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"
+# The F4 editor: rope buffer (text files and highlighting come from oc-preview).
+# Lines break only at "\n", like 1.x's QPlainTextEdit (the default
+# `unicode_lines` also breaks at form feed, NEL, U+2028…).
+ropey = { version = "1.6", default-features = false, features = ["simd"] }
+# The editor's language detection (ports of Pygments' `analyse_text`).
+regex = "1.13"
+tempfile.workspace = true
+
+# Wayland's own clipboard where the compositor offers data-control; arboard
+# falls back to X11 (XWayland) otherwise.
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+oc-archive.workspace = true
+oc-pdf = { path = "../oc-pdf", features = ["testing"] }
+zip = { version = "9.0", default-features = false }
+oc-sftp = { path = "../oc-sftp", features = ["testing"] }
+oc-smb = { path = "../oc-smb" }

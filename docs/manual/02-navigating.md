@@ -29,8 +29,9 @@ Pressing **Enter** on a file opens it with its default application. See
    `D:\Projects`, or a server address such as `sftp://anna@example.com/var/www`.
 3. Press **Enter**.
 
-The active panel opens the folder. Server addresses are described in
-[Servers](07-servers.md).
+The active panel opens the folder. A relative path such as `src/app` or
+`../other` is resolved from the active panel's folder. Server addresses are
+described in [Servers](07-servers.md).
 
 ## Choosing a drive or location
 
@@ -70,6 +71,10 @@ For example, with the cursor on `Photos` in the left panel, **⌘→** /
 Click a column header (**Name**, **Size** or **Modified**) to sort by that
 column. Click the same header again to reverse the order. Folders always come
 before files.
+
+Sorting reorders the entries already shown; the folder is not read again, so
+on a server there is no wait. The sort order is not saved: each panel starts
+sorted by name.
 
 ## Hidden files
 

@@ -1,0 +1,56 @@
+[package]
+name = "orchard-commander"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.90"
+description = "A two-panel file manager for macOS, Windows and Linux"
+
+[[bin]]
+name = "orchard-commander"
+path = "src/main.rs"
+
+[features]
+default = ["rar"]
+# RAR archives (vendored UnRAR, see licenses/UnRAR.txt).
+rar = ["oc-archive/rar"]
+
+[dependencies]
+oc-vfs.workspace = true
+oc-local.workspace = true
+oc-archive = { path = "../crates/oc-archive", default-features = false }
+oc-config.workspace = true
+oc-grid.workspace = true
+oc-preview = { workspace = true, features = ["pdf", "media"] }
+oc-pdf = { path = "../crates/oc-pdf" }
+oc-media = { path = "../crates/oc-media" }
+oc-ui.workspace = true
+# Server connection types (registered at start).
+oc-provider = { path = "../crates/oc-provider" }
+oc-remote-http = { path = "../crates/oc-remote-http" }
+oc-sftp = { path = "../crates/oc-sftp" }
+oc-smb = { path = "../crates/oc-smb" }
+log = "0.4"
+# The window geometry setting is Qt's saveGeometry() blob in base64 (1.x).
+base64 = "0.22.1"
+serde_json = "1.0"
+tempfile.workspace = true
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+png = "0.18"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.21", default-features = false }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData", "NSString"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSImage", "NSResponder", "NSRunningApplication"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[build-dependencies]
+# The Windows icon and version resource (build.rs).
+embed-resource = "3"

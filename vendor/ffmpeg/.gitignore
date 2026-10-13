@@ -1,0 +1,4 @@
+# Filled by scripts/fetch-ffmpeg.sh (Windows, Linux) and
+# packaging/macos/build-ffmpeg.sh (macOS); binaries are not committed.
+*
+!.gitignore

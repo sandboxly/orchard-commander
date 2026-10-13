@@ -40,7 +40,8 @@ You can type a destination path that is:
 
 - absolute, for example `/Volumes/Backup/2026` or `E:\Archive`;
 - relative, which is resolved from the active panel's folder, for example
-  `backup` or `../old`.
+  `backup` or `../old`. When copying out of an archive, it is resolved from
+  the folder that contains the archive.
 
 ## Moving and renaming
 
@@ -118,4 +119,4 @@ are not written back.
 Some locations can't be changed: archives, the results of a search (as a
 folder; the files themselves can be changed), and servers or folders where
 you lack permission. Commands that would change them show a message such as
-"Can't create a directory here: read-only".
+"Can't create a directory here: photos.zip is an archive (read-only)".

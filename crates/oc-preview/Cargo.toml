@@ -1,0 +1,32 @@
+[package]
+name = "oc-preview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["pdf"]
+# PDF previews with PDFium (crate oc-pdf). Without it PDFs get the next
+# previewer (hex), as in Python without pypdfium2.
+pdf = ["dep:oc-pdf"]
+# Media previews carry metadata (tags, duration, video size) and sources for oc-media's player.
+media = ["dep:oc-media"]
+
+[dependencies]
+oc-vfs.workspace = true
+oc-pdf = { path = "../oc-pdf", optional = true }
+thiserror.workspace = true
+log = "0.4"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+encoding_rs = "0.8.35"
+syntect = { version = "5.3", default-features = false, features = ["default-onig"] }
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-onig"] }
+pulldown-cmark = { version = "0.13", default-features = false }
+image = { version = "0.25.6", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico", "tga", "pnm", "qoi"] }
+resvg = { version = "0.48", default-features = false, features = ["text", "system-fonts", "raster-images"] }
+oc-media = { path = "../oc-media", optional = true }
+
+
+[dev-dependencies]
+tempfile.workspace = true
+oc-pdf = { path = "../oc-pdf", features = ["testing"] }

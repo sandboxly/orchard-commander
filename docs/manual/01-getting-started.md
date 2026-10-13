@@ -4,9 +4,13 @@
 
 | System | Requirements |
 | --- | --- |
-| macOS | macOS 14 Sonoma or later, Apple silicon (M1 or newer) |
+| macOS | macOS 12 Monterey or later, Apple silicon (M1 or newer) |
 | Windows | Windows 10 or 11, 64-bit |
-| Linux | x86-64, glibc 2.35 or later (for example Ubuntu 22.04, Fedora 36, Debian 12), X11 or Wayland |
+| Linux | x86-64, glibc 2.35 or later (for example Ubuntu 22.04, Fedora 36, Debian 12), X11 or Wayland, a Vulkan or OpenGL (EGL) graphics driver such as Mesa |
+
+The window is drawn on the GPU: with Metal on macOS, Direct3D 12 or Vulkan on
+Windows, and Vulkan or OpenGL on Linux. Without a usable GPU, for example in a
+virtual machine, the app draws in software instead.
 
 Downloads are available from the Orchard Commander website and from the
 releases page of the GitHub repository.
@@ -62,8 +66,8 @@ The `.deb` and `.rpm` packages install the app to `/opt/orchard-commander`,
 add the `orchard-commander` command and a menu entry, and install the
 libraries the app needs. Uninstall them with your package manager.
 
-The AppImage needs FUSE 2 (`libfuse2` on Debian and Ubuntu). Without it, run
-the AppImage with `--appimage-extract-and-run`.
+The AppImage needs FUSE. Without it, run the AppImage with
+`--appimage-extract-and-run`.
 
 ## The main window
 
@@ -84,6 +88,7 @@ press the key itself:
 | Key | Command |
 | --- | --- |
 | F3 | Preview |
+| F4 | Edit |
 | F5 | Copy |
 | F6 | Move |
 | F7 | Make directory |
@@ -129,8 +134,8 @@ command without knowing where it is in the menus.
 
 ## Notifications
 
-Short messages, such as "Copied 3 files" or an error, appear briefly at the
-bottom of the window. They don't require any action.
+Short messages, such as "Copying finished" or an error, appear briefly at the
+bottom right of the window. They don't require any action.
 
 ## Where to go next
 

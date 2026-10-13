@@ -15,10 +15,16 @@ first time. Click **More info**, then **Run anyway**.
 
 ### Linux: the app doesn't start
 
-Start `./orchard-commander` from a terminal to see error messages. The app
-needs a graphical desktop session. If a message mentions the Qt platform
-plugin "xcb", install your distribution's XCB libraries, for example
-`libxcb-cursor0` on Debian and Ubuntu.
+Start `orchard-commander` (or the AppImage) from a terminal to see error
+messages. The app needs a graphical desktop session and draws its window
+with Vulkan or OpenGL (EGL). On computers without a GPU, such as virtual
+machines, the Mesa drivers draw in software.
+
+If the message is "cannot draw into the window: no GPU adapter", install
+the Mesa drivers, for example `mesa-vulkan-drivers` and `libegl-mesa0` on
+Debian and Ubuntu, or `mesa-vulkan-drivers` and `mesa-libEGL` on Fedora.
+To try the other graphics interface, start the app with
+`WGPU_BACKEND=gl orchard-commander` or `WGPU_BACKEND=vulkan orchard-commander`.
 
 ## Servers
 
@@ -68,10 +74,11 @@ Files marked ☁ are online-only and must be downloaded first.
 - If the preview reports that the file hasn't arrived, make sure the cloud
   application is running, signed in and online, then click **Try again**.
 
-### Files from a RAR archive can't be extracted or previewed
+### A RAR or 7-Zip archive doesn't open
 
-Install `unrar` or 7-Zip. On Linux, `libarchive-tools` (bsdtar) also works
-for most archives. See [RAR archives](06-archives.md#rar-archives).
+RAR and 7-Zip archives are read by Orchard Commander itself; no other
+program needs to be installed. Password-protected (encrypted) archives
+can't be opened. See [Archives](06-archives.md#supported-formats).
 
 ### A file I deleted in another program still appears
 

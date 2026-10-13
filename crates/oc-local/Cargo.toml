@@ -1,0 +1,21 @@
+[package]
+name = "oc-local"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oc-vfs.workspace = true
+filetime = "0.2.29"
+open = "5.4"
+rayon = "1.12"
+trash = "5.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.180"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile.workspace = true

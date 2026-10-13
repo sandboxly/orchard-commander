@@ -1,6 +1,6 @@
 """Build the website into _site/: the landing page plus the manual rendered from docs/manual.
 
-    uv run python site/build.py            then open _site/index.html
+    pip install markdown && python site/build.py    then open _site/index.html
 """
 
 from __future__ import annotations

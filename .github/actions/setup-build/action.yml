@@ -1,0 +1,99 @@
+name: Set up the build
+description: >
+  Rust toolchain and cache, system packages (Linux), PDFium and FFmpeg
+  (scripts/fetch-*.sh; Homebrew's FFmpeg on macOS) and the environment
+  variables that point cargo and the tests at them.
+inputs:
+  components:
+    description: Extra rustup components (e.g. clippy)
+    required: false
+    default: ""
+  cache-key:
+    description: Distinguishes the cargo caches of jobs that build differently
+    required: true
+  runtime-paths:
+    description: >
+      "true": put FFmpeg on PATH (Windows) / LD_LIBRARY_PATH (Linux) and point
+      OC_PDFIUM_PATH at PDFium, for cargo test and target/ builds. Packaging
+      leaves this off so its self-tests prove the bundle has everything.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10
+      with:
+        # Pinned: each new stable brings deprecations and clippy lints, and
+        # CI runs clippy with -D warnings. Bump on purpose.
+        toolchain: "1.99.0"
+        components: ${{ inputs.components }}
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        key: ${{ inputs.cache-key }}
+
+    - name: System packages (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        # Build: bindgen (ffmpeg-sys-next) needs libclang; cpal links ALSA,
+        # keyring's Secret Service backend links libdbus.
+        # Run time (tests, --self-test): winit's keyboard libraries, a
+        # software GPU (Mesa lavapipe/llvmpipe) for the renderer, fonts
+        # (CJK too: the renderer tests draw wide characters).
+        sudo apt-get install -y --no-install-recommends \
+          pkg-config libclang-dev libasound2-dev libdbus-1-dev \
+          libxkbcommon0 libxkbcommon-x11-0 libx11-xcb1 libwayland-client0 \
+          libvulkan1 mesa-vulkan-drivers libegl1 libegl-mesa0 libgl1-mesa-dri \
+          fontconfig fonts-dejavu-core fonts-noto-cjk
+
+    - name: FFmpeg (macOS, Homebrew)
+      if: runner.os == 'macOS'
+      shell: bash
+      # ffmpeg@8: ffmpeg-next 8.1 does not build against FFmpeg 9 (Homebrew's
+      # plain `ffmpeg`). Keg-only, so point ffmpeg-sys-next at it.
+      run: |
+        brew install ffmpeg@8 pkg-config
+        echo "FFMPEG_DIR=$(brew --prefix ffmpeg@8)" >> "$GITHUB_ENV"
+
+    - name: libclang for bindgen (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> "$GITHUB_ENV"
+
+    - name: Cache PDFium and FFmpeg downloads
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          vendor/pdfium
+          vendor/ffmpeg
+        key: vendor-${{ runner.os }}-${{ hashFiles('scripts/fetch-pdfium.sh', 'scripts/fetch-ffmpeg.sh') }}
+
+    - name: PDFium and FFmpeg
+      shell: bash
+      run: |
+        scripts/fetch-pdfium.sh
+        case "$RUNNER_OS" in
+          Linux) platform=linux-x64 ;;
+          Windows) platform=win-x64 ;;
+          *) platform= ;;
+        esac
+        echo "PLATFORM=${platform:-mac-arm64}" >> "$GITHUB_ENV"
+        if [ -n "$platform" ]; then
+          scripts/fetch-ffmpeg.sh "$platform"
+          echo "FFMPEG_DIR=$PWD/vendor/ffmpeg/$platform" >> "$GITHUB_ENV"
+        fi
+        if [ "${{ inputs.runtime-paths }}" = "true" ]; then
+          echo "OC_PDFIUM_PATH=$PWD/vendor/pdfium/${platform:-mac-arm64}" >> "$GITHUB_ENV"
+          case "$RUNNER_OS" in
+            Linux) echo "LD_LIBRARY_PATH=$PWD/vendor/ffmpeg/linux-x64/lib" >> "$GITHUB_ENV" ;;
+            Windows) cygpath -w "$PWD/vendor/ffmpeg/win-x64/bin" >> "$GITHUB_PATH" ;;
+          esac
+        fi
+
+    - name: Scratch config dir (tests and runs never touch the real one)
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/oc-config"
+        echo "ORCHARD_COMMANDER_CONFIG_DIR=$RUNNER_TEMP/oc-config" >> "$GITHUB_ENV"

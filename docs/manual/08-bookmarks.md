@@ -59,9 +59,9 @@ Open the bookmark menu and press **\*** (**Organize bookmarks…**), or choose
 Click **OK** to save your changes, or **Cancel** to discard them.
 
 In the **Edit bookmark** dialog, **Folder** is the folder the bookmark opens
-and **Other panel** is an optional folder for the other panel. Click the
-**Active panel** or **Other panel** button next to a field to fill in the
-folder currently shown in that panel.
+and **Other panel** is an optional folder for the other panel. Click
+**Use active panel** or **Use other panel** to fill in the folder currently
+shown in that panel.
 
 Bookmarks are stored in the file `bookmarks.json` in the settings folder
 (see [Settings](12-settings.md#where-settings-are-stored)).

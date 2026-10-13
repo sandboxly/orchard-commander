@@ -37,7 +37,7 @@ keep the selected scheme, or **Esc** to return to the previous one.
 | Include proportional fonts | Also list fonts that aren't monospaced |
 | Style | For example Regular, Light or Medium, depending on the font |
 | Size | 7 to 40 points. You can also use **⌘=**, **⌘-** and **⌘0** / **Ctrl+=**, **Ctrl+-** and **Ctrl+0**. |
-| Line spacing | The height of the rows in the file lists, from 0.8 to 2.0 times the font height |
+| Line spacing | The height of every row in the window, from 0.8 to 2.0 times the font height |
 
 ### Window
 
@@ -68,8 +68,10 @@ keep the selected scheme, or **Esc** to return to the previous one.
 
 1. In **Settings → Appearance**, click **Edit…** next to the scheme.
 2. Change the **Name** if you want to save the scheme under a new name.
-3. Click a color swatch to pick a color, or type a hex value such as
-   `#272822`. The window shows the change immediately.
+3. Click a color swatch to open the color picker, or type a hex value such
+   as `#272822`. The picker has basic colors, a hue and saturation field, a
+   brightness bar and a field for the hex value. The window shows the change
+   immediately.
 4. Choose **Syntax colors** for highlighted source code in previews.
 5. Select **Dark scheme** if the scheme has a dark background.
 6. Click **Save**.
@@ -148,3 +150,9 @@ Passwords are stored in the system keychain, not in these files.
 
 To reset Orchard Commander to its defaults, quit the app and delete
 `settings.json`.
+
+## About and licenses
+
+**Options → About Orchard Commander…** (on macOS **Orchard Commander →
+About Orchard Commander**) shows the version and the third-party components.
+Click **Licenses…** to open the folder with their license texts.

@@ -61,7 +61,7 @@ def homebrew(version: str, sha: dict[str, str]) -> str:
   end
 
   depends_on arch: :arm64
-  depends_on macos: :sonoma
+  depends_on macos: :monterey
 
   app "Orchard Commander.app"
 

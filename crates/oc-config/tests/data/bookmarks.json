@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "type": "bookmark",
+      "id": "b1",
+      "title": "&Döcs",
+      "location": {
+        "kind": "local",
+        "path": "/tmp/d"
+      },
+      "target": {
+        "kind": "local",
+        "path": "/tmp/o"
+      }
+    },
+    {
+      "type": "folder",
+      "id": "f1",
+      "title": "&Servers",
+      "items": [
+        {
+          "type": "bookmark",
+          "id": "b2",
+          "title": "&Web",
+          "location": {
+            "kind": "archive",
+            "archive": {
+              "kind": "server",
+              "account": "sftp://root@web",
+              "path": "/a.zip"
+            },
+            "path": "x"
+          }
+        }
+      ]
+    },
+    {
+      "type": "separator",
+      "id": "s1"
+    }
+  ]
+}

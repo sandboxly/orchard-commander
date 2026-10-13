@@ -13,10 +13,11 @@ keyboards, the function keys may require **fn**.
 | Open a folder or archive; open a file | Enter | Enter |
 | Open with the default application | Shift+Enter or ⌘Enter | Shift+Enter or Ctrl+Enter |
 | Parent folder | Backspace | Backspace |
-| Switch to the other side | Tab | Tab |
-| Reload both panels | ⌘R | Ctrl+R |
+| Switch to the other side | Tab or ⇧Tab | Tab or Shift+Tab |
+| Reload both panels (read the folders again) | ⌘R | Ctrl+R |
+| Sort by a column; again to reverse | Click its header | Click its header |
 | Show or hide hidden files | ⇧⌘. | Ctrl+Shift+. or Ctrl+H |
-| Go to a folder or server address | ⌘G | Ctrl+G |
+| Go to a folder or server address | ⌘G or ⇧⌘G | Ctrl+G or Ctrl+Shift+G |
 | Choose a location for the left / right panel | ⌥F1 / ⌥F2 | Alt+F1 / Alt+F2 |
 | Show the active folder in the other panel too | ⌘E | Ctrl+E |
 | Exchange the two panels' folders | ⌘U | Ctrl+U |
@@ -54,10 +55,10 @@ In the **File exists** dialog: **O** Overwrite, **A** Overwrite all,
 | --- | --- | --- |
 | Save | ⌘S | Ctrl+S |
 | Close the editor window | ⌘W or Esc | Ctrl+W or Esc |
-| Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y |
+| Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z |
 | Find | ⌘F | Ctrl+F |
 | Find and replace | ⌥⌘F | Ctrl+Alt+F |
-| Next / previous match | ⌘G / ⇧⌘G | F3 / Shift+F3 |
+| Next / previous match | ⌘G / ⇧⌘G, or F3 / ⇧F3 | F3 / Shift+F3, or Ctrl+G / Ctrl+Shift+G |
 | Go to line | ⌘L or ⌥⌘L | Ctrl+L or Ctrl+Alt+L |
 
 ## Preview
@@ -121,7 +122,7 @@ In the bookmark menu: **+** add the current folder, **-** remove it,
 
 | Action | macOS | Windows / Linux |
 | --- | --- | --- |
-| Command palette | ⌘P | Ctrl+P |
+| Command palette | ⌘P or ⇧⌘P | Ctrl+P or Ctrl+Shift+P |
 | Menu bar | F9 | F9 |
 | Settings | ⌘, | Ctrl+, |
 | Larger / smaller / default font size | ⌘= / ⌘- / ⌘0 | Ctrl+= / Ctrl+- / Ctrl+0 |

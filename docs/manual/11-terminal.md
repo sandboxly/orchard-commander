@@ -70,6 +70,7 @@ These keys remain available to Orchard Commander:
 
 - the terminal shortcut (**⌘J**, **⌃\`** / **Ctrl+\`**), which hides the
   terminal;
+- **⌃⇧\`** / **Ctrl+Shift+\`** (**Terminal: go to panel folder**);
 - on macOS, all ⌘ shortcuts, such as **⌘K** or **⌘P**.
 
 | Action | macOS | Windows / Linux |

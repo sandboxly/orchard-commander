@@ -1,5 +1,6 @@
-# .deb and .rpm from the PyInstaller bundle (dist/orchard-commander), built in CI:
-#   VERSION=1.0.0 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
+# .deb and .rpm from the staged app folder (packaging/stage.sh linux-x64 ...
+# dist/orchard-commander), built in CI from the repository root:
+#   VERSION=2.0.0 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
 name: orchard-commander
 arch: amd64
 platform: linux
@@ -8,14 +9,15 @@ section: utils
 priority: optional
 maintainer: Stephan Lengl <lengl.stephan@gmail.com>
 description: |
-  Keyboard-driven two-panel file manager.
+  Two-panel file manager for macOS, Windows and Linux.
   Previews for code, images, PDFs, audio and video; archives and SFTP, SMB,
   WebDAV and S3 servers as folders; find files, multi-rename and a built-in
   terminal.
 vendor: Stephan Lengl
 homepage: https://sandboxly.github.io/orchard-commander/
-license: MIT
+license: MIT and LGPL-3.0-or-later and BSD-3-Clause and UnRAR
 contents:
+  # The executable, libpdfium.so, lib/ (FFmpeg) and licenses/.
   - src: dist/orchard-commander
     dst: /opt/orchard-commander
     type: tree
@@ -26,30 +28,57 @@ contents:
     dst: /usr/share/applications/orchard-commander.desktop
   - src: packaging/linux/orchard-commander.png
     dst: /usr/share/icons/hicolor/256x256/apps/orchard-commander.png
-  - src: LICENSE
-    dst: /usr/share/doc/orchard-commander/LICENSE
+  - src: dist/orchard-commander/licenses
+    dst: /usr/share/doc/orchard-commander
+    type: tree
 overrides:
   deb:
     depends:
-      - libegl1
-      - libgl1
+      # nfpm doesn't compute shared-library dependencies: the binary is built
+      # on Ubuntu 22.04 (glibc 2.35) and links the C++ runtime and ALSA.
+      - libc6 (>= 2.35)
+      - libstdc++6
+      - libgcc-s1
+      # Versioned: unversioned, Ubuntu 24.04's apt satisfies `libasound2` with
+      # liboss4-salsa-asound2 (an OSS shim), and the app then fails to start
+      # (undefined symbol snd_pcm_info_get_stream).
+      - libasound2t64 (>= 1.0.16) | libasound2 (>= 1.0.16)
+      # Loaded at run time: keyboard handling, windows (X11; Wayland is
+      # recommended), fonts, the system's CA certificates (WebDAV/S3 over HTTPS).
       - libxkbcommon0
       - libxkbcommon-x11-0
-      - libfontconfig1
-      - libdbus-1-3
-      - libxcb-cursor0
-      - libpulse0
+      - libx11-6
+      - libx11-xcb1
+      - libxcursor1
+      - libxi6
+      - fontconfig
+      - ca-certificates
+      # GPU: the Vulkan or EGL loader plus a driver (Mesa's run on any hardware,
+      # in software if needed); the loader alone can't draw anything.
+      - libvulkan1 | libegl1
+      - mesa-vulkan-drivers | vulkan-icd | libegl-mesa0
     recommends:
-      - unrar | 7zip | p7zip-full
+      - mesa-vulkan-drivers
+      - libwayland-client0
+      - fonts-dejavu-core
   rpm:
     depends:
-      - mesa-libEGL
-      - mesa-libGL
+      - glibc >= 2.35
+      - libstdc++
+      - alsa-lib
       - libxkbcommon
       - libxkbcommon-x11
+      - libX11
+      - libX11-xcb
+      - libXcursor
+      - libXi
       - fontconfig
-      - dbus-libs
-      - xcb-util-cursor
-      - pulseaudio-libs
+      - ca-certificates
+      - (vulkan-loader or mesa-libEGL)
+      - (mesa-vulkan-drivers or mesa-libEGL)
+    recommends:
+      - mesa-vulkan-drivers
+      - libwayland-client
+      - dejavu-sans-mono-fonts
 rpm:
   group: Applications/File

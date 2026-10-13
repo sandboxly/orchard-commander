@@ -149,7 +149,7 @@ MP3, FLAC, M4A, AAC, Ogg, Opus, WMA, WAV, AIFF and others.
 | `duration` | Length, for example `3m25s` |
 | `bitrate` | Bit rate in kbit/s |
 
-The tags `title` and `year` are also read from MP4, M4V and MOV videos.
+All audio fields except `bitrate` are also read from MP4, M4V and MOV videos.
 
 ### Videos and images
 

@@ -1,0 +1,26 @@
+# Mein "Papier" ü	: an Orchard Commander color scheme
+name = "Mein \"Papier\" ü\t"
+dark = false
+pygments_style = "default"  # syntax highlighting in text previews
+
+background         = "#e8e8e3"  # Window background
+surface            = "#fafaf7"  # Panel background
+foreground         = "#1c1c1c"  # Text
+muted              = "#8a8a8a"  # Secondary text
+accent             = "#af5f00"  # Headers and titles
+border             = "#c8c8c0"  # Border
+border_active      = "#005f87"  # Active border
+cursor_bg          = "#005f87"  # Cursor
+cursor_fg          = "#ffffff"  # Cursor text
+cursor_inactive_bg = "#dcdcd4"  # Cursor, inactive panel
+dir                = "#005f87"  # Directories
+exec               = "#008700"  # Executables
+link               = "#8700af"  # Symbolic links
+hidden             = "#8a8a8a"  # Hidden files
+marked             = "#d75f00"  # Marked files
+error              = "#d70000"  # Errors
+warning            = "#af5f00"  # Warnings
+success            = "#008700"  # Success
+footer_bg          = "#dcdcd4"  # Key bar background
+footer_fg          = "#1c1c1c"  # Key bar text
+footer_key         = "#af5f00"  # Key bar keys
