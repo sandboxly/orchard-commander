@@ -24,7 +24,7 @@ use smb2::msg::write::{WriteRequest, WriteResponse};
 use smb2::pack::{ReadCursor, Unpack};
 use smb2::types::flags::{FileAccessMask, FileAttributes};
 use smb2::types::status::NtStatus;
-use smb2::types::{Command, CreditCharge, FileId, OplockLevel};
+use smb2::types::{Command, CreditCharge, FileId, OplockLevel, TreeId};
 use smb2::{FileReader, Tree};
 
 use crate::error::{Failure, SmbResult};
@@ -361,31 +361,24 @@ impl SmbWriter {
         let (conn, tree_id, file_id, offset) = (self.conn.clone(), self.tree.tree_id, self.file_id, self.offset);
         self.offset += data.len() as u64;
         self.inflight.push_back(Pending::spawn(async move {
-            let len = data.len() as u32;
-            let req = WriteRequest {
-                data_offset: 0x70,
-                offset,
-                file_id,
-                channel: 0,
-                remaining_bytes: 0,
-                write_channel_info_offset: 0,
-                write_channel_info_length: 0,
-                flags: 0,
-                data,
-            };
-            let charge = CreditCharge(u64::from(len).div_ceil(65536).clamp(1, u64::from(u16::MAX)) as u16);
-            let frame = conn.execute_with_credits(Command::Write, &req, Some(tree_id), charge).await?;
-            if frame.header.status != NtStatus::SUCCESS {
-                return Err(protocol(frame.header.status, Command::Write));
+            match write_at(&conn, tree_id, file_id, offset, &data).await {
+                // Sized before the server showed a lower credit ceiling: the
+                // library refuses such a WRITE at once (it could never be
+                // funded). Send it again in pieces the ceiling funds.
+                Err(Failure::Smb(smb2::Error::CreditStarvation { waited, .. }))
+                    if waited.is_zero() && data.len() > 65536 =>
+                {
+                    let ceiling = conn.credit_ceiling().unwrap_or(2);
+                    let piece = usize::from((ceiling / 2).max(1)) * 65536;
+                    let mut at = offset;
+                    for part in data.chunks(piece) {
+                        write_at(&conn, tree_id, file_id, at, part).await?;
+                        at += part.len() as u64;
+                    }
+                    Ok(())
+                }
+                other => other,
             }
-            let resp = WriteResponse::unpack(&mut ReadCursor::new(&frame.body))?;
-            if resp.count != len {
-                return Err(Failure::Smb(smb2::Error::invalid_data(format!(
-                    "the server wrote {} of {len} bytes",
-                    resp.count
-                ))));
-            }
-            Ok(())
         }));
         Ok(())
     }
@@ -454,6 +447,32 @@ impl Drop for SmbWriter {
             let _ = self.close_handle();
         }
     }
+}
+
+/// One WRITE of `data` at `offset`, charged by its size.
+async fn write_at(conn: &Connection, tree_id: TreeId, file_id: FileId, offset: u64, data: &[u8]) -> SmbResult<()> {
+    let len = data.len() as u32;
+    let req = WriteRequest {
+        data_offset: 0x70,
+        offset,
+        file_id,
+        channel: 0,
+        remaining_bytes: 0,
+        write_channel_info_offset: 0,
+        write_channel_info_length: 0,
+        flags: 0,
+        data: data.to_vec(),
+    };
+    let charge = CreditCharge(u64::from(len).div_ceil(65536).clamp(1, u64::from(u16::MAX)) as u16);
+    let frame = conn.execute_with_credits(Command::Write, &req, Some(tree_id), charge).await?;
+    if frame.header.status != NtStatus::SUCCESS {
+        return Err(protocol(frame.header.status, Command::Write));
+    }
+    let resp = WriteResponse::unpack(&mut ReadCursor::new(&frame.body))?;
+    if resp.count != len {
+        return Err(Failure::Smb(smb2::Error::invalid_data(format!("the server wrote {} of {len} bytes", resp.count))));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
