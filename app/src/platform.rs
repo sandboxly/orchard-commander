@@ -326,7 +326,10 @@ impl Platform {
         let inner_pos = w.inner_position().unwrap_or_default();
         let outer_pos = w.outer_position().unwrap_or(inner_pos);
         let content = logical(inner_pos, w.inner_size());
-        let monitors: Vec<_> = w.available_monitors().collect();
+        // Qt numbers the screens primary first (as `saved_geometry` lists them).
+        let primary = w.primary_monitor();
+        let monitors: Vec<_> =
+            primary.iter().cloned().chain(w.available_monitors().filter(|m| Some(m) != primary.as_ref())).collect();
         let current = w.current_monitor();
         let screen = current.as_ref().and_then(|c| monitors.iter().position(|m| m == c)).unwrap_or(0);
         let screen_width = current.map_or(0, |m| m.size().to_logical::<f64>(m.scale_factor()).width.round() as i32);
