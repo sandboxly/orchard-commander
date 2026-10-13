@@ -32,6 +32,11 @@ ropey = { version = "1.6", default-features = false, features = ["simd"] }
 regex = "1.13"
 tempfile.workspace = true
 
+# Wayland's own clipboard where the compositor offers data-control; arboard
+# falls back to X11 (XWayland) otherwise.
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
+
 [dev-dependencies]
 tempfile.workspace = true
 oc-archive.workspace = true

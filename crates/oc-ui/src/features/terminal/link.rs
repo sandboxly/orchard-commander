@@ -306,6 +306,7 @@ pub fn as_seen_from(folder: &Path, panel_dir: Option<&Path>) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     #[cfg(unix)]

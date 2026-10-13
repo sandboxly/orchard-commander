@@ -10,6 +10,12 @@
 //! - `OC_TIMING=1`: print startup-to-first-frame time to stderr (`OC_TIMING=exit`:
 //!   and quit right after it).
 
+// Windows: a GUI program, no console window behind it (1.x's PyInstaller
+// build had `console=False`). Output still reaches a redirected stdout (CI's
+// `Start-Process -RedirectStandardOutput`); in a console window the flags
+// that print attach to it (`attach_parent_console`).
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+
 mod geometry;
 mod platform;
 mod screenshot;
@@ -87,6 +93,8 @@ fn parse_args() -> Result<Args, String> {
 
 fn main() -> ExitCode {
     let started = Instant::now();
+    #[cfg(windows)]
+    attach_parent_console();
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
@@ -105,6 +113,23 @@ fn main() -> ExitCode {
     };
     oc_archive::cleanup_cache_dir();
     code
+}
+
+/// Windows: started with an option (`--self-test`, `--version`…) from a
+/// console and with nothing redirected, print to that console. A GUI
+/// program gets no console of its own, and folders alone open no console.
+#[cfg(windows)]
+fn attach_parent_console() {
+    use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_OUTPUT_HANDLE};
+    if !std::env::args_os().skip(1).any(|a| a.to_string_lossy().starts_with('-')) {
+        return;
+    }
+    // SAFETY: plain Win32 calls without pointers.
+    unsafe {
+        if GetStdHandle(STD_OUTPUT_HANDLE).is_null() {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
 }
 
 /// The server connection types, in 1.x's order (the connection editor's

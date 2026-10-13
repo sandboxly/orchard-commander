@@ -243,7 +243,20 @@ pub fn from_winit(logical: &winit::keyboard::Key, unmodified: &winit::keyboard::
         _ => None,
     });
     let text = text.filter(|t| !t.is_empty() && !t.chars().any(char::is_control));
+    // Windows reports AltGr as Ctrl+Alt. A key that types a character with
+    // them (AltGr+Q → "@" on a German layout) is typing, not a shortcut and
+    // not Ctrl+Q in the terminal; Ctrl+Alt+letter types nothing.
+    if is_alt_gr(mods, text.as_deref())
+        && let Some(Key::Char(c)) = named(logical)
+    {
+        return Some(KeyEvent { key: Key::Char(c), mods: Mods { ctrl: false, alt: false, ..mods }, text });
+    }
     Some(KeyEvent { key, mods, text })
+}
+
+/// Ctrl+Alt (no ⊞) that typed something: AltGr on Windows.
+fn is_alt_gr(mods: Mods, text: Option<&str>) -> bool {
+    cfg!(windows) && mods.ctrl && mods.alt && !mods.logo && text.is_some()
 }
 
 #[cfg(test)]
@@ -261,5 +274,20 @@ mod tests {
         let plus = from_winit(&WKey::Character(SmolStr::new("+")), &WKey::Character(SmolStr::new("=")), Some("+"), Mods::SHIFT).unwrap();
         assert_eq!((plus.key, plus.typed_text()), (Key::Char('='), Some("+")));
         assert!(from_winit(&WKey::Named(NamedKey::Shift), &WKey::Named(NamedKey::Shift), None, Mods::NONE).is_none());
+    }
+
+    /// AltGr+Q on a German layout: Windows says Ctrl+Alt and types "@".
+    #[test]
+    fn alt_gr_types_on_windows() {
+        let ctrl_alt = Mods { ctrl: true, alt: true, ..Mods::NONE };
+        let at = from_winit(&WKey::Character(SmolStr::new("@")), &WKey::Character(SmolStr::new("q")), Some("@"), ctrl_alt).unwrap();
+        if cfg!(windows) {
+            assert_eq!((at.key, at.mods, at.typed_text()), (Key::Char('@'), Mods::NONE, Some("@")));
+        } else {
+            assert_eq!((at.key, at.mods, at.typed_text()), (Key::Char('q'), ctrl_alt, None));
+        }
+        // Ctrl+Alt+Q types nothing: a shortcut everywhere.
+        let q = from_winit(&WKey::Character(SmolStr::new("q")), &WKey::Character(SmolStr::new("q")), None, ctrl_alt).unwrap();
+        assert_eq!((q.key, q.mods, q.text), (Key::Char('q'), ctrl_alt, None));
     }
 }

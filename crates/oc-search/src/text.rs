@@ -29,7 +29,7 @@ pub struct TextMatcher {
 #[derive(Clone, Debug)]
 enum Engine {
     /// Case-sensitive plain text: SIMD substring search.
-    Literal(memmem::Finder<'static>),
+    Literal(Box<memmem::Finder<'static>>), // boxed: 288 bytes on x86_64 (AVX2 searcher)
     Regex(Regex),
     /// Python `re` features the `regex` crate lacks (look-around, back-references).
     Fancy(fancy_regex::Regex),
@@ -50,7 +50,7 @@ impl TextMatcher {
     pub fn new(text: &str, regex: bool, case: bool, whole_words: bool) -> Result<Self, PatternError> {
         if !regex && case && !whole_words {
             let finder = memmem::Finder::new(text.as_bytes()).into_owned();
-            return Ok(TextMatcher { engine: Engine::Literal(finder) });
+            return Ok(TextMatcher { engine: Engine::Literal(Box::new(finder)) });
         }
         let escaped;
         let mut pattern = if regex {

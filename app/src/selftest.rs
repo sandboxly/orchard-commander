@@ -68,7 +68,7 @@ fn fonts() -> Result<String, String> {
 }
 
 fn renderer() -> Result<String, String> {
-    let ((w, h, lit), ms) = timed(|| {
+    let ((w, h, lit, gpu), ms) = timed(|| {
         let mut r = HeadlessRenderer::new(FontConfig::default(), 1.0).map_err(|e| e.to_string())?;
         let mut f = Frame::new(12, 2, Rgba::BLACK);
         f.put_str(0, 0, "Orchard ╭─╮", Style::fg(Rgba::WHITE));
@@ -77,9 +77,10 @@ fn renderer() -> Result<String, String> {
         if lit == 0 {
             return Err("rendered frame is empty".into());
         }
-        Ok((img.width, img.height, lit))
+        let a = r.adapter_info();
+        Ok((img.width, img.height, lit, format!("{} via {:?}, {:?}", a.name, a.backend, a.device_type)))
     })?;
-    Ok(format!("offscreen GPU device, {w}x{h} px frame, {lit} lit pixels ({ms:.0} ms)"))
+    Ok(format!("offscreen GPU device ({gpu}), {w}x{h} px frame, {lit} lit pixels ({ms:.0} ms)"))
 }
 
 fn archives() -> Result<String, String> {
