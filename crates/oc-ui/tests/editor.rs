@@ -613,6 +613,255 @@ fn title_shortens_the_home_folder() {
 }
 
 /// A zip with one stored (uncompressed) file, so the test needs no zip crate.
+fn mouse(app: &mut App, id: WinId, kind: oc_ui::MouseKind, col: u16, row: u16) {
+    app.handle_event(id, Event::Mouse(oc_ui::MouseEvent { kind, col, row, mods: Mods::NONE }));
+}
+
+fn layout(app: &App, id: WinId) -> oc_ui::features::editor::window::Layout {
+    ed(app, id).layout(app.screen(id))
+}
+
+#[test]
+fn long_lines_scroll_sideways() {
+    use oc_ui::{MouseButton, MouseKind};
+    let e = env();
+    let path = e.left.join("wide.txt");
+    fs::write(&path, format!("short\n{}\n", "x".repeat(300))).unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "wide.txt");
+    let l = layout(&app, id);
+    let bar = l.hbar.expect("a horizontal scrollbar for the long line");
+    assert_eq!(bar.y, l.code.bottom());
+    let (cols, max) = (l.code.w as usize, 301 - l.code.w as usize);
+    // Trackpads / tilting wheels (and Shift+wheel on macOS).
+    mouse(&mut app, id, MouseKind::HScroll(-10.0), 10, 5);
+    assert_eq!(ed(&app, id).left, 30);
+    mouse(&mut app, id, MouseKind::HScroll(-1000.0), 10, 5);
+    assert_eq!(ed(&app, id).left, max, "not past the longest line");
+    mouse(&mut app, id, MouseKind::HScroll(1000.0), 10, 5);
+    assert_eq!(ed(&app, id).left, 0);
+    assert_eq!(ed(&app, id).buf.cursor, 0, "scrolling doesn't move the cursor");
+    // A click right of the thumb pages; dragging the thumb to the end.
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Left), bar.right() - 1, bar.y);
+    mouse(&mut app, id, MouseKind::Up(MouseButton::Left), bar.right() - 1, bar.y);
+    assert_eq!(ed(&app, id).left, cols);
+    mouse(&mut app, id, MouseKind::HScroll(1000.0), 10, 5);
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Left), bar.x, bar.y);
+    mouse(&mut app, id, MouseKind::Move, bar.right(), bar.y);
+    mouse(&mut app, id, MouseKind::Up(MouseButton::Left), bar.right(), bar.y);
+    assert_eq!(ed(&app, id).left, max);
+    // The bar goes when the long line does.
+    key(&mut app, id, Key::Down, primary_mods_doc_end());
+    key(&mut app, id, Key::Up, Mods::NONE);
+    key(&mut app, id, Key::Right, primary_mods_doc_end());
+    if cfg!(target_os = "macos") {
+        key(&mut app, id, Key::Backspace, primary()); // ⌘⌫: to the line's start
+    } else {
+        key(&mut app, id, Key::Home, Mods::SHIFT);
+        key(&mut app, id, Key::Backspace, Mods::NONE);
+    }
+    assert_eq!(text(&app, id), "short\n\n");
+    assert!(layout(&app, id).hbar.is_none());
+}
+
+#[test]
+fn line_widths_follow_edits_everywhere() {
+    let e = env();
+    let path = e.left.join("a.txt");
+    fs::write(&path, "a\nb\na\nb\na\n").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.txt");
+    assert!(layout(&app, id).hbar.is_none());
+    let w = app.window_mut::<EditorWindow>(id).unwrap();
+    w.bar.find.set_text("a");
+    w.bar.with.set_text(&format!("z\n{}", "y".repeat(150)));
+    assert_eq!(w.replace_all(), 3);
+    app.handle_event(id, Event::Preedit(String::new())); // settles the window
+    assert_eq!(text(&app, id).lines().count(), 8);
+    assert_eq!(ed(&app, id).content_width(), 151);
+    // Shorten the last long line only: the others keep the width.
+    key(&mut app, id, Key::Down, primary_mods_doc_end());
+    key(&mut app, id, Key::Up, Mods::NONE);
+    key(&mut app, id, Key::Right, primary_mods_doc_end());
+    for _ in 0..100 {
+        key(&mut app, id, Key::Backspace, Mods::NONE);
+    }
+    assert_eq!(ed(&app, id).content_width(), 151);
+    key(&mut app, id, Key::Char('a'), primary());
+    type_in(&mut app, id, "short");
+    assert_eq!(ed(&app, id).content_width(), 6);
+    while ed(&app, id).buf.can_undo() {
+        key(&mut app, id, Key::Char('z'), primary());
+        if text(&app, id).lines().count() == 8 {
+            assert_eq!(ed(&app, id).content_width(), 151, "{:?}", text(&app, id));
+        }
+    }
+    assert_eq!(text(&app, id), "a\nb\na\nb\na\n");
+    assert_eq!(ed(&app, id).content_width(), 2);
+    assert!(layout(&app, id).hbar.is_none());
+}
+
+#[test]
+fn the_vertical_scrollbar_takes_clicks_and_drags() {
+    use oc_ui::{MouseButton, MouseKind};
+    let e = env();
+    let path = e.left.join("long.txt");
+    fs::write(&path, (1..=300).map(|n| format!("{n}\n")).collect::<String>()).unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "long.txt");
+    let l = layout(&app, id);
+    assert!(l.hbar.is_none());
+    let (bar, rows) = (l.vbar, l.code.h as usize);
+    let max = 301 - rows;
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Left), bar.x, bar.bottom() - 1);
+    mouse(&mut app, id, MouseKind::Up(MouseButton::Left), bar.x, bar.bottom() - 1);
+    assert_eq!(ed(&app, id).top, rows, "a page down");
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Left), bar.x, bar.y);
+    mouse(&mut app, id, MouseKind::Up(MouseButton::Left), bar.x, bar.y);
+    assert_eq!(ed(&app, id).top, 0, "a page up");
+    // Grab the thumb at the top and drag it to the bottom.
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Left), bar.x, bar.y);
+    mouse(&mut app, id, MouseKind::Move, bar.x, bar.bottom() - 1);
+    assert_eq!(ed(&app, id).top, max);
+    mouse(&mut app, id, MouseKind::Move, bar.x, bar.y + bar.h / 2);
+    let mid = ed(&app, id).top;
+    assert!(mid > max / 4 && mid < max * 3 / 4, "{mid}");
+    mouse(&mut app, id, MouseKind::Up(MouseButton::Left), bar.x, bar.y);
+    mouse(&mut app, id, MouseKind::Move, bar.x, bar.bottom() - 1);
+    assert_eq!(ed(&app, id).top, mid, "released");
+    assert_eq!(ed(&app, id).buf.cursor, 0, "the cursor stays");
+}
+
+#[test]
+fn right_click_shows_the_text_menu() {
+    use oc_ui::{MouseButton, MouseKind};
+    let e = env();
+    let path = e.left.join("a.txt");
+    fs::write(&path, "hello world\n").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.txt");
+    let code = layout(&app, id).code;
+    key(&mut app, id, Key::Right, Mods::SHIFT);
+    key(&mut app, id, Key::Right, Mods::SHIFT);
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Right), code.x + 8, code.y);
+    assert_eq!(app.modal_titles(), ["popup menu"]);
+    assert_eq!(app.top_modal_text().unwrap(), "Undo\nRedo\nCut\nCopy\nPaste\nDelete\nSelect All");
+    assert_eq!(ed(&app, id).buf.selection(), Some(0..2), "a right click keeps the selection");
+    // Undo and Redo are disabled: the first entry is Cut.
+    key(&mut app, id, Key::Enter, Mods::NONE);
+    settle(&mut app);
+    assert_eq!(text(&app, id), "llo world\n");
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("he"));
+    // Delete removes the selection, the clipboard stays.
+    key(&mut app, id, Key::Right, Mods::SHIFT);
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Right), code.x + 8, code.y);
+    assert_eq!(app.modal_titles(), ["popup menu"], "{:?}", ed(&app, id).buf.selection());
+    for _ in 0..4 {
+        key(&mut app, id, Key::Down, Mods::NONE); // Undo → Cut → Copy → Paste → Delete
+    }
+    key(&mut app, id, Key::Enter, Mods::NONE);
+    settle(&mut app);
+    assert_eq!(text(&app, id), "lo world\n");
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("he"));
+}
+
+#[test]
+fn read_only_text_menu_has_copy_and_select_all() {
+    use oc_ui::{MouseButton, MouseKind};
+    let e = env();
+    fs::write(e.left.join("image.bin"), b"\0\x01\x02binary").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(e.left.join("image.bin")));
+    let id = editor_for(&mut app, "image.bin");
+    assert!(ed(&app, id).read_only);
+    let code = layout(&app, id).code;
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Right), code.x + 2, code.y);
+    assert_eq!(app.top_modal_text().unwrap(), "Copy\nSelect All");
+}
+
+#[test]
+fn shift_enter_breaks_the_line_without_indentation() {
+    let e = env();
+    let path = e.left.join("a.py");
+    fs::write(&path, "    x = 1").unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.py");
+    key(&mut app, id, Key::Down, primary_mods_doc_end());
+    key(&mut app, id, Key::Enter, Mods::SHIFT);
+    type_in(&mut app, id, "y");
+    assert_eq!(text(&app, id), "    x = 1\ny");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn mac_text_keys_match_qt() {
+    let e = env();
+    let path = e.left.join("a.txt");
+    let body: String = (1..=100).map(|n| format!("line {n}\n")).collect();
+    fs::write(&path, &body).unwrap();
+    let mut app = app(&e);
+    open_editor(&mut app, oc_local::local(&path));
+    let id = editor_for(&mut app, "a.txt");
+    let ctrl = Mods { ctrl: true, ..Mods::NONE };
+    let ctrl_shift = Mods { ctrl: true, shift: true, ..Mods::NONE };
+    let cursor = |app: &App| ed(app, id).buf.cursor;
+    // Home/End: the whole text (Qt's Cocoa bindings).
+    key(&mut app, id, Key::End, Mods::NONE);
+    assert_eq!(cursor(&app), body.chars().count());
+    key(&mut app, id, Key::Home, Mods::NONE);
+    assert_eq!(cursor(&app), 0);
+    key(&mut app, id, Key::End, Mods::SHIFT);
+    assert_eq!(ed(&app, id).buf.selection(), Some(0..body.chars().count()));
+    key(&mut app, id, Key::Home, Mods::NONE);
+    // Control+E / Control+A, Control+→ / Control+←, ⌥↓ / ⌥↑: the line.
+    key(&mut app, id, Key::Char('e'), ctrl);
+    assert_eq!(cursor(&app), 6);
+    key(&mut app, id, Key::Char('a'), ctrl);
+    assert_eq!(cursor(&app), 0);
+    key(&mut app, id, Key::Right, ctrl);
+    assert_eq!(cursor(&app), 6);
+    key(&mut app, id, Key::Left, ctrl_shift);
+    assert_eq!(ed(&app, id).buf.selection(), Some(0..6));
+    key(&mut app, id, Key::Down, Mods::ALT);
+    assert_eq!(cursor(&app), 6);
+    key(&mut app, id, Key::Up, Mods::ALT);
+    assert_eq!(cursor(&app), 0);
+    // Emacs movement.
+    key(&mut app, id, Key::Char('n'), ctrl);
+    key(&mut app, id, Key::Char('f'), ctrl);
+    assert_eq!(cursor(&app), 8);
+    key(&mut app, id, Key::Char('b'), ctrl);
+    key(&mut app, id, Key::Char('p'), ctrl);
+    assert_eq!(cursor(&app), 0);
+    // Control+V / Control+↓ page down, Control+↑ up.
+    let rows = layout(&app, id).code.h as usize;
+    key(&mut app, id, Key::Char('v'), ctrl);
+    assert_eq!(ed(&app, id).buf.line_of(cursor(&app)), rows);
+    key(&mut app, id, Key::Up, ctrl);
+    assert_eq!(ed(&app, id).buf.line_of(cursor(&app)), 0);
+    // Control+D / Control+H delete; Control+K cuts, Control+Y pastes.
+    key(&mut app, id, Key::Char('d'), ctrl);
+    assert!(text(&app, id).starts_with("ine 1\n"));
+    key(&mut app, id, Key::Char('e'), ctrl);
+    key(&mut app, id, Key::Char('h'), ctrl);
+    assert!(text(&app, id).starts_with("ine \n"));
+    key(&mut app, id, Key::Left, ctrl_shift);
+    key(&mut app, id, Key::Char('k'), ctrl);
+    assert_eq!(app.clipboard.get_text().as_deref(), Some("ine "));
+    assert!(text(&app, id).starts_with("\nline 2"));
+    key(&mut app, id, Key::Char('y'), ctrl);
+    assert!(text(&app, id).starts_with("ine \nline 2"));
+    // ⌘F4 closes, like ⌘W.
+    key(&mut app, id, Key::F(4), primary());
+    settle(&mut app);
+    assert_eq!(app.modal_titles(), ["Unsaved changes"]);
+}
+
 fn write_zip(path: &Path, name: &str, body: &[u8]) {
     let mut crc = 0xffff_ffffu32;
     for &b in body {

@@ -724,6 +724,8 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
             }
             MouseKind::Move => t.mouse.motion(&mut screen, e),
             MouseKind::Scroll(lines) => t.mouse.wheel(&mut screen, 0, (lines * 120.0).round() as i32, e),
+            // Sideways scrolling isn't passed on (as before it existed).
+            MouseKind::HScroll(_) => MouseAction::None,
         }
     };
     if pressed {

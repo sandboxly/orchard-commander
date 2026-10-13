@@ -42,6 +42,7 @@ struct Win {
     cursor: PhysicalPosition<f64>,
     last_cell: (u16, u16),
     scroll_px: f64,
+    scroll_px_x: f64,
     ime_allowed: bool,
     /// Which of the app's images this window's renderer has.
     images: oc_ui::images::ImageSync,
@@ -197,6 +198,7 @@ impl Platform {
             cursor: PhysicalPosition::new(0.0, 0.0),
             last_cell: (u16::MAX, u16::MAX),
             scroll_px: 0.0,
+            scroll_px_x: 0.0,
             ime_allowed: false,
             images: Default::default(),
         };
@@ -532,19 +534,26 @@ impl ApplicationHandler<AppEvent> for Platform {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let w = self.windows.get_mut(&key).expect("checked");
-                let lines = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
+                let (cols, lines) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (x, y),
                     MouseScrollDelta::PixelDelta(p) => {
                         // Trackpads: whole rows only, keep the remainder.
-                        let ch = w.cell_px().1 as f64 * 3.0;
+                        let (cw, ch) = (w.cell_px().0 as f64 * 3.0, w.cell_px().1 as f64 * 3.0);
                         w.scroll_px += p.y;
                         let n = (w.scroll_px / ch).trunc();
                         w.scroll_px -= n * ch;
-                        n as f32
+                        // Sideways likewise, in columns.
+                        w.scroll_px_x += p.x;
+                        let c = (w.scroll_px_x / cw).trunc();
+                        w.scroll_px_x -= c * cw;
+                        (c as f32, n as f32)
                     }
                 };
                 if lines != 0.0 {
                     self.mouse(key, MouseKind::Scroll(lines));
+                }
+                if cols != 0.0 {
+                    self.mouse(key, MouseKind::HScroll(cols));
                 }
             }
             WindowEvent::Focused(f) => self.send(key, Event::Focus(f)),

@@ -82,6 +82,26 @@ pub fn advance(col: usize, c: char) -> usize {
     if c == '\t' { (col / TAB_WIDTH + 1) * TAB_WIDTH } else { col + char_width(c) }
 }
 
+/// The display width of a rope line (its "\n" not counted), walking runs of
+/// printable ASCII a chunk at a time.
+pub fn line_width(line: RopeSlice<'_>) -> usize {
+    let mut col = 0;
+    for chunk in line.chunks() {
+        let chunk = chunk.strip_suffix('\n').unwrap_or(chunk);
+        if chunk.is_ascii() && !chunk.contains('\t') {
+            col += chunk.len();
+        } else {
+            col = chunk.chars().fold(col, advance);
+        }
+    }
+    col
+}
+
+/// Every line's [`line_width`] (on a worker for large texts).
+pub fn line_widths(rope: &Rope) -> Vec<u32> {
+    rope.lines().map(|l| line_width(l).min(u32::MAX as usize - 1) as u32).collect()
+}
+
 #[derive(Default)]
 pub struct Buffer {
     rope: Rope,
@@ -755,5 +775,16 @@ mod tests {
         assert_eq!(b.line(0).to_string(), "a\x0cb\u{2028}c\u{85}d\x0be");
         assert_eq!(b.line_end(0), 9);
         assert_eq!(b.line_of(b.line_start(1)), 1);
+    }
+
+    #[test]
+    fn line_widths_are_display_columns() {
+        let long = "x".repeat(300_000);
+        let b = Buffer::new(&format!("{long}\tz日本\n\tab\n\n"));
+        let widths = line_widths(b.rope());
+        assert_eq!(widths, [300_000 + 4 + 1 + 4, 6, 0, 0]);
+        for (line, w) in widths.iter().enumerate() {
+            assert_eq!(*w as usize, b.display_col(b.line_end(line)));
+        }
     }
 }

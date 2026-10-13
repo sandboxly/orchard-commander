@@ -14,16 +14,16 @@ use oc_preview::highlight::{self as syn, LineHighlighter};
 use oc_preview::textfile::{Encoding, TextFile};
 use oc_vfs::VPath;
 
-use super::buffer::Buffer;
+use super::buffer::{Buffer, Change, line_width, line_widths};
 use super::highlight::{Highlight, MAX_HIGHLIGHT_CHARS};
 use super::io::{self, Loaded};
 use super::{EditorState, find};
 use crate::app::{App, Outcome, PlatformRequest, Severity, UiWindow, WinId, WindowMenu, WindowMenuItem};
-use crate::dialogs::{InputBox, MessageBox};
+use crate::dialogs::{InputBox, MessageBox, PopupMenu};
 use crate::geom::Rect;
 use crate::input::{Event, Key, KeyEvent, MouseButton, MouseKind};
 use crate::shortcut::Shortcut;
-use crate::widgets::{Checkbox, DrawCtx, TextInput};
+use crate::widgets::{Checkbox, DrawCtx, MenuEntry, Scrollbar, TextInput};
 
 /// Debounce for outside changes (1.x: 300 ms).
 const RELOAD_DELAY: Duration = Duration::from_millis(300);
@@ -108,20 +108,25 @@ impl Action {
         }
     }
 
-    /// The platform's keys (Qt's standard keys plus 1.x's extras).
+    /// The platform's keys (Qt's standard keys plus 1.x's extras). On macOS
+    /// "Ctrl" is the Control key (Qt's Meta).
     pub fn shortcuts(self) -> Vec<Shortcut> {
         let mac = cfg!(target_os = "macos");
+        let windows = cfg!(windows);
         let specs: Vec<&str> = match self {
             Action::Save => vec!["Primary+S"],
-            Action::Close => vec!["Primary+W"],
+            Action::Close if mac => vec!["Primary+W", "Primary+F4"],
+            Action::Close => vec!["Primary+F4", "Primary+W"],
+            Action::Undo if windows => vec!["Primary+Z", "Alt+Backspace"],
             Action::Undo => vec!["Primary+Z"],
             Action::Redo if mac => vec!["Primary+Shift+Z"],
+            Action::Redo if windows => vec!["Primary+Y", "Alt+Shift+Backspace", "Primary+Shift+Z"],
             Action::Redo => vec!["Primary+Y", "Primary+Shift+Z"],
-            Action::Cut if mac => vec!["Primary+X"],
+            Action::Cut if mac => vec!["Primary+X", "Ctrl+K"],
             Action::Cut => vec!["Primary+X", "Shift+Delete"],
             Action::Copy if mac => vec!["Primary+C"],
             Action::Copy => vec!["Primary+C", "Primary+Insert"],
-            Action::Paste if mac => vec!["Primary+V"],
+            Action::Paste if mac => vec!["Primary+V", "Ctrl+Y"],
             Action::Paste => vec!["Primary+V", "Shift+Insert"],
             Action::SelectAll => vec!["Primary+A"],
             Action::Find => vec!["Primary+F"],
@@ -176,7 +181,41 @@ pub struct Layout {
     pub frame: Rect,
     pub gutter: Rect,
     pub code: Rect,
+    /// The vertical scrollbar's column, right of `code`.
+    pub vbar: Rect,
+    /// The horizontal scrollbar's row below `code`, when a line is wider
+    /// than the view (1.x: as needed, no wrapping).
+    pub hbar: Option<Rect>,
     pub bar: Option<Rect>,
+}
+
+/// What a left-button drag moves.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Drag {
+    None,
+    /// Selecting text.
+    Text,
+    /// A scrollbar's thumb, grabbed `grab` cells from its start.
+    VBar { grab: f32 },
+    HBar { grab: f32 },
+}
+
+/// A scrollbar's thumb in cells along a `track` cells long track: (start,
+/// length), placed as `Scrollbar::draw` places it.
+fn thumb(total: usize, visible: usize, pos: usize, track: u16) -> (f32, f32) {
+    let (start, len) = Scrollbar { total, visible, top: pos }.thumb();
+    let track = track as f32;
+    let len_cells = (len * track).max(1.0).min(track);
+    let travel = if len < 1.0 { start / (1.0 - len) } else { 0.0 };
+    (travel * (track - len_cells), len_cells)
+}
+
+/// The scroll position for a thumb starting `start` cells into the track.
+fn pos_for_thumb(total: usize, visible: usize, start: f32, track: u16) -> usize {
+    let (_, len) = thumb(total, visible, 0, track);
+    let room = track as f32 - len;
+    let max = total.saturating_sub(visible);
+    if room <= 0.0 { 0 } else { ((start / room).clamp(0.0, 1.0) * max as f32).round() as usize }
 }
 
 /// The find bar's parts.
@@ -211,7 +250,11 @@ pub struct EditorWindow {
     pub focus: Focus,
     pub bar: FindBar,
     pub preedit: String,
-    dragging: bool,
+    drag: Drag,
+    /// Each line's width in columns (tabs expanded) and the widest, for
+    /// the horizontal scrollbar; kept up to date from the buffer's changes.
+    widths: Vec<u32>,
+    max_width: usize,
     /// Keep the cursor in view after this event.
     follow: bool,
     /// The user chose "Don't save": close without asking again.
@@ -258,7 +301,9 @@ impl EditorWindow {
             focus: Focus::Text,
             bar: FindBar::default(),
             preedit: String::new(),
-            dragging: false,
+            drag: Drag::None,
+            widths: vec![0],
+            max_width: 0,
             follow: false,
             discard: false,
             close_after_save: false,
@@ -325,10 +370,50 @@ impl EditorWindow {
         };
         let digits = self.buf.len_lines().to_string().len().max(3) as u16;
         let gw = (digits + 2).min(text.w / 2);
-        let (gutter, rest) = text.split_left(gw);
+        let (mut gutter, rest) = text.split_left(gw);
         // The last column is the scrollbar's.
-        let code = Rect::new(rest.x, rest.y, rest.w.saturating_sub(1), rest.h);
-        Layout { frame: screen, gutter, code, bar }
+        let mut code = Rect::new(rest.x, rest.y, rest.w.saturating_sub(1), rest.h);
+        let hbar = (self.max_width + 1 > code.w as usize && code.h > 1).then(|| {
+            code.h -= 1;
+            gutter.h -= 1;
+            Rect::new(code.x, code.bottom(), code.w, 1)
+        });
+        let vbar = Rect::new(code.right(), code.y, rest.w.min(1), code.h);
+        Layout { frame: screen, gutter, code, vbar, hbar, bar }
+    }
+
+    /// The widest line's columns plus one for the cursor after it.
+    pub fn content_width(&self) -> usize {
+        self.max_width + 1
+    }
+
+    /// Bring `widths` up to date after edits (`Reset`s come with new widths).
+    fn update_widths(&mut self, changes: &[Change]) {
+        const DIRTY: u32 = u32::MAX;
+        for c in changes {
+            if let Change::Lines { line, old_end, new_end } = *c {
+                let end = (old_end + 1).min(self.widths.len());
+                let start = line.min(end);
+                self.widths.splice(start..end, std::iter::repeat_n(DIRTY, new_end + 1 - line));
+            }
+        }
+        if self.widths.len() != self.buf.len_lines() {
+            self.widths = line_widths(self.buf.rope());
+        }
+        let rope = self.buf.rope();
+        let mut max = 0;
+        for (i, w) in self.widths.iter_mut().enumerate() {
+            if *w == DIRTY {
+                *w = line_width(rope.line(i)).min(DIRTY as usize - 1) as u32;
+            }
+            max = max.max(*w);
+        }
+        self.max_width = max as usize;
+    }
+
+    fn set_widths(&mut self, widths: Vec<u32>) {
+        self.max_width = widths.iter().copied().max().unwrap_or(0) as usize;
+        self.widths = widths;
     }
 
     pub fn bar_layout(&self, bar: Rect) -> BarLayout {
@@ -364,6 +449,7 @@ impl EditorWindow {
         let changes = self.buf.take_changes();
         if !changes.is_empty() {
             self.hl.apply_changes(&changes, self.buf.len_lines());
+            self.update_widths(&changes);
         }
         self.kick_highlighting(app, id);
         if std::mem::take(&mut self.follow) {
@@ -449,9 +535,10 @@ impl EditorWindow {
         let name = self.name();
         self.note = None;
         match loaded {
-            Prepared::Text { file, rope, language, hl } => {
+            Prepared::Text { file, rope, language, hl, widths } => {
                 let first = !self.loaded;
                 self.buf.set_rope(rope);
+                self.set_widths(widths);
                 if first {
                     self.language = language;
                     self.hl = Highlight::new(hl, self.buf.len_lines());
@@ -474,6 +561,7 @@ impl EditorWindow {
     fn failed(&mut self, text: String) {
         self.buf.set_text(&text);
         self.buf.take_changes();
+        self.set_widths(line_widths(self.buf.rope()));
         self.hl = Highlight::new(None, self.buf.len_lines());
         self.read_only = true;
         self.load_failed = true;
@@ -871,6 +959,50 @@ impl EditorWindow {
         Outcome::Ignored
     }
 
+    /// PageUp/PageDown (negative `rows`: up).
+    fn page(&mut self, rows: isize, extend: bool) {
+        self.buf.move_lines(rows, extend);
+        self.top = self.top.saturating_add_signed(rows);
+    }
+
+    /// macOS's text keys with Control and Option that Qt (1.x) has besides
+    /// the arrows: Control is Qt's Meta there. None if `k` isn't one.
+    fn mac_text_key(&mut self, k: &KeyEvent, rows: isize) -> Option<()> {
+        let m = k.mods;
+        let edit = !self.read_only;
+        let b = &mut self.buf;
+        let line = b.line_of(b.cursor);
+        if m.alt && !m.ctrl && !m.logo {
+            // ⌥↑ / ⌥↓: the start / end of the paragraph (the line: no wrapping).
+            match k.key {
+                Key::Up => b.move_to(b.line_start(line), m.shift),
+                Key::Down => b.move_to(b.line_end(line), m.shift),
+                _ => return None,
+            }
+            return Some(());
+        }
+        if !m.ctrl || m.alt || m.logo {
+            return None;
+        }
+        match (k.key, m.shift) {
+            (Key::Char('a') | Key::Left, _) => b.move_to(b.line_start(line), m.shift),
+            (Key::Char('e') | Key::Right, _) => b.move_to(b.line_end(line), m.shift),
+            (Key::Char('p'), false) => b.move_lines(-1, false),
+            (Key::Char('n'), false) => b.move_lines(1, false),
+            (Key::Char('b'), false) => b.move_to(b.prev_pos(b.cursor), false),
+            (Key::Char('f'), false) => b.move_to(b.next_pos(b.cursor), false),
+            (Key::Char('h'), false) if edit => b.backspace(false),
+            (Key::Char('d'), false) if edit => b.delete_forward(false),
+            // A line separator (Qt's InsertLineSeparator, saved as "\n").
+            (Key::Char('o') | Key::Enter, false) if edit => b.insert("\n", true),
+            (Key::Up | Key::PageUp, false) => self.page(-rows, false),
+            (Key::Char('v') | Key::Down | Key::PageDown, false) => self.page(rows, false),
+            (Key::Char('h' | 'd' | 'o') | Key::Enter, false) => {}
+            _ => return None,
+        }
+        Some(())
+    }
+
     fn text_key(&mut self, app: &mut App, id: WinId, k: &KeyEvent) -> Outcome {
         let m = k.mods;
         let mac = cfg!(target_os = "macos");
@@ -879,6 +1011,10 @@ impl EditorWindow {
         let doc_mod = if mac { m.logo } else { m.ctrl };
         let rows = self.layout(app.screen(id)).code.h.max(1) as isize;
         let edit = !self.read_only;
+        if mac && self.mac_text_key(k, rows).is_some() {
+            self.follow = true;
+            return Outcome::Consumed;
+        }
         let b = &mut self.buf;
         match k.key {
             Key::Left => {
@@ -913,18 +1049,13 @@ impl EditorWindow {
             Key::Down if doc_mod => b.move_to(b.len_chars(), m.shift),
             Key::Up => b.move_lines(-1, m.shift),
             Key::Down => b.move_lines(1, m.shift),
-            Key::Home if doc_mod => b.move_to(0, m.shift),
-            Key::End if doc_mod => b.move_to(b.len_chars(), m.shift),
+            // On macOS Home/End go to the start/end of the text (Qt's Cocoa keys).
+            Key::Home if doc_mod || mac => b.move_to(0, m.shift),
+            Key::End if doc_mod || mac => b.move_to(b.len_chars(), m.shift),
             Key::Home => b.move_to(b.line_start(b.line_of(b.cursor)), m.shift),
             Key::End => b.move_to(b.line_end(b.line_of(b.cursor)), m.shift),
-            Key::PageUp => {
-                b.move_lines(-rows, m.shift);
-                self.top = self.top.saturating_sub(rows as usize);
-            }
-            Key::PageDown => {
-                b.move_lines(rows, m.shift);
-                self.top += rows as usize;
-            }
+            Key::PageUp => self.page(-rows, m.shift),
+            Key::PageDown => self.page(rows, m.shift),
             Key::Backspace if edit => {
                 if line_mod {
                     b.backspace_line();
@@ -933,11 +1064,13 @@ impl EditorWindow {
                 }
             }
             Key::Delete if edit && (m.is_empty() || word) => b.delete_forward(word),
-            Key::Enter if edit && (m.is_empty() || m == crate::input::Mods::SHIFT) => {
+            Key::Enter if edit && m.is_empty() => {
                 // Enter keeps the line's indentation (1.x).
                 let indent = b.indent_of_line(b.line_of(b.cursor));
                 b.insert(&format!("\n{indent}"), true);
             }
+            // Qt's line separator: a line break without the indentation.
+            Key::Enter if edit && m == crate::input::Mods::SHIFT => b.insert("\n", true),
             Key::Tab if edit && m.is_empty() => b.insert("\t", true),
             Key::Backspace | Key::Delete | Key::Enter | Key::Tab => return Outcome::Consumed,
             _ => match k.typed_text() {
@@ -980,25 +1113,67 @@ impl EditorWindow {
             return Outcome::Consumed;
         }
         let text_area = Rect::new(l.gutter.x, l.code.y, l.gutter.w + l.code.w, l.code.h);
+        let (lines, rows) = (self.buf.len_lines(), l.code.h as usize);
+        let (width, cols) = (self.content_width(), l.code.w as usize);
+        let press = matches!(m.kind, MouseKind::Down(MouseButton::Left) | MouseKind::DoubleClick(MouseButton::Left));
         match m.kind {
             MouseKind::Scroll(lines) => {
                 let delta = (-lines * 3.0).round() as isize;
                 self.top = (self.top as isize + delta).max(0) as usize;
                 self.clamp_scroll(app.screen(id));
             }
+            MouseKind::HScroll(n) => {
+                let max = width.saturating_sub(cols);
+                self.left = (self.left as isize - (n * 3.0).round() as isize).clamp(0, max as isize) as usize;
+            }
+            // The scrollbars: drag the thumb, click beside it for a page.
+            _ if press && l.vbar.contains(m.col, m.row) => {
+                let (start, len) = thumb(lines, rows, self.top, l.vbar.h);
+                let at = (m.row - l.vbar.y) as f32;
+                if at < start {
+                    self.top = self.top.saturating_sub(rows);
+                } else if at >= start + len {
+                    self.top += rows;
+                    self.clamp_scroll(app.screen(id));
+                } else {
+                    self.drag = Drag::VBar { grab: at - start };
+                }
+            }
+            _ if press && l.hbar.is_some_and(|r| r.contains(m.col, m.row)) => {
+                let track = l.hbar.unwrap_or_default();
+                let (start, len) = thumb(width, cols, self.left, track.w);
+                let at = (m.col - track.x) as f32;
+                if at < start {
+                    self.left = self.left.saturating_sub(cols);
+                } else if at >= start + len {
+                    self.left = (self.left + cols).min(width.saturating_sub(cols));
+                } else {
+                    self.drag = Drag::HBar { grab: at - start };
+                }
+            }
+            MouseKind::Move if matches!(self.drag, Drag::VBar { .. }) => {
+                let Drag::VBar { grab } = self.drag else { return Outcome::Ignored };
+                let start = m.row as f32 - l.vbar.y as f32 - grab;
+                self.top = pos_for_thumb(lines, rows, start, l.vbar.h);
+            }
+            MouseKind::Move if matches!(self.drag, Drag::HBar { .. }) => {
+                let (Drag::HBar { grab }, Some(track)) = (self.drag, l.hbar) else { return Outcome::Ignored };
+                let start = m.col as f32 - track.x as f32 - grab;
+                self.left = pos_for_thumb(width, cols, start, track.w);
+            }
             MouseKind::Down(MouseButton::Left) if text_area.contains(m.col, m.row) => {
                 self.focus = Focus::Text;
                 let pos = self.pos_at(&l, m.col.max(l.code.x), m.row);
                 self.buf.move_to(pos, m.mods.shift);
-                self.dragging = true;
+                self.drag = Drag::Text;
             }
             MouseKind::DoubleClick(MouseButton::Left) if l.code.contains(m.col, m.row) => {
                 let pos = self.pos_at(&l, m.col, m.row);
                 let word = self.buf.word_at(pos);
                 self.buf.select(word);
-                self.dragging = false;
+                self.drag = Drag::None;
             }
-            MouseKind::Move if self.dragging => {
+            MouseKind::Move if self.drag == Drag::Text => {
                 if m.row < l.code.y {
                     self.top = self.top.saturating_sub(1);
                 } else if m.row >= l.code.bottom() {
@@ -1009,10 +1184,74 @@ impl EditorWindow {
                 let pos = self.pos_at(&l, m.col.max(l.code.x), row);
                 self.buf.move_to(pos, true);
             }
-            MouseKind::Up(MouseButton::Left) => self.dragging = false,
+            MouseKind::Up(MouseButton::Left) => self.drag = Drag::None,
+            MouseKind::Down(MouseButton::Right) | MouseKind::DoubleClick(MouseButton::Right) if text_area.contains(m.col, m.row) => {
+                // Like Qt, a right click doesn't move the cursor.
+                self.focus = Focus::Text;
+                self.context_menu(app, id, m.col, m.row);
+            }
             _ => return Outcome::Ignored,
         }
         Outcome::Consumed
+    }
+
+    /// QPlainTextEdit's standard context menu (1.x): Undo, Redo, Cut, Copy,
+    /// Paste, Delete, Select All; Copy and Select All when read-only.
+    fn context_menu(&mut self, app: &mut App, id: WinId, col: u16, row: u16) {
+        #[derive(Clone, Copy)]
+        enum Item {
+            Action(Action),
+            Delete,
+        }
+        let selected = self.buf.selection().is_some();
+        let editable = !self.read_only;
+        let can_paste = editable && app.clipboard.get_text().is_some_and(|t| !t.is_empty());
+        // (label, item, enabled); None: a separator.
+        let mut spec: Vec<Option<(&str, Item, bool)>> = Vec::new();
+        if editable {
+            spec.push(Some(("&Undo", Item::Action(Action::Undo), self.buf.can_undo())));
+            spec.push(Some(("&Redo", Item::Action(Action::Redo), self.buf.can_redo())));
+            spec.push(None);
+            spec.push(Some(("Cu&t", Item::Action(Action::Cut), selected)));
+        }
+        spec.push(Some(("&Copy", Item::Action(Action::Copy), selected)));
+        if editable {
+            spec.push(Some(("&Paste", Item::Action(Action::Paste), can_paste)));
+            spec.push(Some(("Delete", Item::Delete, selected)));
+        }
+        spec.push(None);
+        spec.push(Some(("Select All", Item::Action(Action::SelectAll), self.buf.len_chars() > 0)));
+        let entries = spec
+            .iter()
+            .map(|e| match *e {
+                None => MenuEntry::Separator,
+                Some((label, item, enabled)) => {
+                    let shortcut = match item {
+                        Item::Action(a) => a.shortcuts().first().map(Shortcut::display).unwrap_or_default(),
+                        Item::Delete => String::new(),
+                    };
+                    MenuEntry::Item { label: label.into(), shortcut, checked: None, enabled }
+                }
+            })
+            .collect();
+        let items: Vec<Option<Item>> = spec.iter().map(|e| e.map(|(_, item, _)| item)).collect();
+        let menu = PopupMenu::new(entries, col, row, move |app, choice| {
+            let Some(Some(item)) = items.get(choice).copied() else { return };
+            with_editor(app, id, |w, app| {
+                w.focus = Focus::Text;
+                match item {
+                    Item::Action(a) => w.run(app, id, a),
+                    Item::Delete => {
+                        if !w.read_only && w.buf.selection().is_some() {
+                            w.buf.insert("", false);
+                            w.follow = true;
+                        }
+                    }
+                }
+                w.settle(app, id);
+            });
+        });
+        app.push_modal(id, Box::new(menu));
     }
 }
 
@@ -1155,7 +1394,7 @@ impl UiWindow for EditorWindow {
 /// language and its highlighter (loading syntaxes takes a moment the first
 /// time), so the UI thread only swaps them in.
 pub enum Prepared {
-    Text { file: TextFile, rope: ropey::Rope, language: String, hl: Option<LineHighlighter> },
+    Text { file: TextFile, rope: ropey::Rope, language: String, hl: Option<LineHighlighter>, widths: Vec<u32> },
     Binary,
     Failed(String),
 }
@@ -1169,7 +1408,9 @@ fn prepare(location: &VPath, loaded: Loaded) -> Prepared {
             // Like 1.x, very large texts stay plain (counted in characters).
             let big = text.len() > MAX_HIGHLIGHT_CHARS && text.chars().nth(MAX_HIGHLIGHT_CHARS).is_some();
             let hl = syntax.filter(|_| !big).map(LineHighlighter::new);
-            Prepared::Text { file, rope: ropey::Rope::from_str(&text), language, hl }
+            let rope = ropey::Rope::from_str(&text);
+            let widths = line_widths(&rope);
+            Prepared::Text { file, rope, language, hl, widths }
         }
         Loaded::Binary => Prepared::Binary,
         Loaded::Failed(e) => Prepared::Failed(e),

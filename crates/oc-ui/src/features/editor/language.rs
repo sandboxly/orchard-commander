@@ -89,7 +89,7 @@ fn shebang_matches(text: &str, interpreter: &str) -> bool {
     let Some(rest) = first.strip_prefix("#!") else {
         return false;
     };
-    let Some(found) = rest.trim().split(['/', '\\', ' ']).filter(|x| !x.is_empty() && !x.starts_with('-')).next_back() else {
+    let Some(found) = rest.trim().split(['/', '\\', ' ']).rfind(|x| !x.is_empty() && !x.starts_with('-')) else {
         return false;
     };
     Regex::new(&format!(r"(?i)^{interpreter}(\.(exe|cmd|bat|bin))?$")).is_ok_and(|re| re.is_match(found))

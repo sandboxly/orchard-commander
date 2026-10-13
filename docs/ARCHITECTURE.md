@@ -435,7 +435,14 @@ old one (`oc_preview::highlight::LineHighlighter` / `LineState`); lines over
 read, decoded (`oc_preview::textfile`), turned into a rope and given a syntax
 on a worker; local saves are a temp file + atomic rename keeping permissions,
 others `open_write`; local files are watched (folder watch, 300 ms debounce,
-own saves recognised by mtime+size).
+own saves recognised by mtime+size). Lines break only at "\n" (ropey without
+`unicode_lines`, like QPlainTextEdit). `language.rs` names the language as
+1.x's Pygments did (a generated table of Pygments' file name patterns, its
+rating and shebang guessing; `language_table.rs`) and maps it to a syntect
+syntax. The window keeps each line's width for the as-needed horizontal
+scrollbar; both scrollbars take clicks and drags, right click opens Qt's
+standard text menu, and on macOS the Cocoa text keys (Home/End = the whole
+text, Control+A/E/K/Y…) work as in Qt.
 
 ## Widgets: `widgets/`
 

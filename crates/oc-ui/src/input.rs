@@ -128,6 +128,9 @@ pub enum MouseKind {
     Move,
     /// Lines to scroll; positive = towards the top (content moves down).
     Scroll(f32),
+    /// Columns to scroll sideways (trackpads, tilting wheels); positive =
+    /// towards the start of the lines (content moves right).
+    HScroll(f32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
