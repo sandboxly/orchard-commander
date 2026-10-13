@@ -34,31 +34,48 @@ contents:
 overrides:
   deb:
     depends:
-      # Linked: ALSA (audio output), D-Bus (Secret Service for passwords).
+      # nfpm doesn't compute shared-library dependencies: the binary is built
+      # on Ubuntu 22.04 (glibc 2.35) and links the C++ runtime and ALSA.
+      - libc6 (>= 2.35)
+      - libstdc++6
+      - libgcc-s1
       - libasound2 | libasound2t64
-      - libdbus-1-3
-      # Loaded at run time: keyboard handling, GPU (Vulkan or EGL/OpenGL), fonts.
+      # Loaded at run time: keyboard handling, windows (X11; Wayland is
+      # recommended), fonts, the system's CA certificates (WebDAV/S3 over HTTPS).
       - libxkbcommon0
       - libxkbcommon-x11-0
-      - libvulkan1 | libegl1
+      - libx11-6
+      - libx11-xcb1
+      - libxcursor1
+      - libxi6
       - fontconfig
+      - ca-certificates
+      # GPU: the Vulkan or EGL loader plus a driver (Mesa's run on any hardware,
+      # in software if needed); the loader alone can't draw anything.
+      - libvulkan1 | libegl1
+      - mesa-vulkan-drivers | vulkan-icd | libegl-mesa0
     recommends:
       - mesa-vulkan-drivers
-      - libegl-mesa0
       - libwayland-client0
-      - libx11-xcb1
       - fonts-dejavu-core
   rpm:
     depends:
+      - glibc >= 2.35
+      - libstdc++
       - alsa-lib
-      - dbus-libs
       - libxkbcommon
       - libxkbcommon-x11
-      - (vulkan-loader or mesa-libEGL)
+      - libX11
+      - libX11-xcb
+      - libXcursor
+      - libXi
       - fontconfig
+      - ca-certificates
+      - (vulkan-loader or mesa-libEGL)
+      - (mesa-vulkan-drivers or mesa-libEGL)
     recommends:
       - mesa-vulkan-drivers
-      - mesa-libEGL
+      - libwayland-client
       - dejavu-sans-mono-fonts
 rpm:
   group: Applications/File
