@@ -71,6 +71,7 @@ fn create_private_dir(parent: &Path) -> PathBuf {
     for attempt in 0..16u64 {
         let tag = fnv1a(format!("{seed}|{}|{attempt}", std::process::id()).as_bytes());
         last = parent.join(format!("orchard-commander-{:x}-{tag:012x}", std::process::id()));
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);

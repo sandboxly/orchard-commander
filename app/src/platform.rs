@@ -29,7 +29,8 @@ pub enum AppEvent {
     Wake,
     /// A native menu item was clicked (command id).
     Menu(String),
-    /// A native menu item's key equivalent was pressed (command id).
+    /// A native menu item's key equivalent was pressed (command id; macOS only).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     MenuKey(String),
 }
 
@@ -173,6 +174,15 @@ impl Platform {
         #[cfg(not(target_os = "macos"))]
         {
             attrs = attrs.with_window_icon(window_icon());
+        }
+        // Linux: the Wayland app id / X11 WM_CLASS that matches
+        // orchard-commander.desktop (its icon in the dock and task switcher;
+        // 1.x: `setDesktopFileName`).
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::{wayland::WindowAttributesExtWayland, x11::WindowAttributesExtX11};
+            attrs = WindowAttributesExtWayland::with_name(attrs, oc_config::COMMAND, oc_config::COMMAND);
+            attrs = WindowAttributesExtX11::with_name(attrs, oc_config::COMMAND, oc_config::COMMAND);
         }
         let t_window = Instant::now();
         let window = match el.create_window(attrs) {

@@ -372,18 +372,14 @@ fn forward_skips_within_read_ahead() {
     remote.close();
 }
 
+#[cfg(unix)]
 #[test]
 fn symlinks_like_python() {
+    use std::os::unix::fs::symlink;
     let f = fixture();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::symlink;
-        symlink("docs", f.server.root.join("docs-link")).unwrap();
-        symlink("big.bin", f.server.root.join("big-link")).unwrap();
-        symlink("missing", f.server.root.join("dangling")).unwrap();
-    }
-    #[cfg(not(unix))]
-    return;
+    symlink("docs", f.server.root.join("docs-link")).unwrap();
+    symlink("big.bin", f.server.root.join("big-link")).unwrap();
+    symlink("missing", f.server.root.join("dangling")).unwrap();
     let remote = f.connect();
     let entries = remote.list_dir("/", ListOptions { show_hidden: true, ..Default::default() }).unwrap();
     let get = |n: &str| entries.iter().find(|e| e.name == n).unwrap().clone();

@@ -38,9 +38,10 @@ pub fn platform_dir() -> String {
 /// Where the library is looked for: only `$OC_PDFIUM_PATH` if set (the file,
 /// or a folder containing it), otherwise in order
 ///
-/// 1. next to the executable (Windows, Linux tarballs, `cargo run`)
+/// 1. next to the executable (Windows, Linux tarballs, `cargo run`) and in
+///    its `lib` folder (Linux packages: /opt/orchard-commander/lib)
 /// 2. `../Frameworks` of the executable (a macOS app bundle) and `../lib`
-///    (Linux packages: /opt/orchard-commander/lib)
+///    (an FHS layout: bin/ and lib/ side by side)
 /// 3. debug builds only: the workspace's `vendor/pdfium/<platform>/`
 /// 4. the bare name, for the system's library search path (not on Windows,
 ///    where that search includes the current directory: DLL planting)
@@ -56,6 +57,8 @@ fn candidates_for(env: Option<PathBuf>) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
         out.push(dir.join(name));
+        // Linux packages: /opt/orchard-commander/lib (with the FFmpeg libraries).
+        out.push(dir.join("lib").join(name));
         // Test binaries live in target/<profile>/deps; `cargo run` ones one level up.
         if dir.ends_with("deps")
             && let Some(up) = dir.parent()

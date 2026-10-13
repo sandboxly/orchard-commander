@@ -9,10 +9,14 @@ use std::time::Duration;
 
 use oc_config::themes;
 use oc_grid::{Frame, Rgba};
+#[cfg(unix)]
 use oc_ui::features::terminal::{self, session};
+#[cfg(unix)]
 use oc_ui::main_window::layout;
 use oc_ui::testing::{headless_app, press, press_with, settle, type_text, wait_until};
-use oc_ui::{App, Event, Key, MAIN_WINDOW, Mods, MouseButton, MouseEvent, MouseKind, Pointer};
+use oc_ui::{App, Event, Key, MAIN_WINDOW, Mods, MouseButton, MouseEvent, MouseKind};
+#[cfg(unix)]
+use oc_ui::Pointer;
 
 const WAIT: Duration = Duration::from_secs(20);
 
@@ -62,6 +66,7 @@ fn find(app: &App, needle: &str) -> (u16, u16) {
         .unwrap_or_else(|| panic!("{needle:?} not on screen"))
 }
 
+#[cfg(unix)]
 fn start_terminal(app: &mut App) -> std::sync::Arc<oc_ui::features::terminal::Session> {
     app.run_command("terminal.toggle");
     wait_until(app, "the shell", WAIT, |app| session(app, 0).is_some_and(|s| s.alive()));

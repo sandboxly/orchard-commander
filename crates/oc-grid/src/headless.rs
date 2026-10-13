@@ -59,13 +59,19 @@ pub(crate) fn open_device(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), GridError> {
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        force_fallback_adapter: false,
-        compatible_surface: surface,
-        apply_limit_buckets: false,
-    }))
-    .map_err(|e| GridError::NoAdapter(e.to_string()))?;
+    let request = |force_fallback_adapter| {
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            force_fallback_adapter,
+            compatible_surface: surface,
+            apply_limit_buckets: false,
+        }))
+    };
+    // No GPU (VMs, CI runners, remote desktops): a software adapter — WARP
+    // through DX12 on Windows, llvmpipe through Vulkan or GL on Linux.
+    let adapter = request(false)
+        .or_else(|first| request(true).map_err(|_| first))
+        .map_err(|e| GridError::NoAdapter(e.to_string()))?;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("oc-grid"),
         required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
@@ -80,6 +86,7 @@ pub struct HeadlessRenderer {
     renderer: GridRenderer,
     target: Option<(wgpu::Texture, (u32, u32))>,
     last_stats: PrepareStats,
+    adapter: wgpu::AdapterInfo,
 }
 
 impl HeadlessRenderer {
@@ -95,13 +102,19 @@ impl HeadlessRenderer {
     ) -> Result<Self, GridError> {
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-        let (_, device, queue) = open_device(&instance, None)?;
+        let (adapter, device, queue) = open_device(&instance, None)?;
         let renderer = GridRenderer::new(device, queue, FORMAT, library, font, scale_factor)?;
         Ok(HeadlessRenderer {
             renderer,
             target: None,
             last_stats: PrepareStats::default(),
+            adapter: adapter.get_info(),
         })
+    }
+
+    /// The GPU (or software renderer) in use, e.g. for `--self-test`.
+    pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
+        &self.adapter
     }
 
     pub fn renderer(&mut self) -> &mut GridRenderer {

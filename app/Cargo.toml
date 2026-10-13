@@ -39,6 +39,9 @@ tempfile.workspace = true
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 png = "0.18"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 muda = { version = "0.21", default-features = false }
 objc2 = "0.6"
@@ -47,3 +50,7 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSIm
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[build-dependencies]
+# The Windows icon and version resource (build.rs).
+embed-resource = "3"
