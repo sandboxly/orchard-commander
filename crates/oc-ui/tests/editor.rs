@@ -110,7 +110,7 @@ fn f4_edits_and_saves_keeping_line_endings_and_permissions() {
     }
     let mut app = app(&e);
     select(&mut app, "a.txt");
-    press(&mut app, Key::F(4)); // Total Commander's F4
+    press(&mut app, Key::F(4)); // F4: edit
     let id = editor_for(&mut app, "a.txt");
     assert!(app.take_requests().iter().any(|r| matches!(r, PlatformRequest::OpenWindow { id: w, .. } if *w == id)));
     assert_eq!(text(&app, id), "alpha\nbeta\n");

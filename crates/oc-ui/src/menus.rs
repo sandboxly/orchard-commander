@@ -1,4 +1,4 @@
-//! Norton / FAR style menus: Left, Files, Commands, Options, Right.
+//! Classic two-panel menus: Left, Files, Commands, Options, Right.
 //!
 //! The menus are built from the command registry: a command declares
 //! `.menu(Menu::Files, "ops")` and appears in that section; sections are

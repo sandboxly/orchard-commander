@@ -1,4 +1,4 @@
-//! Location bookmarks, after Total Commander's Directory Hotlist.
+//! Location bookmarks (a directory hotlist).
 //!
 //! A bookmark has a title (an "&" marks its hotkey letter, as in TC), a
 //! location for the active panel and optionally one for the other panel (TC's

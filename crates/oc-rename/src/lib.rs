@@ -1,4 +1,4 @@
-//! Batch renaming after Total Commander's Multi-Rename Tool (Ctrl+M).
+//! Batch renaming with name patterns (multi-rename, ⌘M / Ctrl+M).
 //!
 //! A [`Rule`] turns each file's old name into a new one in three steps, as in TC:
 //!

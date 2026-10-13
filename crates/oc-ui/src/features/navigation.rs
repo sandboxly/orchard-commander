@@ -32,7 +32,7 @@ pub fn register(reg: &mut Registry) {
     );
     reg.add(
         Command::new("panel.swap", "Swap panels", swap_panels)
-            .help("Exchange the left and right folders (Total Commander: Ctrl+U)")
+            .help("Exchange the left and right folders")
             .keys(&["Primary+U"])
             .menu(Menu::Commands, "panels"),
     );
@@ -127,7 +127,7 @@ pub fn same_dir(app: &mut App) {
     panel::load(app, 1 - side, loc, LoadOptions::default());
 }
 
-/// Total Commander's Ctrl+Left / Ctrl+Right. From the other side: open the
+/// Ctrl+Left / Ctrl+Right (⌘← / ⌘→). From the other side: open the
 /// folder (or archive) under the cursor in `dest`, or that side's folder if
 /// the cursor is on a file. From `dest` itself: show the other side's folder.
 pub fn transfer(app: &mut App, dest: usize) {

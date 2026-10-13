@@ -1,4 +1,4 @@
-//! Find files — after Total Commander's Find Files (Alt+F7) and "Feed to listbox".
+//! Find files (Alt+F7), with the results shown as a folder.
 //!
 //! [`run`] walks one or more folders on any file system (local, servers,
 //! inside archives) and reports hits as it finds them. [`SearchResultsFS`]
@@ -6,7 +6,7 @@
 //! ([`FileSystem::real_location`](oc_vfs::FileSystem::real_location)), so
 //! copy/move/trash/preview/open act on the real files.
 //!
-//! Name patterns follow Total Commander: masks separated by spaces or ";", one
+//! Name patterns are classic file-manager masks: separated by spaces or ";", one
 //! "|" separates included from excluded masks ("*.zip|*big*.zip"), and a mask
 //! without wildcards matches anywhere in the name ("report" = "*report*").
 //!

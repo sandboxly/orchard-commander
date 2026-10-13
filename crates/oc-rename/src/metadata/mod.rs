@@ -1,6 +1,7 @@
 //! File metadata for multi-rename placeholders like `[=artist]` or `[=height]`.
 //!
-//! Total Commander gets these from content plugins (`[=plugin.field]`); here
+//! Classic two-panel file managers get these from content plugins
+//! (`[=plugin.field]`); here
 //! they come from [`MetadataProvider`]s — built-ins for audio tags (lofty),
 //! video and image properties (container headers) and photo EXIF
 //! (kamadak-exif) — plus whatever the application [`register`]s:

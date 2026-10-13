@@ -1,4 +1,4 @@
-//! Name matching: Total Commander masks or a regular expression.
+//! Name matching: file-manager masks or a regular expression.
 //!
 //! Masks are translated the way Python's `fnmatch.translate` does it (so `*`,
 //! `?` and `[...]` classes behave exactly like the Python version) and all

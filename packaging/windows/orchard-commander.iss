@@ -49,7 +49,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\..\dist\orchard-commander\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; The executable has no embedded icon: shortcuts and Apps & features use this one.
+; The same icon as the one in the executable, as a file: shortcuts and Apps &
+; features point at it, so it can be replaced without rebuilding the exe.
 Source: "..\icons\app.ico"; DestDir: "{app}"; DestName: "orchard-commander.ico"; Flags: ignoreversion
 
 [InstallDelete]

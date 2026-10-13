@@ -1,4 +1,4 @@
-//! Find files (Total Commander's Alt+F7 + "Feed to listbox"; port of the
+//! Find files (Alt+F7, results shown as a folder; port of the
 //! search half of `main_window.py` and `ui/search_ui.py`).
 //!
 //! ⌘F / ⌥F7 opens [`dialog::FindFilesDialog`]; the search runs on a worker
@@ -35,7 +35,7 @@ pub const REFRESH: Duration = Duration::from_millis(250);
 pub fn register(reg: &mut Registry) {
     reg.add(
         Command::new("search.find", "Find files", find_files)
-            .help("Search by name, contents, size and date (Total Commander: Alt+F7)")
+            .help("Search by name, contents, size and date")
             .keys(&["Alt+F7", "Primary+F"])
             .menu(Menu::Files, "find"),
     );
