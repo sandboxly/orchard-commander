@@ -28,7 +28,8 @@ pub use api::{
 pub use content::{Kind, TextContent};
 pub use data::{
     Align, Color, DocumentSource, Frame, HexData, ImageData, ListingData, MarkdownData, MdBlock, MdBlockKind,
-    MediaData, PdfData, PreviewData, Rgb, StyleRun, StyledLine, StyledText, SyntaxRole, TextStyle, ThemeRole,
+    MediaData, PDF_FIRST_PAGE_WIDTH, PageRenderer, PdfData, PdfPages, PreviewData, RenderDone, RenderedPage, Rgb,
+    StyleRun, StyledLine, StyledText, SyntaxRole, TextStyle, ThemeRole,
 };
 pub use registry::{Registry, RegistryError};
 pub use source::{PreviewSource, SNIFF_BYTES, default_cache_dir, remove_default_cache_dir};

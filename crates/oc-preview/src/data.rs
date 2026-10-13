@@ -6,10 +6,12 @@
 
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use oc_vfs::{Entry, ReadStream};
 
+use crate::api::PreviewError;
 use crate::content;
 
 // ---------------------------------------------------------------------------
@@ -413,11 +415,99 @@ impl fmt::Debug for DocumentSource {
     }
 }
 
-/// A PDF for the UI's PDF renderer (placeholder until rendering moves here).
-#[derive(Debug)]
-pub struct PdfData {
-    pub source: DocumentSource,
+/// A rendered PDF page: straight RGBA, 4 bytes per pixel, rows top to
+/// bottom, no padding, opaque (pages are drawn on white).
+#[cfg(feature = "pdf")]
+pub use oc_pdf::Page as RenderedPage;
+
+/// A rendered PDF page: straight RGBA, 4 bytes per pixel, rows top to
+/// bottom, no padding, opaque (pages are drawn on white).
+#[cfg(not(feature = "pdf"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderedPage {
+    /// 0-based page number.
+    pub index: usize,
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
 }
+
+/// Receives the result of [`PageRenderer::render_async`].
+pub type RenderDone = Box<dyn FnOnce(Result<Arc<RenderedPage>, PreviewError>) + Send>;
+
+/// Renders the pages of an open document (implemented by the PDF previewer).
+/// Pages are fitted into a `width` × `height` pixel box keeping their aspect
+/// ratio, so the UI passes the pane's size in device pixels and needn't know
+/// page sizes. The last few renders are cached.
+pub trait PageRenderer: Send + Sync {
+    fn page_count(&self) -> usize;
+
+    /// Width and height of page `index` (0-based) in points. Blocks (worker
+    /// thread) unless the page was rendered or measured before.
+    fn page_size(&self, index: usize) -> Result<(f32, f32), PreviewError>;
+
+    /// Page `index` as large as fits into `width` × `height` pixels. Blocks:
+    /// call it on a worker thread.
+    fn render(&self, index: usize, width: u32, height: u32) -> Result<Arc<RenderedPage>, PreviewError>;
+
+    /// The page as rendered before for this box, if cached. Never blocks.
+    fn cached(&self, index: usize, width: u32, height: u32) -> Option<Arc<RenderedPage>>;
+
+    /// The page the user now looks at, without blocking. Requests queued
+    /// before it (pages flipped past) are dropped. `done` runs on the
+    /// renderer's thread — or at once on this one if the page is cached — and
+    /// should just hand the page to the UI thread.
+    fn render_async(&self, index: usize, width: u32, height: u32, done: RenderDone);
+
+    /// Render a page into the cache in the background (the next one, say).
+    fn prefetch(&self, index: usize, width: u32, height: u32);
+
+    /// Close the document now; later requests fail.
+    fn close(&self);
+}
+
+/// A shared handle to an open document's [`PageRenderer`]. Clones share the
+/// document; it's closed by [`PageRenderer::close`] or when the last clone
+/// is dropped.
+#[derive(Clone)]
+pub struct PdfPages(Arc<dyn PageRenderer>);
+
+impl PdfPages {
+    pub fn new(renderer: impl PageRenderer + 'static) -> Self {
+        PdfPages(Arc::new(renderer))
+    }
+}
+
+impl std::ops::Deref for PdfPages {
+    type Target = dyn PageRenderer;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl fmt::Debug for PdfPages {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PdfPages({} pages)", self.0.page_count())
+    }
+}
+
+/// An open PDF, one page at a time.
+#[derive(Clone, Debug)]
+pub struct PdfData {
+    pub page_count: usize,
+    /// From the document's metadata; "" if none.
+    pub title: String,
+    /// Page 1, rendered [`PDF_FIRST_PAGE_WIDTH`] pixels wide while loading so
+    /// there is something to show at once; replace it by a render at the
+    /// pane's size.
+    pub first_page: Arc<RenderedPage>,
+    /// Renders the other pages (and page 1 at the pane's size).
+    pub pages: PdfPages,
+}
+
+/// Width of [`PdfData::first_page`].
+pub const PDF_FIRST_PAGE_WIDTH: u32 = 1200;
 
 pub struct MediaData {
     pub video: bool,

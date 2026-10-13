@@ -38,6 +38,9 @@ pub struct MemFs {
     pub fetches: AtomicUsize,
     /// Streams claim not to seek (like a pipe or compressed archive member).
     pub unseekable: bool,
+    /// If not 0, a `read` returns at most this many bytes (a network stream
+    /// handing over one packet at a time).
+    pub max_read: usize,
 }
 
 impl MemFs {
@@ -75,6 +78,7 @@ pub struct MemReader {
     pos: u64,
     counter: Arc<AtomicU64>,
     seekable: bool,
+    max_read: usize,
 }
 
 impl Read for MemReader {
@@ -83,7 +87,10 @@ impl Read for MemReader {
         if self.pos >= len {
             return Ok(0);
         }
-        let n = buf.len().min((len - self.pos) as usize);
+        let mut n = buf.len().min((len - self.pos) as usize);
+        if self.max_read > 0 {
+            n = n.min(self.max_read);
+        }
         match &self.content {
             Content::Bytes(b) => buf[..n].copy_from_slice(&b[self.pos as usize..self.pos as usize + n]),
             Content::Generated { fill, .. } => buf[..n].fill(*fill),
@@ -178,7 +185,8 @@ impl FileSystem for MemFs {
 
     fn open_read(&self, path: &str) -> Result<Box<dyn ReadStream>> {
         let content = self.files.lock().unwrap().get(path).cloned().ok_or_else(|| VfsError::NotFound(path.into()))?;
-        Ok(Box::new(MemReader { content, pos: 0, counter: self.bytes_read.clone(), seekable: !self.unseekable }))
+        let counter = self.bytes_read.clone();
+        Ok(Box::new(MemReader { content, pos: 0, counter, seekable: !self.unseekable, max_read: self.max_read }))
     }
 
     fn walk<'a>(&'a self, _path: &str) -> Result<Box<dyn Iterator<Item = Result<(RelPath, Entry)>> + 'a>> {

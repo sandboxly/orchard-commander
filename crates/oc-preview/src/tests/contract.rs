@@ -26,8 +26,11 @@ fn corpus() -> Vec<(String, Vec<u8>)> {
     files.push(("valid.webp".into(), webp_bytes(5, 5)));
     files.push(("valid.svg".into(), SVG.to_vec()));
     files.push(("valid.md".into(), b"# Title\n\nSome *markdown*.\n".to_vec()));
-    files.push(("valid.pdf".into(), pdf_bytes()));
+    files.push(("valid.pdf".into(), oc_pdf::testing::pdf_bytes(3)));
     files.push(("pdf-without-extension".into(), pdf_bytes()));
+    files.push(("locked.pdf".into(), oc_pdf::testing::TestPdf::with_pages(1).encrypted("pw", "").build()));
+    files.push(("no-pages.pdf".into(), oc_pdf::testing::pdf_bytes(0)));
+    files.push(("not-really.pdf".into(), b"%PDF-1.7\nthis is not really a pdf".to_vec()));
     files.push(("valid.zip".into(), b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".to_vec()));
     files.push(("bad-svg.svg".into(), b"<svg><rect".to_vec()));
     files.push(("binary.txt".into(), b"\0\0\0\x01".to_vec()));
@@ -106,7 +109,11 @@ fn identity() {
         let _: Access = p.access();
         ids.push(p.id().to_string());
     }
-    assert_eq!(ids, ["listing", "image", "pdf", "media", "markdown", "text", "hex"]);
+    let mut expected = vec!["listing", "image", "pdf", "media", "markdown", "text", "hex"];
+    if !pdf_available() {
+        expected.retain(|id| *id != "pdf");
+    }
+    assert_eq!(ids, expected);
 }
 
 #[test]

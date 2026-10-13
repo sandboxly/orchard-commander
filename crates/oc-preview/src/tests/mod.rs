@@ -6,6 +6,8 @@
 mod contract;
 mod fs;
 mod loaders;
+#[cfg(feature = "pdf")]
+mod pdf;
 mod registry;
 mod review;
 
@@ -43,8 +45,20 @@ pub fn gif_bytes(frames: usize) -> Vec<u8> {
 
 pub const SVG: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="#0000ff"/></svg>"##;
 
+/// A valid one-page PDF.
 pub fn pdf_bytes() -> Vec<u8> {
-    b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n".to_vec()
+    oc_pdf::testing::pdf_bytes(1)
+}
+
+/// Whether the PDF previewer is registered: built with the `pdf` feature and
+/// the PDFium library found (scripts/fetch-pdfium.sh). Tests that need it
+/// skip with a note otherwise.
+pub fn pdf_available() -> bool {
+    let ok = cfg!(feature = "pdf") && oc_pdf::available();
+    if !ok {
+        eprintln!("PDF previewer unavailable (no `pdf` feature or no PDFium library): skipping PDF checks");
+    }
+    ok
 }
 
 /// Deterministic pseudo-random bytes (no rand dependency).
