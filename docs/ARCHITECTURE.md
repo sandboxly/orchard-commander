@@ -487,10 +487,12 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * `App::new` loads `oc_config::Settings` from the 1.x config dir. Keys written
   (same meaning as 1.x): `left_path`, `right_path` (nearest local folder),
   `show_hidden`, `font_size` (zoom; reset → `null`), `color_scheme` /
-  `light_scheme` / `dark_scheme`, `extra.left_mode` / `extra.right_mode`,
-  `extra.geometry` (the main window: Qt's `saveGeometry()` blob in base64,
-  read and written by `app/src/geometry.rs`). The sort order is not saved
-  (1.x sorts by name at every start).
+  `light_scheme` / `dark_scheme`, `extra.left_mode` / `extra.right_mode`.
+  The window's size, position and maximized / full-screen
+  state go in 1.x's `extra.geometry` (Qt `saveGeometry()` base64, written
+  and read by `app/src/geometry.rs`, clamped onto a connected screen);
+  2.0 betas' `extra.window_geometry` is read only when it is missing.
+  The sort order is not saved (1.x sorts by name at every start).
 * `app.theme` (`Theme`) = scheme colors + `BoxStyle` + `FontConfig` (family,
   style, size, line spacing). `update_settings` re-resolves it when the
   appearance changes and emits `PlatformRequest::ThemeChanged`; the binary

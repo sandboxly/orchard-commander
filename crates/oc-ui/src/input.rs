@@ -128,6 +128,18 @@ pub enum MouseKind {
     Move,
     /// Lines to scroll; positive = towards the top (content moves down).
     Scroll(f32),
+    /// Columns to scroll sideways (trackpads, tilt wheels); positive =
+    /// towards the left (content moves right).
+    HScroll(f32),
+}
+
+/// The mouse pointer's shape over a window (`App::pointer`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Pointer {
+    #[default]
+    Default,
+    /// The I-beam: text can be selected here.
+    Text,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

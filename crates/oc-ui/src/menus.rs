@@ -168,7 +168,7 @@ impl Modal for MenuBar {
                         if matches!(m.kind, MouseKind::Down(_)) && menu == self.menu {
                             return ModalOutcome::Close;
                         }
-                        if menu != self.menu && !matches!(m.kind, MouseKind::Scroll(_)) {
+                        if menu != self.menu && !matches!(m.kind, MouseKind::Scroll(_) | MouseKind::HScroll(_)) {
                             *self = MenuBar::open(app, menu, self.row);
                         }
                     }

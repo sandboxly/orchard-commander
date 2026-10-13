@@ -10,16 +10,17 @@ use std::time::{Duration, Instant};
 use oc_grid::winit;
 use oc_grid::{FontConfig, Frame, Rendered, WindowRenderer};
 use oc_ui::input::{from_winit, mods_from_winit};
-use oc_ui::{App, AppConfig, Event, MAIN_WINDOW, MouseButton, MouseEvent, MouseKind, PlatformRequest, WinId};
+use oc_ui::{App, AppConfig, Event, MAIN_WINDOW, MouseButton, MouseEvent, MouseKind, PlatformRequest, Pointer, WinId};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::ModifiersState;
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
-use crate::{Args, geometry};
+use crate::Args;
+use crate::geometry::{self, QtGeometry};
 
 /// Messages to the event loop from other threads.
 #[derive(Debug, Clone)]
@@ -42,7 +43,11 @@ struct Win {
     cursor: PhysicalPosition<f64>,
     last_cell: (u16, u16),
     scroll_px: f64,
+    /// Horizontal trackpad scrolling, like `scroll_px`.
+    scroll_px_x: f64,
     ime_allowed: bool,
+    /// The mouse pointer shape set on the window.
+    pointer: Pointer,
     /// Which of the app's images this window's renderer has.
     images: oc_ui::images::ImageSync,
     /// The window was hidden at the last redraw: try again at this time
@@ -84,6 +89,9 @@ struct Platform {
     /// The focused window's own menu bar (an editor's File/Edit), while it is in front.
     #[cfg(target_os = "macos")]
     window_menu: Option<(WinId, crate::macos::WindowMenuBar)>,
+    /// The main window's content area while neither maximized nor full
+    /// screen (logical): Qt's normal geometry, saved with the window state.
+    normal_geometry: Option<geometry::Rect>,
 }
 
 pub fn run(args: Args, started: Instant) -> ExitCode {
@@ -120,6 +128,7 @@ pub fn run(args: Args, started: Instant) -> ExitCode {
         menu: None,
         #[cfg(target_os = "macos")]
         window_menu: None,
+        normal_geometry: None,
     };
     if let Err(e) = event_loop.run_app(&mut platform) {
         eprintln!("event loop error: {e}");
@@ -204,7 +213,9 @@ impl Platform {
             cursor: PhysicalPosition::new(0.0, 0.0),
             last_cell: (u16::MAX, u16::MAX),
             scroll_px: 0.0,
+            scroll_px_x: 0.0,
             ime_allowed: false,
+            pointer: Pointer::Default,
             images: Default::default(),
             hidden_retry: None,
         };
@@ -311,52 +322,84 @@ impl Platform {
         }
     }
 
-    /// The saved 1.x geometry (Qt's blob, see `geometry`), as of now.
-    fn previous_geometry(&mut self) -> Option<geometry::Geometry> {
-        self.app().settings.extra.get("geometry").and_then(|v| v.as_str()).and_then(geometry::decode)
-    }
-
+    /// 1.x's `saveGeometry()` into `extra["geometry"]` (on quit).
     fn save_geometry(&mut self) {
         let Some(k) = self.win_for(MAIN_WINDOW) else { return };
         let w = &self.windows[&k].window;
         let scale = w.scale_factor();
-        let rect = |pos: Option<PhysicalPosition<i32>>, size: PhysicalSize<u32>| {
-            let p = pos.unwrap_or_default().to_logical::<f64>(scale);
-            let s = size.to_logical::<f64>(scale);
-            geometry::Rect { x: p.x.round() as i32, y: p.y.round() as i32, w: s.width.round() as i32, h: s.height.round() as i32 }
+        let logical = |p: PhysicalPosition<i32>, s: PhysicalSize<u32>| {
+            let (p, s) = (p.to_logical::<f64>(scale), s.to_logical::<f64>(scale));
+            geometry::Rect::new(p.x.round() as i32, p.y.round() as i32, s.width.round() as i32, s.height.round() as i32)
         };
-        let frame = rect(w.outer_position().ok(), w.outer_size());
-        let client = rect(w.inner_position().ok(), w.inner_size());
-        let (maximized, full_screen) = (w.is_maximized(), w.fullscreen().is_some());
-        let screen_width = w.current_monitor().map_or(0, |m| m.size().to_logical::<f64>(m.scale_factor()).width.round() as i32);
-        // Maximized: the size to go back to is the one saved before.
-        let normal = match self.previous_geometry() {
-            Some(old) if maximized || full_screen => old.normal,
-            _ => client,
-        };
-        let value = geometry::encode(&geometry::Geometry { frame, normal, client, screen_width, maximized, full_screen });
+        let inner_pos = w.inner_position().unwrap_or_default();
+        let outer_pos = w.outer_position().unwrap_or(inner_pos);
+        let content = logical(inner_pos, w.inner_size());
+        // Qt numbers the screens primary first (as `saved_geometry` lists them).
+        let primary = w.primary_monitor();
+        let monitors: Vec<_> =
+            primary.iter().cloned().chain(w.available_monitors().filter(|m| Some(m) != primary.as_ref())).collect();
+        let current = w.current_monitor();
+        let screen = current.as_ref().and_then(|c| monitors.iter().position(|m| m == c)).unwrap_or(0);
+        let screen_width = current.map_or(0, |m| m.size().to_logical::<f64>(m.scale_factor()).width.round() as i32);
+        let maximized = w.is_maximized();
+        let full_screen = w.fullscreen().is_some();
+        let normal = if maximized || full_screen { self.normal_geometry.unwrap_or(content) } else { content };
+        let blob = QtGeometry {
+            frame: logical(outer_pos, w.outer_size()),
+            normal,
+            screen: screen as i32,
+            maximized,
+            full_screen,
+            screen_width,
+            geometry: content,
+        }
+        .encode();
         self.app().update_settings(move |s| {
-            s.extra.insert("geometry".into(), value.clone().into());
+            s.extra.insert(geometry::KEY.into(), blob.clone().into());
         });
     }
 
-    /// Size, position and whether to maximize / go full screen, from the
-    /// geometry 1.x (or we) saved; 1280×800 where the system likes without.
-    fn saved_geometry(&mut self) -> (LogicalSize<f64>, Option<LogicalPosition<f64>>, bool, bool) {
-        let Some(g) = self.previous_geometry() else {
-            return (LogicalSize::new(1280.0, 800.0), None, false, false);
-        };
-        let zoomed = g.maximized || g.full_screen;
-        let content = if zoomed { g.normal } else { g.client };
-        // The position is the frame's (title bar included), the size the content's.
-        let (dx, dy) = (g.client.x - g.frame.x, g.client.y - g.frame.y);
-        let size = if content.w >= 200 && content.h >= 150 {
-            LogicalSize::new(content.w as f64, content.h as f64)
-        } else {
-            LogicalSize::new(1280.0, 800.0)
-        };
-        let pos = LogicalPosition::new((content.x - dx) as f64, (content.y - dy) as f64);
-        (size, Some(pos), g.maximized, g.full_screen)
+    /// The main window's content area, when it is in its normal state.
+    fn track_normal_geometry(&mut self, key: WindowId) {
+        let Some(w) = self.windows.get(&key).filter(|w| w.id == MAIN_WINDOW) else { return };
+        let w = &w.window;
+        if w.is_maximized() || w.fullscreen().is_some() || w.is_minimized() == Some(true) {
+            return;
+        }
+        let scale = w.scale_factor();
+        let Ok(pos) = w.inner_position() else { return };
+        let (p, s) = (pos.to_logical::<f64>(scale), w.inner_size().to_logical::<f64>(scale));
+        self.normal_geometry =
+            Some(geometry::Rect::new(p.x.round() as i32, p.y.round() as i32, s.width.round() as i32, s.height.round() as i32));
+    }
+
+    /// How to open the main window: 1.x's saved geometry (or a 2.0 beta's
+    /// `window_geometry`), fitted to the connected screens.
+    fn saved_geometry(&mut self, el: &ActiveEventLoop) -> geometry::Restore {
+        let extra = &self.app().settings.extra;
+        if let Some(g) = extra.get(geometry::KEY).and_then(|v| v.as_str()).and_then(QtGeometry::decode) {
+            let mut screens: Vec<geometry::Rect> = Vec::new();
+            let primary = el.primary_monitor();
+            for m in primary.iter().cloned().chain(el.available_monitors().filter(|m| Some(m) != primary.as_ref())) {
+                let scale = m.scale_factor();
+                let (p, s) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
+                screens.push(geometry::Rect::new(p.x as i32, p.y as i32, s.width as i32, s.height as i32));
+            }
+            return geometry::restore(&g, &screens);
+        }
+        let geo = extra.get(geometry::LEGACY_KEY);
+        let num = |k: &str| geo.and_then(|g| g.get(k)).and_then(|v| v.as_f64());
+        let mut r = geometry::Restore::default();
+        if let (Some(w), Some(h)) = (num("width"), num("height"))
+            && w >= 200.0
+            && h >= 150.0
+        {
+            r.size = (w as i32, h as i32);
+        }
+        if let (Some(x), Some(y)) = (num("x"), num("y")) {
+            r.content_pos = Some((x as i32, y as i32));
+        }
+        r
     }
 
     fn redraw(&mut self, key: WindowId) {
@@ -465,25 +508,20 @@ impl Platform {
                 w.ime_allowed = ime;
                 w.window.set_ime_allowed(ime);
             }
+            let pointer = app.pointer(w.id);
+            if pointer != w.pointer {
+                w.pointer = pointer;
+                w.window.set_cursor(match pointer {
+                    Pointer::Default => CursorIcon::Default,
+                    Pointer::Text => CursorIcon::Text,
+                });
+            }
         }
         match deadline {
             Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
             None => el.set_control_flow(ControlFlow::Wait),
         }
     }
-}
-
-/// Whether the title bar of a window at `pos` (logical, frame) would be on
-/// one of the screens. Without a list of screens: assume so.
-fn on_a_screen(el: &ActiveEventLoop, pos: LogicalPosition<f64>, size: LogicalSize<f64>) -> bool {
-    let (x, y) = (pos.x + size.width.min(200.0) / 2.0, pos.y + 10.0);
-    let mut monitors = el.available_monitors().peekable();
-    monitors.peek().is_none()
-        || monitors.any(|m| {
-            let scale = m.scale_factor();
-            let (at, extent) = (m.position().to_logical::<f64>(scale), m.size().to_logical::<f64>(scale));
-            (at.x..at.x + extent.width).contains(&x) && (at.y..at.y + extent.height).contains(&y)
-        })
 }
 
 impl ApplicationHandler<AppEvent> for Platform {
@@ -496,17 +534,18 @@ impl ApplicationHandler<AppEvent> for Platform {
         }
         let app = self.create_app();
         self.app = Some(app);
-        let (size, pos, maximized, full_screen) = self.saved_geometry();
-        // Like Qt's restoreGeometry: not off screen (e.g. a monitor since unplugged).
-        let pos = pos.filter(|&p| on_a_screen(el, p, size));
-        self.open_window(el, MAIN_WINDOW, oc_config::APP_NAME, size, pos);
+        let restore = self.saved_geometry(el);
+        let size = LogicalSize::new(restore.size.0 as f64, restore.size.1 as f64);
+        // winit places the content on macOS, the whole window elsewhere.
+        let pos = if cfg!(target_os = "macos") { restore.content_pos } else { restore.outer_pos() };
+        self.open_window(el, MAIN_WINDOW, oc_config::APP_NAME, size, pos.map(|(x, y)| LogicalPosition::new(x as f64, y as f64)));
         if let Some(k) = self.win_for(MAIN_WINDOW) {
+            self.track_normal_geometry(k);
             let w = &self.windows[&k].window;
-            if maximized {
+            if restore.full_screen {
+                w.set_fullscreen(Some(Fullscreen::Borderless(None)));
+            } else if restore.maximized {
                 w.set_maximized(true);
-            }
-            if full_screen {
-                w.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
             }
         }
         #[cfg(target_os = "macos")]
@@ -554,7 +593,12 @@ impl ApplicationHandler<AppEvent> for Platform {
                     w.window.request_redraw();
                 }
             }
+            WindowEvent::Moved(_) => {
+                self.track_normal_geometry(key);
+                return;
+            }
             WindowEvent::Resized(size) => {
+                self.track_normal_geometry(key);
                 let w = self.windows.get_mut(&key).expect("checked");
                 w.gpu.resize(size.width, size.height);
                 let (cols, rows) = w.gpu.grid_size();
@@ -609,19 +653,27 @@ impl ApplicationHandler<AppEvent> for Platform {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let w = self.windows.get_mut(&key).expect("checked");
-                let lines = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
+                let (cols, lines) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (x, y),
                     MouseScrollDelta::PixelDelta(p) => {
-                        // Trackpads: whole rows only, keep the remainder.
-                        let ch = w.cell_px().1 as f64 * 3.0;
+                        // Trackpads: whole rows / columns only, keep the remainder.
+                        let (cw, ch) = w.cell_px();
+                        let (cw, ch) = (cw as f64 * 3.0, ch as f64 * 3.0);
                         w.scroll_px += p.y;
+                        w.scroll_px_x += p.x;
                         let n = (w.scroll_px / ch).trunc();
                         w.scroll_px -= n * ch;
-                        n as f32
+                        let m = (w.scroll_px_x / cw).trunc();
+                        w.scroll_px_x -= m * cw;
+                        (m as f32, n as f32)
                     }
                 };
                 if lines != 0.0 {
                     self.mouse(key, MouseKind::Scroll(lines));
+                }
+                // Sideways only when that is the gesture (a vertical swipe drifts a little).
+                if cols != 0.0 && cols.abs() > lines.abs() {
+                    self.mouse(key, MouseKind::HScroll(cols));
                 }
             }
             WindowEvent::Focused(f) => self.send(key, Event::Focus(f)),

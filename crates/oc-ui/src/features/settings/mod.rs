@@ -11,8 +11,11 @@
 //! fonts takes a while) and kept in [`FontInfo`].
 //!
 //! Keys: Tab / Shift+Tab and ↑/↓ move between controls, ←/→ change a list
-//! or number, Enter/Space open a list, toggle or press; Esc closes.
+//! or number, Enter/Space open a list, toggle or press; Esc closes. A number
+//! can also be typed (applied as soon as it is in range, like a Qt spin box)
+//! or turned with the mouse wheel.
 
+pub mod color_picker;
 pub mod form;
 pub mod sample;
 pub mod scheme_editor;
@@ -58,8 +61,11 @@ pub fn register(reg: &mut Registry) {
 /// Open the Settings window (fonts are looked up in the background meanwhile).
 pub fn open(app: &mut App) {
     load_fonts(app);
+    // 1.x reads color-schemes/ whenever it shows the list: files copied in
+    // by hand (or saved by another instance) are there at once.
+    app.refresh_color_schemes(|app| app.redraw());
     let shell = TextInput::new(&app.settings.terminal_shell);
-    app.show(SettingsDialog { page: 0, focus: Focus::Close, popup: None, all_fonts: false, shell });
+    app.show(SettingsDialog { page: 0, focus: Focus::Close, popup: None, all_fonts: false, shell, typed: None });
 }
 
 // ---------------------------------------------------------------------------
@@ -349,11 +355,15 @@ fn appearance_page(app: &App, d: &SettingsDialog, page: Rect) -> PageLayout {
         kind: Kind::Combo { items: styles.iter().cloned().map(Some).collect(), values: styles, current },
     });
     y += 1;
+    // While a number is being typed it shows as typed (Qt's spin box text).
+    let typed = |id: Id| d.typed.as_ref().filter(|(t, _)| *t == id).map(|(_, text)| text.clone());
     labelled(&mut texts, y, "Size");
-    ctls.push(Ctl { id: Id::Size, rect: Rect::new(fx, y, SPIN_W, 1), kind: Kind::Spin(format!("{} pt", a.font_size)) });
+    let size = typed(Id::Size).unwrap_or_else(|| a.font_size.to_string());
+    ctls.push(Ctl { id: Id::Size, rect: Rect::new(fx, y, SPIN_W, 1), kind: Kind::Spin(format!("{size} pt")) });
     y += 1;
     labelled(&mut texts, y, "Line spacing");
-    ctls.push(Ctl { id: Id::Spacing, rect: Rect::new(fx, y, SPIN_W, 1), kind: Kind::Spin(format!("{:.2} ×", a.line_spacing)) });
+    let spacing = typed(Id::Spacing).unwrap_or_else(|| format!("{:.2}", a.line_spacing));
+    ctls.push(Ctl { id: Id::Spacing, rect: Rect::new(fx, y, SPIN_W, 1), kind: Kind::Spin(format!("{spacing} ×")) });
     y += 1;
 
     heading(&mut texts, &mut y, "Window");
@@ -488,6 +498,48 @@ fn spin(app: &mut App, id: Id, delta: i32) {
     }
 }
 
+/// A number typed into a spin box: the text as it may stand (Qt's validator:
+/// digits, for Line spacing one decimal point and two decimals, never above
+/// the maximum), and the value once it is in range.
+fn typed_value(id: Id, text: &str) -> Option<(String, Option<f64>)> {
+    let text = text.replace(',', ".");
+    let (lo, hi) = match id {
+        Id::Size => (FONT_SIZE_RANGE.0 as f64, FONT_SIZE_RANGE.1 as f64),
+        Id::Spacing => LINE_SPACING_RANGE,
+        _ => return None,
+    };
+    if text.is_empty() {
+        return Some((text, None));
+    }
+    let digits = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    let ok = match (id, text.split_once('.')) {
+        (_, None) => digits(&text),
+        (Id::Spacing, Some((int, frac))) => digits(int) && digits(frac) && frac.len() <= 2,
+        _ => false,
+    };
+    let value: f64 = if ok { format!("0{text}").parse().ok()? } else { return None };
+    if value > hi {
+        return None;
+    }
+    Some((text, (value >= lo).then_some(value)))
+}
+
+/// Apply a typed spin box value.
+fn set_typed(app: &mut App, id: Id, value: f64) {
+    let a = app.settings.appearance();
+    match id {
+        Id::Size if value as i64 != a.font_size => {
+            let size = value as i64;
+            apply(app, move |s| s.font_size = Some(size));
+        }
+        Id::Spacing if (value - a.line_spacing).abs() > 1e-9 => {
+            let v = (value * 100.0).round() / 100.0;
+            apply(app, move |s| s.line_spacing = Some(v));
+        }
+        _ => {}
+    }
+}
+
 /// 1.x `restore_defaults`: every appearance setting back to "not chosen".
 fn restore_defaults(app: &mut App) {
     apply(app, |s| {
@@ -523,6 +575,8 @@ pub struct SettingsDialog {
     /// "Include proportional fonts" (not a setting, like 1.x).
     all_fonts: bool,
     shell: TextInput,
+    /// A number being typed into a spin box, as typed.
+    typed: Option<(Id, String)>,
 }
 
 struct Frame0 {
@@ -575,7 +629,41 @@ impl SettingsDialog {
         if self.focus == Focus::Ctl(Id::Shell) && focus != self.focus {
             self.commit_shell(app);
         }
+        if focus != self.focus {
+            // Leaving a spin box: it shows the value in effect again (Qt's fixup).
+            self.typed = None;
+        }
         self.focus = focus;
+    }
+
+    /// A key typed into a focused spin box: digits (and a decimal point),
+    /// Backspace. False if it isn't one of those.
+    fn type_into_spin(&mut self, app: &mut App, id: Id, k: &KeyEvent) -> bool {
+        let current = match &self.typed {
+            Some((t, text)) if *t == id => Some(text.clone()),
+            _ => None,
+        };
+        let text = match (k.key, k.typed_text()) {
+            (Key::Backspace, _) if k.mods.is_empty() => {
+                // Without typing first, Backspace edits the number shown.
+                let a = app.settings.appearance();
+                let mut text = current.unwrap_or_else(|| if id == Id::Size { a.font_size.to_string() } else { format!("{:.2}", a.line_spacing) });
+                text.pop();
+                text
+            }
+            (_, Some(t)) if t.chars().all(|c| c.is_ascii_digit() || (id == Id::Spacing && matches!(c, '.' | ','))) => {
+                // The first digit replaces the number (Qt selects it on focus).
+                current.unwrap_or_default() + t
+            }
+            _ => return false,
+        };
+        if let Some((text, value)) = typed_value(id, &text) {
+            self.typed = Some((id, text));
+            if let Some(v) = value {
+                set_typed(app, id, v);
+            }
+        }
+        true
     }
 
     /// Sections, the page's controls, Close.
@@ -689,11 +777,18 @@ impl SettingsDialog {
                             choose(app, id, values[i].clone());
                         }
                     }
-                    (Kind::Spin(_), Key::Left | Key::Right) if plain => spin(app, id, if k.key == Key::Left { -1 } else { 1 }),
+                    (Kind::Spin(_), _) if self.type_into_spin(app, id, k) => {}
+                    (Kind::Spin(_), Key::Enter) if plain => self.typed = None,
+                    (Kind::Spin(_), Key::Left | Key::Right) if plain => {
+                        self.typed = None;
+                        spin(app, id, if k.key == Key::Left { -1 } else { 1 })
+                    }
                     (Kind::Spin(_), Key::Char('-' | '+' | '=')) if k.mods.is_typing() => {
+                        self.typed = None;
                         spin(app, id, if k.text.as_deref() == Some("-") { -1 } else { 1 })
                     }
                     (Kind::Spin(_), Key::PageUp | Key::PageDown) if plain => {
+                        self.typed = None;
                         spin(app, id, if k.key == Key::PageDown { -5 } else { 5 })
                     }
                     (_, Key::Left) if plain => self.move_focus(app, l, -1, false),
@@ -718,11 +813,23 @@ impl SettingsDialog {
                 } else if let Some(ctl) = l.ctls.iter().find(|c| c.rect.contains(col, row)) {
                     self.set_focus(app, Focus::Ctl(ctl.id));
                     match &ctl.kind {
-                        Kind::Spin(_) => spin(app, ctl.id, form::spin_hit(ctl.rect, col)),
+                        Kind::Spin(_) => {
+                            self.typed = None;
+                            spin(app, ctl.id, form::spin_hit(ctl.rect, col))
+                        }
                         Kind::Text => self.shell.click(ctl.rect, col),
                         Kind::Button(_) => {}
                         _ => return self.activate(app, ctl),
                     }
+                }
+            }
+            // The wheel over a spin box turns it (Qt: wheel focus).
+            MouseKind::Scroll(lines) if lines != 0.0 => {
+                if let Some(ctl) = l.ctls.iter().find(|c| c.rect.contains(col, row) && matches!(c.kind, Kind::Spin(_))) {
+                    self.set_focus(app, Focus::Ctl(ctl.id));
+                    self.typed = None;
+                    let steps = if lines.abs() < 1.0 { lines.signum() } else { lines.round() };
+                    spin(app, ctl.id, steps.clamp(-10.0, 10.0) as i32);
                 }
             }
             MouseKind::Up(MouseButton::Left) => {

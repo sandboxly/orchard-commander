@@ -15,8 +15,8 @@ use crate::GridError;
 use crate::atlas::AtlasFull;
 use crate::color::Rgba;
 use crate::fonts::{BOLD, CellMetrics, FontConfig, FontLibrary, FontSet, ITALIC, STRONG, StyleBits};
-use crate::frame::{Area, CellRect, CursorShape, Flags, Frame, ImageId, Layer, PxRect};
-use crate::glyph_cache::GlyphCache;
+use crate::frame::{Area, Cell, CellRect, CursorShape, Flags, Frame, ImageId, Layer, PxRect};
+use crate::glyph_cache::{AtlasGlyph, GlyphCache, MAX_LIGATURE_RUN};
 
 const INITIAL_MASK_ATLAS: u32 = 1024;
 const INITIAL_COLOR_ATLAS: u32 = 512;
@@ -145,6 +145,10 @@ pub struct GridRenderer {
     glyphs: Vec<GlyphInstance>,
     image_instances: Vec<ImageInstance>,
     image_draws: Vec<u64>,
+    /// One row's ligature glyphs (cell, glyph) and the cells they replace.
+    row_ligatures: Vec<(u16, AtlasGlyph)>,
+    ligature_cells: Vec<bool>,
+    run_text: String,
     below_count: u32,
     clear: Rgba,
     viewport: (u32, u32),
@@ -326,6 +330,9 @@ impl GridRenderer {
             quads: Vec::new(),
             above: Vec::new(),
             glyphs: Vec::new(),
+            row_ligatures: Vec::new(),
+            ligature_cells: Vec::new(),
+            run_text: String::new(),
             image_instances: Vec::new(),
             image_draws: Vec::new(),
             below_count: 0,
@@ -722,6 +729,9 @@ impl GridRenderer {
         // Glyphs and decorations.
         for row in 0..frame.rows() {
             let y = row as f32 * ch;
+            let cursor_col = block_cursor.filter(|c| c.row == row).map(|c| c.col as usize);
+            self.shape_ligatures(frame.row(row), cursor_col, tolerate_full)?;
+            let mut next_ligature = 0;
             for (col, cell) in frame.row(row).iter().enumerate() {
                 let x = col as f32 * cw;
                 let flags = cell.flags;
@@ -779,17 +789,19 @@ impl GridRenderer {
                 if cell.is_blank() {
                     continue;
                 }
-                let style: StyleBits = (if flags.contains(Flags::BOLD) { BOLD } else { 0 })
-                    | (if flags.contains(Flags::ITALIC) {
-                        ITALIC
-                    } else {
-                        0
-                    })
-                    | (if flags.contains(Flags::STRONG) {
-                        STRONG
-                    } else {
-                        0
-                    });
+                if self.ligature_cells.get(col).copied().unwrap_or(false) {
+                    // Part of a shaped run: its glyphs that start in this cell, in its color.
+                    while let Some(&(c, g)) = self.row_ligatures.get(next_ligature)
+                        && c as usize <= col
+                    {
+                        if c as usize == col {
+                            push_glyph(&mut self.glyphs, x, y, &g, fg);
+                        }
+                        next_ligature += 1;
+                    }
+                    continue;
+                }
+                let style = style_bits(flags);
                 match frame.cluster_str(cell) {
                     None => match self.cache.glyph(cell.ch, style) {
                         Ok(Some(g)) => push_glyph(&mut self.glyphs, x, y, &g, fg),
@@ -834,6 +846,36 @@ impl GridRenderer {
 
         self.below_count = self.quads.len() as u32;
         self.quads.append(&mut self.above);
+        Ok(())
+    }
+
+    /// Find the row's runs of ASCII punctuation in one style and shape them
+    /// (programming ligatures): fills `row_ligatures` and `ligature_cells`.
+    /// A run ends where the colors or attributes change (1.x's terminal drew
+    /// such runs with one `drawText`) and at the block cursor, whose cell is
+    /// drawn in its own color.
+    fn shape_ligatures(&mut self, cells: &[Cell], cursor_col: Option<usize>, tolerate_full: bool) -> Result<(), AtlasFull> {
+        self.row_ligatures.clear();
+        self.ligature_cells.clear();
+        self.ligature_cells.resize(cells.len(), false);
+        let mut col = 0;
+        while let Some(run) = next_punctuation_run(cells, cursor_col, col) {
+            col = run.end;
+            let style = style_bits(cells[run.start].flags) & 3;
+            self.run_text.clear();
+            self.run_text.extend(cells[run.clone()].iter().map(|c| c.ch));
+            match self.cache.ligature(&self.run_text, style) {
+                Ok(Some(glyphs)) => {
+                    self.row_ligatures.extend(glyphs.iter().map(|&(off, g)| (run.start as u16 + off, g)));
+                    self.ligature_cells[run].fill(true);
+                }
+                Ok(None) => {}
+                Err(e) if !tolerate_full => return Err(e),
+                Err(_) => {}
+            }
+        }
+        // Drawn cell by cell: each cell's glyphs together, in its color.
+        self.row_ligatures.sort_by_key(|&(c, _)| c);
         Ok(())
     }
 
@@ -913,7 +955,38 @@ fn push_quad(list: &mut Vec<QuadInstance>, x: f32, y: f32, w: f32, h: f32, color
     }
 }
 
+/// The next run (from `from`) of two or more ASCII punctuation cells with
+/// the same colors and attributes, never through the block cursor's cell.
+fn next_punctuation_run(cells: &[Cell], cursor_col: Option<usize>, from: usize) -> Option<std::ops::Range<usize>> {
+    let candidate = |i: usize| {
+        let c = &cells[i];
+        !c.has_cluster() && c.ch.is_ascii_punctuation() && Some(i) != cursor_col
+    };
+    let same = |a: &Cell, b: &Cell| a.fg == b.fg && a.bg == b.bg && a.flags == b.flags;
+    let mut col = from;
+    while col < cells.len() {
+        if !candidate(col) {
+            col += 1;
+            continue;
+        }
+        let start = col;
+        while col < cells.len() && col - start < MAX_LIGATURE_RUN && candidate(col) && same(&cells[start], &cells[col]) {
+            col += 1;
+        }
+        if col - start >= 2 {
+            return Some(start..col);
+        }
+    }
+    None
+}
+
 #[inline]
+fn style_bits(flags: Flags) -> StyleBits {
+    (if flags.contains(Flags::BOLD) { BOLD } else { 0 })
+        | (if flags.contains(Flags::ITALIC) { ITALIC } else { 0 })
+        | (if flags.contains(Flags::STRONG) { STRONG } else { 0 })
+}
+
 fn push_glyph(
     list: &mut Vec<GlyphInstance>,
     x: f32,
@@ -1028,4 +1101,36 @@ fn write_texture(
             depth_or_array_layers: 1,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::Style;
+
+    fn cells(text: &str, style: Style) -> Vec<Cell> {
+        text.chars().map(|c| Cell::new(c, style)).collect()
+    }
+
+    #[test]
+    fn punctuation_runs_split_like_1x() {
+        let plain = Style::new(Rgba::WHITE, Rgba::BLACK);
+        let runs = |cells: &[Cell], cursor| {
+            let mut out = Vec::new();
+            let mut from = 0;
+            while let Some(r) = next_punctuation_run(cells, cursor, from) {
+                from = r.end;
+                out.push(r);
+            }
+            out
+        };
+        assert_eq!(runs(&cells("a -> b != c.", plain), None), vec![2..4, 7..9]);
+        // A color change (syntax, selection) ends the run, as in 1.x.
+        let mut row = cells("=>", plain);
+        row.extend(cells("=", Style::new(Rgba::rgb(255, 0, 0), Rgba::BLACK)));
+        assert_eq!(runs(&row, None), vec![0..2]);
+        // The block cursor's cell is drawn by itself.
+        assert_eq!(runs(&cells("===", plain), Some(1)), vec![]);
+        assert_eq!(runs(&cells("-->", plain), Some(2)), vec![0..2]);
+    }
 }

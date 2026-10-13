@@ -37,7 +37,7 @@ pub mod widgets;
 pub use app::{App, AppConfig, MAIN_WINDOW, Outcome, PlatformRequest, Severity, UiWindow, WinId, WindowMenu, WindowMenuItem};
 pub use commands::{Command, CommandId, MenuRole, Registry};
 pub use geom::Rect;
-pub use input::{Event, Key, KeyEvent, Mods, MouseButton, MouseEvent, MouseKind};
+pub use input::{Event, Key, KeyEvent, Mods, MouseButton, MouseEvent, MouseKind, Pointer};
 pub use menus::Menu;
 pub use modal::{Modal, ModalId, ModalOutcome};
 pub use shortcut::Shortcut;

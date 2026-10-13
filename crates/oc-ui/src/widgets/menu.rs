@@ -209,7 +209,7 @@ impl DropdownMenu {
                 _ if matches!(ev.kind, MouseKind::Down(_)) => MenuOutcome::Close,
                 _ => MenuOutcome::Ignored,
             },
-            MouseKind::Scroll(_) => MenuOutcome::Consumed,
+            MouseKind::Scroll(_) | MouseKind::HScroll(_) => MenuOutcome::Consumed,
         }
     }
 }

@@ -21,7 +21,7 @@ pub mod view;
 pub use oc_term::Session;
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -77,6 +77,8 @@ pub struct Terminal {
     capture: bool,
     /// Dragging the top border to resize.
     dragging: bool,
+    /// The mouse is over the shell's text (the pointer is an I-beam there).
+    hover: bool,
     resize_timer: Option<u64>,
     clock: Instant,
     /// Reused for each frame's copy of the screen.
@@ -105,6 +107,7 @@ impl Default for Terminal {
             mouse: new_mouse(),
             capture: false,
             dragging: false,
+            hover: false,
             resize_timer: None,
             clock: Instant::now(),
             snapshot: RefCell::new(oc_term::Snapshot::default()),
@@ -170,6 +173,19 @@ pub fn is_visible(app: &App) -> bool {
 /// Whether the keyboard is in the terminal (the panels then look inactive).
 pub fn has_focus(app: &App) -> bool {
     app.try_state::<Terminal>().is_some_and(|t| t.visible && t.focused)
+}
+
+/// The pointer over the main window: an I-beam over the shell's text, an
+/// arrow while a program there takes the mouse (1.x: `output_arrived`).
+pub fn pointer(app: &App) -> crate::input::Pointer {
+    use crate::input::Pointer;
+    let Some(t) = app.try_state::<Terminal>().filter(|t| t.visible && t.hover) else {
+        return Pointer::Default;
+    };
+    match t.session(app.main.active) {
+        Some(s) if s.lock().mouse_tracking().is_some() => Pointer::Default,
+        _ => Pointer::Text,
+    }
 }
 
 /// Side `side`'s shell, if it was started.
@@ -523,11 +539,27 @@ pub fn run_in(app: &mut App, side: usize, folder: PathBuf) {
     let t = app.state::<Terminal>();
     match t.session(side).cloned() {
         Some(s) if s.alive() => {
-            let cd = oc_term::cd_command(s.argv(), &folder);
+            let cd = panel_folder_command(s.argv(), &folder);
             send(app, side, cd.into_bytes(), Input::Typed);
         }
         _ => t.starting_dirs[side] = Some(folder),
     }
+}
+
+/// What "Terminal: go to panel folder" types (1.x `TerminalPanel.run_in`).
+/// Unlike the linked folders' `cd` it has no leading space: the user asked
+/// for it, so it goes into the shell's history. cmd.exe gets its own syntax
+/// (1.x typed PowerShell's there, which cmd can't run).
+fn panel_folder_command(argv: &[String], folder: &Path) -> String {
+    if cfg!(windows) {
+        let cmd = argv.first().and_then(|p| Path::new(p).file_stem()).is_some_and(|s| s.eq_ignore_ascii_case("cmd"));
+        if cmd {
+            return oc_term::cd_command(argv, folder);
+        }
+        return format!("Set-Location -LiteralPath '{}'\r", folder.to_string_lossy().replace('\'', "''"));
+    }
+    // Ctrl+U: clear what was typed first
+    format!("\x15cd {}\r", oc_term::shell_quote(&folder.to_string_lossy()))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -689,6 +721,7 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
         }
         return Outcome::Consumed;
     }
+    app.state::<Terminal>().hover = inner.contains(m.col, m.row);
     let pressed = matches!(m.kind, MouseKind::Down(_) | MouseKind::DoubleClick(_));
     if !area.contains(m.col, m.row) && !capture {
         if pressed {
@@ -733,6 +766,7 @@ fn mouse(app: &mut App, m: &MouseEvent) -> Outcome {
             }
             MouseKind::Move => t.mouse.motion(&mut screen, e),
             MouseKind::Scroll(lines) => t.mouse.wheel(&mut screen, 0, (lines * 120.0).round() as i32, e),
+            MouseKind::HScroll(cols) => t.mouse.wheel(&mut screen, (cols * 120.0).round() as i32, 0, e),
         }
     };
     if pressed {
@@ -758,6 +792,15 @@ mod tests {
         let t = Terminal::default();
         assert_eq!(t.title(0), "Terminal · ◀ left");
         assert_eq!(t.title(1), "Terminal · right ▶");
+    }
+
+    #[test]
+    fn panel_folder_command_like_1x() {
+        let sh = ["/bin/zsh".to_owned()];
+        if !cfg!(windows) {
+            assert_eq!(panel_folder_command(&sh, Path::new("/tmp/a b")), "\x15cd '/tmp/a b'\r");
+            assert_eq!(panel_folder_command(&sh, Path::new("/tmp")), "\x15cd /tmp\r");
+        }
     }
 
     #[test]

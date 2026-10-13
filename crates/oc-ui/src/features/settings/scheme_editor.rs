@@ -1,6 +1,7 @@
 //! The color scheme editor (port of `SchemeEditor` in `settings_dialog.py`):
-//! a scheme's colors as hex values with swatches, its name, dark flag and
-//! syntax colors, previewed live on the whole window. Built-in schemes are
+//! a scheme's colors as hex values with swatches (a click, or Space on a
+//! focused swatch, opens a [`ColorPicker`] titled with the color's role),
+//! its name, dark flag and syntax colors, previewed live on the whole window. Built-in schemes are
 //! read-only: changes to them are saved as a new scheme ("<name> (custom)").
 //! Saving writes `color-schemes/<slug>.toml`; Delete removes a user scheme.
 //! Both happen on a worker; the editor stays open until they are done.
@@ -10,6 +11,7 @@ use oc_config::themes::{self, COLOR_ROLES};
 use oc_grid::{Frame, Rgba, Style};
 
 use super::Slot;
+use super::color_picker::{self, ColorPicker, PickerOutcome};
 use super::form::{self, Choice, Popup, PopupOutcome};
 use crate::app::{App, PlatformRequest};
 use crate::dialogs::{self, dialog_rects, draw_box};
@@ -84,6 +86,8 @@ const LABEL_W: u16 = 14;
 const SWATCH_W: u16 = 5;
 const HEX_W: u16 = 9;
 const SYNTAX_W: u16 = 24;
+/// 1.x: `hex_edit.setMaxLength(7)` ("#rrggbb").
+const HEX_MAX: usize = 7;
 
 /// What the editor's worker reports back (the editor itself is a boxed
 /// modal the result can't reach).
@@ -99,6 +103,8 @@ enum Focus {
     Name,
     Dark,
     Syntax,
+    /// A color's swatch (1.x: a button before its hex field in the Tab order).
+    Swatch(usize),
     Hex(usize),
     Buttons,
 }
@@ -115,6 +121,10 @@ pub struct SchemeEditor {
     buttons: ButtonRow,
     focus: Focus,
     popup: Option<Popup>,
+    /// The color picker for a role, while open.
+    picker: Option<(usize, ColorPicker)>,
+    /// A swatch the mouse went down on (it opens the picker on release, like a button).
+    pressed_swatch: Option<usize>,
 }
 
 /// Open the editor for the scheme in `slot`'s setting.
@@ -144,21 +154,60 @@ impl SchemeEditor {
             buttons: ButtonRow::new(labels, 0),
             focus: Focus::Name,
             popup: None,
+            picker: None,
+            pressed_swatch: None,
         }
     }
 
-    fn order(&self) -> Vec<Focus> {
+    /// Tab stops (`swatches`: also each color's swatch, as Tab goes in 1.x;
+    /// ↑/↓ go from color to color).
+    fn order(&self, swatches: bool) -> Vec<Focus> {
         let mut v = vec![Focus::Name, Focus::Dark, Focus::Syntax];
-        v.extend((0..COLOR_ROLES.len()).map(Focus::Hex));
+        for i in 0..COLOR_ROLES.len() {
+            if swatches {
+                v.push(Focus::Swatch(i));
+            }
+            v.push(Focus::Hex(i));
+        }
         v.push(Focus::Buttons);
         v
     }
 
-    fn move_focus(&mut self, delta: i32) {
-        let order = self.order();
-        let i = order.iter().position(|f| *f == self.focus).unwrap_or(0) as i32;
+    fn move_focus(&mut self, delta: i32, swatches: bool) {
+        let order = self.order(swatches);
+        let at = match self.focus {
+            Focus::Swatch(i) if !swatches => Focus::Hex(i),
+            f => f,
+        };
+        let i = order.iter().position(|f| *f == at).unwrap_or(0) as i32;
         let n = order.len() as i32;
         self.focus = order[(i + delta).rem_euclid(n) as usize];
+    }
+
+    /// 1.x `_pick`: a color dialog titled with the role's label.
+    fn open_picker(&mut self, i: usize) {
+        let (role, label, _) = COLOR_ROLES[i];
+        let color = self.scheme.color(role).and_then(Rgba::parse).unwrap_or(Rgba::BLACK);
+        self.picker = Some((i, ColorPicker::new(label, color)));
+    }
+
+    fn picker_event(&mut self, app: &mut App, ev: &Event, screen: Rect) -> ModalOutcome {
+        let Some((i, picker)) = self.picker.as_mut() else { return ModalOutcome::Ignored };
+        let i = *i;
+        match picker.handle_event(ev, screen, app.clipboard.as_mut()) {
+            PickerOutcome::Consumed => {}
+            PickerOutcome::Cancelled => self.picker = None,
+            PickerOutcome::Chosen(color) => {
+                self.picker = None;
+                let hex = color_picker::to_hex(color);
+                self.hex[i].set_text(&hex);
+                if let Some(c) = self.scheme.color_mut(COLOR_ROLES[i].0) {
+                    *c = hex;
+                }
+                self.preview(app);
+            }
+        }
+        ModalOutcome::Consumed
     }
 
     /// Show the edited colors on the whole window.
@@ -182,8 +231,22 @@ impl SchemeEditor {
         }
     }
 
-    /// A hex field was edited: take the color once it is one.
+    /// A hex field was edited: cut what went past [`HEX_MAX`] (Qt's max
+    /// length keeps only the part of an insertion that fits; it ends at the
+    /// cursor) and take the color once it is one.
     fn typed(&mut self, app: &mut App, i: usize) {
+        let input = &mut self.hex[i];
+        let excess = input.text.chars().count().saturating_sub(HEX_MAX);
+        if excess > 0 {
+            let start = input.text[..input.cursor].char_indices().rev().nth(excess - 1).map_or(0, |(j, _)| j);
+            input.text.replace_range(start..input.cursor, "");
+            input.cursor = start;
+            input.anchor = None;
+            if let Some((end, _)) = input.text.char_indices().nth(HEX_MAX) {
+                input.text.truncate(end);
+                input.cursor = input.cursor.min(end);
+            }
+        }
         let text = self.hex[i].text.trim().to_owned();
         if themes::is_color(&text)
             && let Some(c) = self.scheme.color_mut(COLOR_ROLES[i].0)
@@ -381,10 +444,17 @@ impl Modal for SchemeEditor {
     }
 
     fn text(&self) -> String {
-        format!("{}\n{}\nfocus={:?}", self.name.text, self.scheme.name, self.focus)
+        let mut text = format!("{}\n{}\nfocus={:?}", self.name.text, self.scheme.name, self.focus);
+        if let Some((_, p)) = &self.picker {
+            text = format!("{text}\n{}", p.text());
+        }
+        text
     }
 
     fn wants_text_input(&self) -> bool {
+        if let Some((_, p)) = &self.picker {
+            return p.wants_text_input();
+        }
         matches!(self.focus, Focus::Name | Focus::Hex(_)) && self.popup.is_none()
     }
 
@@ -411,8 +481,14 @@ impl Modal for SchemeEditor {
             form::label(f, label.x, label.y, text, label.w, ctx);
             let color = self.scheme.color(role).and_then(Rgba::parse).unwrap_or(c.background);
             fill(f, *swatch, color);
-            // A thin outline so a swatch in the surface color still shows (1.x: 1px muted border).
-            put(f, swatch.x, swatch.y, "▏", Style::new(c.muted, color), 1);
+            // A thin outline so a swatch in the surface color still shows (1.x: 1px muted
+            // border; focused: 2px in the active border color).
+            if self.focus == Focus::Swatch(*i) {
+                put(f, swatch.x, swatch.y, "▕", Style::new(c.border_active, color), 1);
+                put(f, swatch.right().saturating_sub(1), swatch.y, "▏", Style::new(c.border_active, color), 1);
+            } else {
+                put(f, swatch.x, swatch.y, "▏", Style::new(c.muted, color), 1);
+            }
             self.hex[*i].draw(f, *hex, ctx, self.focus == Focus::Hex(*i));
         }
         let status = app.try_state::<EditorStatus>();
@@ -425,6 +501,9 @@ impl Modal for SchemeEditor {
         if let Some(p) = &self.popup {
             p.draw(f, &Self::syntax_items(), screen, ctx);
         }
+        if let Some((_, p)) = &self.picker {
+            p.draw(f, screen, ctx);
+        }
     }
 
     fn handle_event(&mut self, app: &mut App, ev: &Event, screen: Rect) -> ModalOutcome {
@@ -434,17 +513,20 @@ impl Modal for SchemeEditor {
         if self.popup.is_some() {
             return self.popup_event(app, ev, screen);
         }
+        if self.picker.is_some() {
+            return self.picker_event(app, ev, screen);
+        }
         match ev {
             Event::Key(k) => {
                 let plain = k.mods.is_empty();
                 match k.key {
                     Key::Escape => return self.close(app),
                     Key::Tab if k.mods.is_empty() || k.mods == crate::input::Mods::SHIFT => {
-                        self.move_focus(if k.mods.shift { -1 } else { 1 });
+                        self.move_focus(if k.mods.shift { -1 } else { 1 }, true);
                         return ModalOutcome::Consumed;
                     }
                     Key::Up | Key::Down if plain => {
-                        self.move_focus(if k.key == Key::Up { -1 } else { 1 });
+                        self.move_focus(if k.key == Key::Up { -1 } else { 1 }, false);
                         return ModalOutcome::Consumed;
                     }
                     _ => {}
@@ -481,6 +563,11 @@ impl Modal for SchemeEditor {
                             self.name.handle_key(k, app.clipboard.as_mut());
                         }
                     }
+                    Focus::Swatch(i) => match k.key {
+                        Key::Space if plain => self.open_picker(i),
+                        Key::Enter if plain => self.save(app),
+                        _ => {}
+                    },
                     Focus::Hex(i) => {
                         if k.key == Key::Enter && plain {
                             self.save(app);
@@ -520,19 +607,21 @@ impl Modal for SchemeEditor {
                         } else if l.syntax.contains(col, row) {
                             self.focus = Focus::Syntax;
                             self.popup = Some(Popup::open(0, l.syntax, &Self::syntax_items(), self.syntax_index()));
-                        } else if let Some((i, _, _, hex)) =
-                            l.rows.iter().find(|(_, _, swatch, hex)| swatch.contains(col, row) || hex.contains(col, row))
-                        {
-                            // No color dialog in the grid: a swatch focuses its hex value.
+                        } else if let Some((i, _, _, _)) = l.rows.iter().find(|(_, _, swatch, _)| swatch.contains(col, row)) {
+                            self.focus = Focus::Swatch(*i);
+                            self.pressed_swatch = Some(*i);
+                        } else if let Some((i, _, _, hex)) = l.rows.iter().find(|(_, _, _, hex)| hex.contains(col, row)) {
                             self.focus = Focus::Hex(*i);
-                            if hex.contains(col, row) {
-                                self.hex[*i].click(*hex, col);
-                            } else {
-                                self.hex[*i].select_all();
-                            }
+                            self.hex[*i].click(*hex, col);
                         }
                     }
                     MouseKind::Up(MouseButton::Left) => {
+                        if let Some(i) = self.pressed_swatch.take()
+                            && l.rows.iter().any(|(j, _, swatch, _)| *j == i && swatch.contains(col, row))
+                        {
+                            self.open_picker(i);
+                            return ModalOutcome::Consumed;
+                        }
                         if let Some(i) = self.buttons.hit(l.buttons, col, row) {
                             self.focus = Focus::Buttons;
                             self.buttons.focus = i;
