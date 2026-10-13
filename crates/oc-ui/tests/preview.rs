@@ -255,6 +255,46 @@ fn animated_gifs_play() {
     wait_for(&mut app, "the first frame again", |app| pane(app).content_as::<ImageView>().is_some_and(|v| v.frame == 0));
 }
 
+/// Takes a second over `.slowpreview` files.
+struct SlowPreviewer;
+
+impl oc_preview::Previewer for SlowPreviewer {
+    fn id(&self) -> &str {
+        "slow-test"
+    }
+
+    fn title(&self) -> &str {
+        "Slow"
+    }
+
+    fn score(&self, f: &oc_preview::FileInfo) -> i32 {
+        if f.ext == "slowpreview" { oc_preview::Score::SPECIFIC } else { oc_preview::Score::NO }
+    }
+
+    fn load(&self, _: &oc_preview::PreviewSource, _: &oc_preview::LoadContext) -> Result<oc_preview::Loaded, oc_preview::PreviewError> {
+        std::thread::sleep(Duration::from_secs(1));
+        Ok(oc_preview::Loaded::new(oc_preview::PreviewData::StyledText(oc_preview::StyledText::plain("slow")), "slow"))
+    }
+}
+
+/// 1.x named the new file as soon as it started loading it; 2.0 keeps the
+/// previous content for a moment (no flicker), then does the same.
+#[test]
+fn a_slow_local_load_names_the_new_file() {
+    let _ = oc_preview::Registry::global().register(Arc::new(SlowPreviewer), true);
+    let e = env();
+    fs::write(e.src.join("big.slowpreview"), "x").unwrap();
+    let mut app = app(&e);
+    open_preview(&mut app);
+    select(&mut app, "a.txt");
+    wait_for(&mut app, "a.txt", |app| shown_text(app) == "alpha");
+    select(&mut app, "big.slowpreview");
+    wait_for(&mut app, "the new name", |app| pane(app).title == "big.slowpreview");
+    assert!(pane(&app).loading());
+    assert_eq!((shown_text(&app).as_str(), pane(&app).info.as_str()), ("", ""), "not the old file's content");
+    wait_for(&mut app, "the slow preview", |app| shown_text(app) == "slow");
+}
+
 fn mouse(app: &mut App, kind: MouseKind, col: u16, row: u16) {
     app.handle_event(MAIN_WINDOW, Event::Mouse(MouseEvent { kind, col, row, mods: Mods::NONE }));
 }
