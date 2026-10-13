@@ -338,3 +338,39 @@ fn media_streams_from_other_file_systems() {
     let PreviewData::Media(m) = loaded.data else { panic!() };
     assert!(matches!(m.source, crate::DocumentSource::Path(ref p) if p.starts_with(cache.path())));
 }
+
+#[cfg(feature = "media")]
+#[test]
+fn media_carries_info_and_sources() {
+    let clip = include_bytes!("../../../oc-media/tests/data/clip-160x90.mp4");
+    let dir = tempfile::tempdir().unwrap();
+    let local = dir.path().join("clip.mp4");
+    std::fs::write(&local, clip).unwrap();
+    let (_, loaded) = load(&LocalFs::vpath(&local));
+    let PreviewData::Media(m) = loaded.data else { panic!() };
+    let info = m.info.clone().expect("probed");
+    assert_eq!(info.title.as_deref(), Some("Test Clip"));
+    assert_eq!(info.video.as_ref().map(|v| (v.width, v.height)), Some((160, 90)));
+    let (player, waveform) = m.into_sources();
+    assert!(matches!(player, oc_media::MediaSource::Path(ref p) if *p == local) && waveform.is_none());
+
+    // Streamed from a server: probed, and the stream starts at the beginning again.
+    let mem = Arc::new(MemFs::new());
+    mem.add("clip.mp4", clip.to_vec());
+    mem.add("song.mp3", garbage(1000, 9));
+    let (_, loaded) = load(&mem.vpath("clip.mp4"));
+    let PreviewData::Media(m) = loaded.data else { panic!() };
+    assert!(m.info.as_ref().is_some_and(|i| i.has_video() && i.seekable));
+    let (player, _) = m.into_sources();
+    let oc_media::MediaSource::Stream { mut stream, size, name } = player else { panic!() };
+    assert_eq!((size, name.as_str()), (Some(clip.len() as u64), "clip.mp4"));
+    let mut head = [0u8; 8];
+    std::io::Read::read_exact(&mut stream, &mut head).unwrap();
+    assert_eq!(&head, &clip[..8]);
+    // Not media after all: no info, still a player preview (which reports the error).
+    let (_, loaded) = load(&mem.vpath("song.mp3"));
+    let PreviewData::Media(m) = loaded.data else { panic!() };
+    assert!(m.info.is_none());
+    let (_, waveform) = m.into_sources();
+    assert!(waveform.is_some()); // small audio on a server: its own stream
+}

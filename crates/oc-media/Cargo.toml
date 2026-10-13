@@ -1,0 +1,43 @@
+[package]
+name = "oc-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Audio/video engine behind the preview player: decoding, playback, waveform and spectrum"
+
+[features]
+default = ["ffmpeg", "output"]
+# Decoding (player, waveform, metadata) with FFmpeg.
+ffmpeg = ["dep:ffmpeg-next"]
+# The player's audio goes to the system's device with cpal (otherwise: a silent clock-only sink).
+output = ["ffmpeg", "dep:cpal"]
+
+[dependencies]
+oc-vfs.workspace = true
+thiserror.workspace = true
+log = "0.4"
+rustfft = "6.4.1"
+serde_json = "1.0"
+ffmpeg-next = { version = "8.1.0", optional = true, default-features = false, features = ["codec", "format", "software-resampling", "software-scaling"] }
+cpal = { version = "0.18.2", optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+oc-archive.workspace = true
+oc-local.workspace = true
+
+[[test]]
+name = "probe"
+required-features = ["ffmpeg"]
+
+[[test]]
+name = "player"
+required-features = ["ffmpeg"]
+
+[[test]]
+name = "waveform"
+required-features = ["ffmpeg"]
+
+[[example]]
+name = "play"
+required-features = ["ffmpeg"]
