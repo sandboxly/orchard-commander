@@ -11,6 +11,9 @@ use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod transfer;
+pub use transfer::{Conflict, Progress, Transfer, TransferCallbacks};
+
 /// Path below a walk's starting point, as parts.
 pub type RelPath = Vec<String>;
 
