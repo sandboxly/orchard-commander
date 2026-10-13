@@ -84,6 +84,39 @@ fn sample(e: &Env) -> Vec<Item> {
 }
 
 #[test]
+fn commands_menu_groups_go_to_path_with_the_bookmarks() {
+    let e = env();
+    let app = app(&e);
+    // 1.x ui/main_window.py: "Go to path" and the bookmark items are one group.
+    let items = oc_ui::menus::menu_items(&app, oc_ui::menus::Menu::Commands);
+    assert_eq!(
+        items,
+        [
+            Some("app.palette"),
+            None,
+            Some("preview.toggle"),
+            Some("preview.cycle"),
+            None,
+            Some("nav.goto"),
+            Some("bookmarks.menu"),
+            Some("bookmarks.goto"),
+            Some("bookmarks.add"),
+            Some("bookmarks.organize"),
+            None,
+            Some("conn.manager"),
+            Some("conn.disconnect"),
+            None,
+            Some("panel.swap"),
+            Some("panel.same"),
+            Some("panel.reload"),
+            None,
+            Some("terminal.toggle"),
+            Some("terminal.panel_folder"),
+        ]
+    );
+}
+
+#[test]
 fn menu_lists_bookmarks_and_hotkeys_open_or_cycle() {
     let e = env();
     with_bookmarks(&e, &sample(&e));

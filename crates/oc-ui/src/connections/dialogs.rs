@@ -608,17 +608,17 @@ impl Modal for ConnectionEditor {
 // Manager
 // ---------------------------------------------------------------------------
 
-/// ⌘K: saved connections — connect, new, edit, duplicate, delete.
+/// ⌘K: saved connections — connect, new, edit, delete.
 pub(super) fn show_manager(app: &mut App) {
     let me = Rc::new(Cell::new(None));
     let has = !sorted_saved(app).is_empty();
-    let goto = app.registry.get("nav.goto").map(|c| c.shortcut_text()).unwrap_or_default();
-    let hint = format!("Saved connections — or use Go to ({goto}) with an address: {}", oc_provider::address_examples());
+    // 1.x's literal "Ctrl+G" on every platform (like the bookmarks' "Ctrl+D").
+    let hint = format!("Saved connections — or use Go to (Ctrl+G) with an address: {}", oc_provider::address_examples());
     let manager = ConnectionManager {
         me: me.clone(),
         hint,
         list_focused: has,
-        buttons: ButtonRow::new(&["Connect", "New…", "Edit…", "Duplicate", "Delete", "Close"], if has { 0 } else { 1 }),
+        buttons: ButtonRow::new(&["Connect", "New…", "Edit…", "Delete", "Close"], if has { 0 } else { 1 }),
         top: Cell::new(0),
     };
     let id = app.show(manager);
@@ -640,9 +640,8 @@ const MANAGER_ROWS: (u16, u16) = (8, 14);
 const CONNECT: usize = 0;
 const NEW: usize = 1;
 const EDIT: usize = 2;
-const DUPLICATE: usize = 3;
-const DELETE: usize = 4;
-const CLOSE: usize = 5;
+const DELETE: usize = 3;
+const CLOSE: usize = 4;
 
 fn item_text(conn: &Connection) -> String {
     if conn.name.is_empty() {
@@ -683,7 +682,7 @@ impl ConnectionManager {
 
     fn enabled_buttons(&self, has: bool) -> ButtonRow {
         let mut b = self.buttons.clone();
-        for i in [CONNECT, EDIT, DUPLICATE, DELETE] {
+        for i in [CONNECT, EDIT, DELETE] {
             b.buttons[i].enabled = has;
         }
         if !b.buttons[b.focus].enabled {
@@ -725,10 +724,6 @@ impl ConnectionManager {
                         }
                     });
                 });
-            }
-            (DUPLICATE, Some(conn)) => {
-                let name = if conn.name.is_empty() { String::new() } else { format!("{} (copy)", conn.name) };
-                save_connection(app, Connection::new(conn.kind.clone(), conn.params.clone(), name), None);
             }
             (DELETE, Some(conn)) => {
                 let text = format!("Delete '{}'?", label(&conn));

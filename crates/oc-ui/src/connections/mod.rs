@@ -172,11 +172,24 @@ fn with_path(conn: &Connection, path: &str) -> Connection {
     conn.with_params([("path".to_string(), serde_json::Value::String(path.to_string()))])
 }
 
-/// A declined host key / certificate, worded like 1.x's exceptions.
+/// A declined host key / certificate, worded like 1.x's exceptions: an SSH
+/// host off port 22 is named "[host]:port" (as paramiko passed it), an S3
+/// connection without a server is Amazon's.
 fn not_trusted(conn: &Connection) -> String {
     let host = conn.get_str("host");
-    let host = if host.is_empty() { "the server" } else { host };
-    if conn.kind == "sftp" { format!("Host key for {host} was not trusted") } else { format!("The certificate of {host} was not trusted") }
+    if conn.kind == "sftp" {
+        let host = match oc_provider::param_int(&conn.params, "port") {
+            Some(port) if port != 0 && port != 22 => format!("[{host}]:{port}"),
+            _ => host.to_string(),
+        };
+        return format!("Host key for {host} was not trusted");
+    }
+    let host = match host {
+        "" if conn.kind == "s3" => "s3.amazonaws.com",
+        "" => "the server",
+        host => host,
+    };
+    format!("The certificate of {host} was not trusted")
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +199,7 @@ fn not_trusted(conn: &Connection) -> String {
 pub fn register(reg: &mut Registry) {
     reg.add(
         Command::new("conn.manager", "Connect to server", show_manager)
-            .help("Saved server connections (SFTP, SMB, WebDAV, S3)")
+            .help("Saved SFTP and SMB connections")
             .keys(&["Primary+K"])
             .footer_right("Connect")
             .menu(Menu::Commands, "servers"),

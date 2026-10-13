@@ -299,13 +299,16 @@ fn a_lost_session_reconnects_when_listing() {
 }
 
 #[test]
-fn connection_manager_new_edit_duplicate_delete() {
+fn connection_manager_new_edit_delete() {
     let e = env();
     let server = sftp_server(&e);
     let (mut app, store) = app(&e);
     press_with(&mut app, Key::Char('k'), Mods::primary());
     wait_dialog(&mut app, "Connect to server");
-    assert!(app.top_modal_text().unwrap().contains("sftp://"));
+    // 1.x's hint and palette help, "Ctrl+G" on every platform.
+    let hint = app.top_modal_text().unwrap();
+    assert!(hint.starts_with("Saved connections — or use Go to (Ctrl+G) with an address: ") && hint.contains("sftp://"), "{hint}");
+    assert_eq!(app.registry.get("conn.manager").unwrap().help, "Saved SFTP and SMB connections");
     // Nothing saved: the focus is on New….
     press(&mut app, Key::Enter);
     wait_dialog(&mut app, "New connection");
@@ -361,20 +364,44 @@ fn connection_manager_new_edit_duplicate_delete() {
     assert_eq!(top(&app).as_deref(), Some("Connect to server"), "back in the manager");
     assert_eq!(store.entries().len(), 1, "the stored password is kept");
 
-    // Duplicate (Tab to the buttons: Connect, New…, Edit…, Duplicate).
+    // 1.x's buttons: Connect, New…, Edit…, Delete, Close (no Duplicate).
+    let mut f = oc_grid::Frame::new(120, 40, oc_grid::Rgba::BLACK);
+    app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
+    let row = (0..40).map(|r| f.row_text(r)).find(|t| t.contains("New…")).unwrap();
+    let words: Vec<&str> = row.split(|c: char| !c.is_alphanumeric() && c != '…').filter(|w| !w.is_empty()).collect();
+    assert_eq!(words, ["Connect", "New…", "Edit…", "Delete", "Close"], "{row}");
+
+    // A second connection to the same account (Tab to the buttons, New…):
+    // remembered too (an unticked Remember would forget the account's password).
     press(&mut app, Key::Tab);
+    press(&mut app, Key::Right);
+    press(&mut app, Key::Enter);
+    wait_dialog(&mut app, "New connection");
+    type_text(&mut app, &server.host);
+    press(&mut app, Key::Down);
+    type_text(&mut app, &server.port.to_string());
+    press(&mut app, Key::Down);
+    type_text(&mut app, USER);
     for _ in 0..3 {
-        press(&mut app, Key::Right);
+        press(&mut app, Key::Down);
     }
+    type_text(&mut app, PASSWORD);
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Space); // remember
+    for _ in 0..7 {
+        press(&mut app, Key::Up);
+    }
+    type_text(&mut app, "test2 (copy)");
     press(&mut app, Key::Enter);
     wait_saved(&mut app, &e, "the copy", |v| v.as_array().is_some_and(|a| a.len() == 2));
+    wait_no_dialogs(&mut app);
     let saved = saved_json(&e);
     assert_eq!(saved[1]["name"], "test2 (copy)");
-    assert_eq!(saved[1]["params"], saved[0]["params"]);
     assert_ne!(saved[1]["id"], saved[0]["id"]);
+    press_with(&mut app, Key::Char('k'), Mods::primary());
+    wait_dialog(&mut app, "Connect to server");
 
     // Delete the selected one (the copy), after confirming.
-    press(&mut app, Key::Tab);
     press(&mut app, Key::Delete);
     wait_dialog(&mut app, "Delete connection");
     assert_eq!(app.top_modal_text().unwrap(), "Delete 'test2 (copy)'?");
