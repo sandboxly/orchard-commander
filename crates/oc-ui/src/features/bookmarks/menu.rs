@@ -4,7 +4,8 @@
 //!
 //! Typing an entry's hotkey opens it; if several entries share the letter,
 //! it moves between them and Enter opens the highlighted one (like Total
-//! Commander, the same on every platform).
+//! Commander, the same on every platform). Hovering a folder opens its
+//! submenu, as in a Qt menu.
 
 use oc_config::Spec;
 use oc_config::bookmarks::{self as store, Bookmark, Item};
@@ -215,6 +216,28 @@ impl BookmarkMenu {
         }
     }
 
+    /// The pointer moved over menu `j`: highlight the entry; another entry
+    /// closes the submenus below, a folder opens its submenu (Qt opens it
+    /// after a short delay).
+    fn hover(&mut self, app: &mut App, j: usize, m: &crate::input::MouseEvent, screen: Rect) -> ModalOutcome {
+        let level = &mut self.levels[j];
+        let before = level.menu.cursor;
+        let over = level.menu.handle_mouse(m, screen) == MenuOutcome::Consumed;
+        let now = level.menu.cursor;
+        level.moved |= now != before;
+        if !over {
+            return ModalOutcome::Consumed;
+        }
+        if now != before {
+            self.levels.truncate(j + 1);
+        }
+        let folder = matches!(self.levels[j].actions.get(now), Some(Action::Folder(_)));
+        if folder && self.levels.len() == j + 1 {
+            return self.activate(app, now, screen);
+        }
+        ModalOutcome::Consumed
+    }
+
     fn close_level(&mut self) -> ModalOutcome {
         if self.levels.len() > 1 {
             self.levels.pop();
@@ -283,6 +306,9 @@ impl Modal for BookmarkMenu {
                 };
                 if matches!(m.kind, MouseKind::Down(_) | MouseKind::Up(_)) {
                     self.levels.truncate(j + 1);
+                }
+                if m.kind == MouseKind::Move {
+                    return self.hover(app, j, m, screen);
                 }
                 if j + 1 != self.levels.len() {
                     // Hovering a parent menu while a submenu is open.

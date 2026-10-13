@@ -460,25 +460,25 @@ impl Organizer {
                 let visible = tree.visible;
                 tree.list.scroll_by((-lines * 3.0).round() as isize, visible);
             }
-            MouseKind::Down(MouseButton::Left) => {
+            MouseKind::Down(MouseButton::Left) | MouseKind::DoubleClick(MouseButton::Left) => {
                 if let Some(row) = hit {
                     self.focus = Focus::Tree;
                     let mut tree = self.tree.borrow_mut();
                     tree.list.cursor = row;
-                    // A click on a folder's ▸/▾ opens or closes it.
+                    // A click on a folder's ▸/▾ opens or closes it (drawn
+                    // one cell in, after the indent: see `draw`), also
+                    // when clicked twice quickly.
                     let depth = tree.rows[row].path.len() as u16 - 1;
-                    if m.col == r.tree.x + 2 * depth {
+                    if m.col == r.tree.x + 1 + 2 * depth && matches!(tree.row_item(row), Some(Item::Folder(_))) {
+                        self.drag = None;
                         tree.toggle(row);
+                    } else if matches!(m.kind, MouseKind::DoubleClick(_)) {
+                        self.drag = None;
+                        drop(tree);
+                        self.edit(app);
                     } else {
                         self.drag = Some((row, None));
                     }
-                }
-            }
-            MouseKind::DoubleClick(MouseButton::Left) => {
-                if let Some(row) = hit {
-                    self.drag = None;
-                    self.tree.borrow_mut().list.cursor = row;
-                    self.edit(app);
                 }
             }
             MouseKind::Move => {

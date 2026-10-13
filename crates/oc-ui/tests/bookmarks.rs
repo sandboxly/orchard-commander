@@ -400,6 +400,86 @@ fn drive_list_offers_bookmarks() {
     assert_eq!(location(&app, 1), e.src.join("sub"));
 }
 
+fn mouse(app: &mut App, kind: MouseKind, col: u16, row: u16) {
+    app.handle_event(MAIN_WINDOW, Event::Mouse(MouseEvent { kind, col, row, mods: Mods::NONE }));
+}
+
+/// Where the top dialog's text `needle` is drawn (col, row).
+fn find_on_screen(app: &App, needle: &str) -> (u16, u16) {
+    let (w, h) = (120u16, 40u16);
+    let mut f = oc_grid::Frame::new(w, h, app.theme.colors.background);
+    app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
+    for row in 0..h {
+        let line: String = (0..w).map(|c| f.cell(c, row).map_or(' ', |cell| cell.ch)).collect();
+        if let Some(byte) = line.find(needle) {
+            return (line[..byte].chars().count() as u16, row);
+        }
+    }
+    panic!("{needle:?} not on screen");
+}
+
+#[test]
+fn hovering_a_folder_opens_its_submenu() {
+    let e = env();
+    with_bookmarks(&e, &sample(&e));
+    let mut app = app(&e);
+    primary(&mut app, 'd');
+    let (col, row) = find_on_screen(&app, "Work");
+    mouse(&mut app, MouseKind::Move, col, row);
+    assert_eq!(menu_lines(&app), ["I  Inside"], "the folder's submenu is open");
+    // Another entry of the parent closes it again.
+    let (col, row) = find_on_screen(&app, "Dst");
+    mouse(&mut app, MouseKind::Move, col, row);
+    assert_eq!(menu_lines(&app)[0], "S  Src");
+    assert_eq!(top(&app), "Bookmarks");
+}
+
+#[test]
+fn organizer_click_on_folder_mark_closes_and_opens_it() {
+    let e = env();
+    with_bookmarks(&e, &sample(&e));
+    let mut app = app(&e);
+    app.run_command("bookmarks.organize");
+    assert_eq!(menu_lines(&app).len(), 6, "{:?} {:?}", app.modal_titles(), menu_lines(&app));
+    let (col, row) = find_on_screen(&app, "▾ W  Work");
+    mouse(&mut app, MouseKind::Down(MouseButton::Left), col, row);
+    mouse(&mut app, MouseKind::Up(MouseButton::Left), col, row);
+    assert_eq!(menu_lines(&app).len(), 5, "Work is closed: {:?}", menu_lines(&app));
+    assert!(menu_lines(&app)[4].starts_with("▸ W  Work"));
+    mouse(&mut app, MouseKind::Down(MouseButton::Left), col, row);
+    mouse(&mut app, MouseKind::Up(MouseButton::Left), col, row);
+    assert_eq!(menu_lines(&app).len(), 6);
+}
+
+#[test]
+fn a_pending_save_is_written_on_quit() {
+    let e = env();
+    let mut app = app(&e);
+    bookmarks::set_items(&mut app, vec![Bookmark::new("&Src", local(&e.src), None).into()]);
+    // No waiting for the background write: quitting writes it.
+    app.shutdown();
+    assert_eq!(saved(&e).len(), 1);
+}
+
+#[test]
+fn a_late_bookmark_does_not_take_the_panel_back() {
+    oc_archive::register();
+    let e = env();
+    let zip = e.dst.join("pack.zip");
+    write_zip(&zip, &[("docs/readme.md", b"# hi")]);
+    let mut app = app(&e);
+    // The archive opens on a worker; meanwhile the user goes elsewhere.
+    bookmarks::navigate(&mut app, &Spec::archive(local(&zip), "docs"), 0, true);
+    oc_ui::panel::load(&mut app, 0, oc_local::local(&e.base), Default::default());
+    settle(&mut app);
+    assert_eq!(location(&app, 0), e.base);
+    // Two bookmarks in a row: the later one wins even if the first is slower.
+    bookmarks::navigate(&mut app, &Spec::archive(local(&zip), "docs"), 0, true);
+    bookmarks::navigate(&mut app, &local(&e.src.join("sub")), 0, true);
+    settle(&mut app);
+    assert_eq!(location(&app, 0), e.src.join("sub"));
+}
+
 // ---------------------------------------------------------------------------
 
 /// A minimal stored (uncompressed) zip.

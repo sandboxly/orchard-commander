@@ -211,6 +211,7 @@ pub struct Registry {
     pub(crate) on_settings_changed: Vec<SettingsHook>,
     pub(crate) on_title_click: Option<TitleClickHook>,
     pub(crate) location_sources: Vec<LocationSource>,
+    pub(crate) on_shutdown: Vec<StartHook>,
 }
 
 impl Registry {
@@ -259,6 +260,13 @@ impl Registry {
     /// What a click on a panel's path does (the bookmark menu); one handler.
     pub fn on_panel_title_click(&mut self, hook: TitleClickHook) -> &mut Self {
         self.on_title_click = Some(hook);
+        self
+    }
+
+    /// Runs in `App::shutdown`, before the process exits: write what is
+    /// still pending (bookmarks.json…). Keep it short.
+    pub fn on_shutdown(&mut self, hook: StartHook) -> &mut Self {
+        self.on_shutdown.push(hook);
         self
     }
 

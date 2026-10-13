@@ -47,6 +47,9 @@ pub struct Bookmarks {
     /// overwrites a newer one.
     generation: u64,
     written: Arc<Mutex<u64>>,
+    /// Per side: the latest bookmark being opened there. A slower earlier
+    /// one (an archive, a server) arriving later is dropped.
+    opening: [u64; 2],
 }
 
 pub fn register(reg: &mut Registry) {
@@ -73,6 +76,7 @@ pub fn register(reg: &mut Registry) {
             .menu(Menu::Commands, "bookmarks"),
     );
     reg.on_start(load);
+    reg.on_shutdown(flush);
     reg.on_panel_title_click(|app, side, col, row| bookmark_menu(app, Some(side), Some((col, row + 1))));
     reg.add_location_source(drive_list_entries);
 }
@@ -146,6 +150,23 @@ fn save(app: &mut App) {
             }
         },
     );
+}
+
+/// Quitting: make sure the latest list is on disk (a background save may
+/// not have run yet). Waits for a save in progress; usually does nothing.
+fn flush(app: &mut App) {
+    if !app.persists() {
+        return;
+    }
+    let path = app.paths.bookmarks_file();
+    let Some(st) = app.try_state::<Bookmarks>() else { return };
+    let mut last = st.written.lock().unwrap_or_else(|p| p.into_inner());
+    if *last < st.generation {
+        if let Err(e) = store::save(&path, &st.items) {
+            log::warn!("cannot save bookmarks: {e}");
+        }
+        *last = st.generation;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -318,17 +339,28 @@ pub fn navigate(app: &mut App, spec: &Spec, side: usize, focus: bool) {
             app.main.active = active;
         }
     }
+    let st = app.state::<Bookmarks>();
+    st.opening[side] += 1;
+    let request = st.opening[side];
+    // Where the panel was going when asked: if the user goes elsewhere
+    // while an archive opens or a server connects, the result is dropped.
+    let before = app.main.sides[side].panel.loading_location.clone();
     locations::resolve(
         app,
         spec,
-        Box::new(move |app, result| match result {
-            Ok(location) => {
-                panel::load(app, side, location, LoadOptions::default());
-                if focus {
-                    app.main.active = side;
+        Box::new(move |app, result| {
+            let current = app.state::<Bookmarks>().opening[side] == request
+                && app.main.sides[side].panel.loading_location == before;
+            match result {
+                Ok(location) if current => {
+                    panel::load(app, side, location, LoadOptions::default());
+                    if focus {
+                        app.main.active = side;
+                    }
                 }
+                Ok(_) => {}
+                Err(e) => app.error(e),
             }
-            Err(e) => app.error(e),
         }),
     );
 }

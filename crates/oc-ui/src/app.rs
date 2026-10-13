@@ -771,6 +771,10 @@ impl App {
                 std::thread::sleep(Duration::from_millis(10));
             }
         }
+        let hooks = self.registry.on_shutdown.clone();
+        for hook in hooks {
+            hook(self);
+        }
         self.flush_settings();
         if let Some(dir) = self.cache_dir.lock().unwrap_or_else(|p| p.into_inner()).take() {
             let _ = std::fs::remove_dir_all(dir);

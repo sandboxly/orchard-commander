@@ -161,12 +161,16 @@ Other registry hooks:
   "★ Title"; connections add "⇄ Name".
 * `App::persists()`: false in `--screenshot` mode; features writing their
   own files (bookmarks.json…) skip writing then.
+* `reg.on_shutdown(fn(&mut App))`: runs in `App::shutdown` (quitting),
+  before settings are flushed. Features that write their own files in the
+  background make sure the latest state is on disk here (bookmarks do).
 
 ### Bookmarks and location specs (`features/bookmarks/`)
 
 * State: `app.try_state::<bookmarks::Bookmarks>()` (`bookmarks::items(app)`);
   `bookmarks.json` is read in the background at start (commands that come
-  earlier wait for it) and written in the background after each change.
+  earlier wait for it) and written in the background after each change
+  (and once more on quit if a write is still pending).
 * `bookmarks::locations::spec_of(app, &vpath)` describes a folder as an
   `oc_config::Spec` (archives nest; servers by connection account);
   `bookmarks::locations::resolve(app, &spec, Box::new(|app, Result<VPath,
