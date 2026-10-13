@@ -6,7 +6,7 @@
 //! copy/move/trash/preview act on the real files. It is filled while the
 //! panel lists it, hence the lock around the hits.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::panic::AssertUnwindSafe;
 use std::path::{MAIN_SEPARATOR, MAIN_SEPARATOR_STR};
@@ -149,6 +149,31 @@ impl SearchResultsFS {
             self.changes.fetch_add(1, Ordering::Relaxed);
         }
         gone.len()
+    }
+
+    /// Forget the hits at or below `removed` (they were just trashed or
+    /// deleted); no I/O, unlike [`prune`](Self::prune). Returns how many.
+    pub fn forget(&self, removed: &HashSet<VPath>) -> usize {
+        if removed.is_empty() {
+            return 0;
+        }
+        let mut hits = lock(&self.hits);
+        let before = hits.len();
+        hits.retain(|_, hit| {
+            let mut at = Some(hit.location.clone());
+            while let Some(a) = at {
+                if removed.contains(&a) {
+                    return false;
+                }
+                at = a.parent();
+            }
+            true
+        });
+        let n = before - hits.len();
+        if n > 0 {
+            self.changes.fetch_add(1, Ordering::Relaxed);
+        }
+        n
     }
 
     /// Follow renamed files and folders (also hits inside a renamed folder).

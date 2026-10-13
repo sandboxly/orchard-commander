@@ -381,6 +381,12 @@ fn remove(app: &mut App, kind: Kind, paths: Vec<VPath>, side: usize) {
     panel::panel_mut(app, side).set_all_marks(false);
     for s in 0..2 {
         let p = panel::panel_mut(app, s);
+        // A panel inside a folder on its way out goes to where that folder
+        // was (it would list files that are about to go, too).
+        if let Some(out) = inside(&p.location, &gone).and_then(|f| f.parent()) {
+            panel::load(app, s, out, LoadOptions { walk_up: true, ..Default::default() });
+            continue;
+        }
         let before = p.cursor_target();
         let location = p.location.clone();
         if p.remove_entries(|name| gone.contains(&location.child(&[name]).resolved())) && p.cursor_target() != before {
@@ -389,6 +395,20 @@ fn remove(app: &mut App, kind: Kind, paths: Vec<VPath>, side: usize) {
     }
     start_next_removal(app);
     update_removal_notes(app);
+}
+
+/// The outermost of `gone` that `location` is (or is inside of), on the
+/// same file system.
+fn inside(location: &VPath, gone: &HashSet<VPath>) -> Option<VPath> {
+    let mut found = None;
+    let mut at = Some(location.clone());
+    while let Some(a) = at.filter(|a| a.same_fs(location)) {
+        if gone.contains(&a) {
+            found = Some(a.clone());
+        }
+        at = a.parent();
+    }
+    found
 }
 
 /// The work itself, on a worker. A panic (the OS trash failing in an
@@ -441,6 +461,12 @@ fn removed(app: &mut App, id: u64, result: oc_vfs::Result<()>) {
     r.worker = None;
     r.noted = false;
     let title = job.kind.title(&job.paths);
+    if result.is_ok() {
+        // Before the reloads: search results would otherwise list them again
+        // until their prune has run.
+        let gone: HashSet<VPath> = job.paths.iter().cloned().collect();
+        crate::commands::files_removed(app, &gone);
+    }
     match result {
         Ok(()) => app.info(format!("{title} finished")),
         Err(VfsError::Cancelled) => app.notify(format!("{title} cancelled"), Severity::Warning),
@@ -478,17 +504,22 @@ fn update_removal_notes(app: &mut App) {
 }
 
 /// Quitting: wait for the running job like for a copy (bounded), and run
-/// the queued ones too: the user confirmed them, and their entries are gone
-/// from the panels already.
+/// the queued ones too, after it: the user confirmed them, and their entries
+/// are gone from the panels already.
 fn finish_removals(app: &mut App) {
     let mut r = app.take_state::<Removals>();
     let mut workers: Vec<Arc<AtomicBool>> = r.worker.take().into_iter().collect();
     let queued: Vec<Removal> = r.queue.drain(..).collect();
     if !queued.is_empty() {
         let running = Arc::new(AtomicBool::new(true));
+        let before = workers.first().cloned();
         workers.push(running.clone());
         let spawned = std::thread::Builder::new().name("oc-trash".into()).spawn(move || {
             let _running = RunningGuard(running);
+            // Still one at a time.
+            while before.as_ref().is_some_and(|w| w.load(Ordering::SeqCst)) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
             for job in queued {
                 if let Err(e) = remove_now(job.kind, &job.paths) {
                     log::warn!("{}: {e}", job.kind.title(&job.paths));

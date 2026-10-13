@@ -296,9 +296,11 @@ fn trash_hits_on_another_file_system() {
     assert_eq!(names(&app, 0), ["top.md"]);
     assert!(mem.trashed().is_empty(), "still held");
     gate.open();
-    wait_until(&mut app, "trash", Duration::from_secs(20), |app| {
-        !oc_ui::features::fileops::removing(app) && !app.main.sides[0].panel.loading()
-    });
+    wait_until(&mut app, "trash", Duration::from_secs(20), |app| !oc_ui::features::fileops::removing(app));
+    // The hit is forgotten as the job ends, before the panels reload: no
+    // waiting for the prune, so it never shows again in between.
+    assert_eq!(last(&app).hit_count(), 1);
+    assert_eq!(names(&app, 0), ["top.md"]);
     settle(&mut app);
     assert_eq!(mem.trashed(), ["docs/two.md"]);
     assert_eq!(names(&app, 0), ["top.md"]);

@@ -800,8 +800,9 @@ fn reload_when_quiet(app: &mut App, side: usize) {
         Some(due) if due > now => {
             app.schedule(due - now, move |app| reload_when_quiet(app, side));
         }
-        // Our own copy/move/delete is still changing the folder: it reloads
-        // both panels when it ends, so wait for that instead.
+        // Our own copy/move is still changing the folder: it reloads both
+        // panels when it ends, so wait for that instead. (Trash / delete jobs
+        // don't hold this up: their entries stay hidden, `listed`.)
         _ if busy => {
             app.schedule(WATCH_DEBOUNCE, move |app| reload_when_quiet(app, side));
         }

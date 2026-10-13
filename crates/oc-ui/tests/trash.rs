@@ -233,3 +233,25 @@ fn delete_where_there_is_no_trash_is_queued_too() {
     assert!(!plain.contains("x"));
     assert_eq!(names(&app, 0), ["y"]);
 }
+
+#[test]
+fn a_panel_inside_a_trashed_folder_leaves_it() {
+    let Env { mut app, mem, gate, .. } = env();
+    mem.add_file("f/g/x", "1");
+    panel::load(&mut app, 0, VPath::new(mem.clone(), ""), LoadOptions::default());
+    panel::load(&mut app, 1, VPath::new(mem.clone(), "f/g"), LoadOptions::default());
+    settle(&mut app);
+    assert_eq!(names(&app, 1), ["x"]);
+    app.main.active = 0;
+    put_cursor_on(&mut app, 0, "f");
+    trash(&mut app);
+    // Not left listing what is about to go: where the folder was, without it.
+    wait_until(&mut app, "the other panel", WAIT, |app| !app.main.sides[1].panel.loading());
+    assert_eq!(app.main.sides[1].panel.location, VPath::new(mem.clone(), ""));
+    assert_eq!(names(&app, 1), ["a", "b", "c", "d", "e"]);
+    assert_eq!(names(&app, 0), ["a", "b", "c", "d", "e"]);
+    gate.open();
+    wait_done(&mut app);
+    assert_eq!(mem.trashed(), ["f"]);
+    assert_eq!(names(&app, 1), ["a", "b", "c", "d", "e"]);
+}
