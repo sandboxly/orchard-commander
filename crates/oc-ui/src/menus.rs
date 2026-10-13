@@ -40,12 +40,13 @@ impl Menu {
 
     /// Section names in display order. A feature puts its commands in one of
     /// these (adding a section here is the only shared edit a new kind of
-    /// menu group needs).
+    /// menu group needs). A `+` in front joins a section to the one before
+    /// it, with no separator between them.
     pub fn sections(self) -> &'static [&'static str] {
         match self {
             Menu::Left | Menu::Right => &["mode", "location"],
-            Menu::Files => &["select", "ops", "rename", "find", "quit"],
-            Menu::Commands => &["palette", "preview", "navigate", "bookmarks", "servers", "panels", "terminal"],
+            Menu::Files => &["select", "transfer", "+rename", "+ops", "find", "quit"],
+            Menu::Commands => &["palette", "preview", "navigate", "+bookmarks", "servers", "panels", "terminal"],
             Menu::Options => &["settings", "view", "zoom"],
         }
     }
@@ -54,14 +55,22 @@ impl Menu {
 /// One menu's items: command ids, `None` = separator.
 pub fn menu_items(app: &App, menu: Menu) -> Vec<Option<CommandId>> {
     let mut items: Vec<Option<CommandId>> = Vec::new();
+    // Whether the group a `+` section would join already has items.
+    let mut group_open = false;
     for section in menu.sections() {
+        let (section, joined) = match section.strip_prefix('+') {
+            Some(name) => (name, true),
+            None => (*section, false),
+        };
+        group_open &= joined;
         let cmds = app.registry.in_menu_section(menu, section);
         if cmds.is_empty() {
             continue;
         }
-        if !items.is_empty() {
+        if !items.is_empty() && !group_open {
             items.push(None);
         }
+        group_open = true;
         items.extend(cmds.iter().map(|c| Some(c.id)));
     }
     items

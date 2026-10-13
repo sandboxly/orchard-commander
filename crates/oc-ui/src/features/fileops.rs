@@ -1,6 +1,6 @@
 //! F5 copy, F6 move/rename, F7 make directory, F8 trash / delete — with the
 //! File exists dialog (asked from the worker through `ask_ui`), a progress
-//! dialog with Cancel, and errors in a message box (port of the file
+//! dialog with Cancel, and errors in a toast (port of the file
 //! operation half of `main_window.py` and `ui/operations.py`).
 
 use std::path::Path;
@@ -27,14 +27,14 @@ pub fn register(reg: &mut Registry) {
             .help("Copy marked files to the other panel")
             .keys(&["F5"])
             .fkey("F5", "Copy")
-            .menu(Menu::Files, "ops"),
+            .menu(Menu::Files, "transfer"),
     );
     reg.add(
         Command::new("files.move", "Move / rename", |app| transfer(app, Kind::Move))
             .help("Move or rename marked files")
             .keys(&["F6"])
             .fkey("F6", "Move")
-            .menu(Menu::Files, "ops"),
+            .menu(Menu::Files, "transfer"),
     );
     reg.add(
         Command::new("files.mkdir", "Make directory", mkdir)
@@ -162,7 +162,7 @@ pub fn mkdir(app: &mut App) {
             move |_| oc_vfs::ops::mkdir(&at, &name),
             move |app, result| match result {
                 Ok(_) => panel::load(app, side, here, LoadOptions { select: Some(first), ..Default::default() }),
-                Err(e) => app.error(format!("Cannot create directory: {e}")),
+                Err(e) => app.error(format!("Cannot create directory: {}", panel::error_reason(&e))),
             },
         );
     });
@@ -232,7 +232,9 @@ fn conflict_asker(tasks: Tasks) -> impl FnMut(&str, &str) -> Conflict {
 /// Run an operation on a worker; afterwards both panels reload keeping
 /// their cursors and the source's marks are cleared.
 pub fn run(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>, side: usize) {
-    if app.operation.as_ref().is_some_and(|t| !t.is_cancelled()) {
+    // Until the worker has ended, also while a cancelled one winds down
+    // (1.x: `isRunning()`); `finished` clears it.
+    if app.operation.is_some() {
         app.warn("Another file operation is still running");
         return;
     }
@@ -281,7 +283,8 @@ impl Drop for RunningGuard {
     }
 }
 
-/// After an operation: close the progress dialog, report, refresh.
+/// After an operation: close the progress dialog, report (errors too as a
+/// toast, like 1.x), refresh, and make the source panel the active one.
 pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::modal::ModalId>, result: oc_vfs::Result<()>) {
     app.operation = None;
     app.operation_running = None;
@@ -291,9 +294,10 @@ pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::m
     match result {
         Ok(()) => app.info(format!("{title} finished")),
         Err(VfsError::Cancelled) => app.notify(format!("{title} cancelled"), Severity::Warning),
-        Err(e) => dialogs::message(app, title, &e.to_string(), Severity::Error),
+        Err(e) => app.notify(e.to_string(), Severity::Error),
     }
     app.main.sides[side].panel.set_all_marks(false);
+    app.main.active = side;
     for s in 0..2 {
         panel::reload(app, s);
     }

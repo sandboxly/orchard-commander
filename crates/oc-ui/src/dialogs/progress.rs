@@ -75,7 +75,7 @@ impl Modal for ProgressBox {
         } else {
             p.current.clone()
         };
-        let text = oc_grid::elide_left(&current, content.w as usize);
+        let text = elide_middle(&current, content.w as usize);
         put(f, content.x, content.y, &text, Style::new(c.foreground, c.surface), content.w);
         let fraction = if p.bytes_total > 0 { p.bytes_done as f64 / p.bytes_total as f64 } else { 0.0 };
         draw_bar(f, Rect::new(content.x, content.y + 1, content.w, 1), fraction, ctx);
@@ -100,5 +100,34 @@ impl Modal for ProgressBox {
             }
             _ => ModalOutcome::Consumed,
         }
+    }
+}
+
+/// Shorten `text` to at most `max` cells by cutting out its middle ("/Users/…/file.txt"),
+/// like 1.x's `Qt.ElideMiddle`.
+fn elide_middle(text: &str, max: usize) -> String {
+    if oc_grid::str_width(text) <= max {
+        return text.to_owned();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let budget = max - 1; // the ellipsis
+    let head = oc_grid::elide_right(text, budget - budget / 2 + 1); // "head…"
+    let tail = oc_grid::elide_left(text, budget / 2 + 1); // "…tail"
+    format!("{head}{}", tail.strip_prefix('…').unwrap_or(&tail))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::elide_middle;
+
+    #[test]
+    fn elides_in_the_middle() {
+        assert_eq!(elide_middle("short", 10), "short");
+        assert_eq!(elide_middle("/Users/me/folder/file.txt", 11), "/User…e.txt");
+        assert_eq!(elide_middle("abcdef", 4), "ab…f");
+        assert_eq!(elide_middle("abcdef", 1), "…");
+        assert_eq!(elide_middle("abcdef", 0), "");
     }
 }

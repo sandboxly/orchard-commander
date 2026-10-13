@@ -77,12 +77,21 @@ pub fn register(reg: &mut Registry) {
         let (id, menu, title) =
             if side == 0 { ("left.preview", Menu::Left, "Left: Preview") } else { ("right.preview", Menu::Right, "Right: Preview") };
         reg.add(
-            Command::new(id, title, move |app| main_window::toggle_view(app, side, ID))
+            // Shows the preview (choosing it again keeps it, like 1.x's set_mode).
+            Command::new(id, title, move |app| show_preview(app, side))
                 .help("Preview the other panel's file on this side")
                 .menu(menu, "mode")
                 .menu_label("Preview")
-                .checked(move |app| app.main.sides[side].mode_id() == ID),
+                .checked(move |app| app.main.sides[side].mode_id() == ID)
+                .hidden_from_palette(), // only in the Left/Right menus, like 1.x
         );
+    }
+}
+
+/// Left / Right menu → Preview.
+fn show_preview(app: &mut App, side: usize) {
+    if let Some(i) = app.main.sides[side].view_index(ID) {
+        main_window::set_mode(app, side, SideMode::View(i));
     }
 }
 

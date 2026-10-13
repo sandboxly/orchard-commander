@@ -13,7 +13,7 @@ mod progress;
 
 pub use input::InputBox;
 pub use message::MessageBox;
-pub use picker::{Picker, PickerItem, fuzzy_score};
+pub use picker::{Picker, PickerItem, matches_filter};
 pub use popup::PopupMenu;
 pub use progress::{ProgressBox, ProgressState, draw_bar};
 

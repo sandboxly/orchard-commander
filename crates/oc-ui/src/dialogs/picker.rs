@@ -1,4 +1,4 @@
-//! A filterable list: type to filter (fuzzy), ↑/↓ to move, Enter to choose
+//! A filterable list: type to filter (every word), ↑/↓ to move, Enter to choose
 //! (command palette, location chooser, color schemes).
 
 use oc_grid::{Frame, Style};
@@ -23,39 +23,11 @@ impl PickerItem {
     }
 }
 
-/// How well `query` matches `text`: every word of the query must appear in
-/// order as a subsequence (case-insensitive); consecutive letters and word
-/// starts score higher. None: no match. An empty query matches everything.
-pub fn fuzzy_score(text: &str, query: &str) -> Option<i64> {
-    let hay: Vec<char> = text.to_lowercase().chars().collect();
-    let mut total = 0i64;
-    for word in query.to_lowercase().split_whitespace() {
-        // Best of: substring match, else greedy subsequence.
-        let w: Vec<char> = word.chars().collect();
-        let substring = hay.windows(w.len()).position(|win| win == w.as_slice());
-        if let Some(pos) = substring {
-            let start_bonus = if pos == 0 || !hay[pos - 1].is_alphanumeric() { 30 } else { 0 };
-            total += 100 + 10 * w.len() as i64 + start_bonus - pos as i64;
-            continue;
-        }
-        let mut score = 0i64;
-        let mut hi = 0usize;
-        let mut prev: Option<usize> = None;
-        for &c in &w {
-            let found = hay[hi..].iter().position(|&h| h == c)? + hi;
-            score += 1;
-            if prev.is_some_and(|p| p + 1 == found) {
-                score += 5;
-            }
-            if found == 0 || !hay[found - 1].is_alphanumeric() {
-                score += 8;
-            }
-            prev = Some(found);
-            hi = found + 1;
-        }
-        total += score - (prev.unwrap_or(0) as i64) / 4;
-    }
-    Some(total)
+/// Whether an item shows for the filter `query`: every word of it appears
+/// in the label or the hint, ignoring case (1.x's `Picker._apply_filter`).
+pub fn matches_filter(item: &PickerItem, query: &str) -> bool {
+    let hay = format!("{} {}", item.label, item.hint).to_lowercase();
+    query.to_lowercase().split_whitespace().all(|word| hay.contains(word))
 }
 
 type OnChoose = Box<dyn FnOnce(&mut App, Option<usize>)>;
@@ -65,7 +37,7 @@ pub struct Picker {
     pub title: String,
     pub items: Vec<PickerItem>,
     pub filter: TextInput,
-    /// Indices into `items` that match the filter, best first.
+    /// Indices into `items` that match the filter.
     pub shown: Vec<usize>,
     pub list: ListState,
     width: u16,
@@ -126,29 +98,14 @@ impl Picker {
         self.list_rows() as usize
     }
 
-    /// Recompute `shown` for the filter text, keeping the highlighted item if it still matches.
+    /// Recompute `shown` for the filter text (in list order), keeping the
+    /// highlighted item if it still matches, else the first match.
     pub fn apply_filter(&mut self) {
         let current = self.highlighted();
-        let q = self.filter.text.trim();
-        if q.is_empty() {
-            self.shown = (0..self.items.len()).collect();
-        } else {
-            let mut scored: Vec<(i64, usize)> = self
-                .items
-                .iter()
-                .enumerate()
-                .filter_map(|(i, it)| {
-                    // Fuzzy on the label; the hint (shortcut, path, help) only by substring.
-                    let hint = it.hint.to_lowercase();
-                    let in_hint = q.to_lowercase().split_whitespace().all(|w| hint.contains(w));
-                    fuzzy_score(&it.label, q).or(in_hint.then_some(0)).map(|s| (s, i))
-                })
-                .collect();
-            scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-            self.shown = scored.into_iter().map(|(_, i)| i).collect();
-        }
+        let q = self.filter.text.clone();
+        self.shown = (0..self.items.len()).filter(|&i| matches_filter(&self.items[i], &q)).collect();
         self.list.set_len(self.shown.len());
-        let pos = if q.is_empty() { current.and_then(|c| self.shown.iter().position(|&s| s == c)) } else { None };
+        let pos = current.and_then(|c| self.shown.iter().position(|&s| s == c));
         self.list.select(pos.unwrap_or(0), self.visible());
         self.list.top = self.list.top.min(self.list.cursor);
     }
@@ -264,14 +221,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fuzzy_matching() {
-        assert!(fuzzy_score("Toggle hidden files", "hid").is_some());
-        assert!(fuzzy_score("Toggle hidden files", "tgl hdn").is_some());
-        assert!(fuzzy_score("Copy", "xyz").is_none());
-        assert!(fuzzy_score("Copy", "").is_some());
-        // A word start beats a match in the middle.
-        assert!(fuzzy_score("Reload panels", "rel").unwrap() > fuzzy_score("Unreliable", "rel").unwrap());
-        // Contiguous beats scattered.
-        assert!(fuzzy_score("Swap panels", "swap").unwrap() > fuzzy_score("Show what a panel", "swap").unwrap());
+    fn every_word_as_a_substring() {
+        let item = PickerItem::new("Toggle hidden files", "⌘⇧.");
+        assert!(matches_filter(&item, "hid"));
+        assert!(matches_filter(&item, "FILES toggle"));
+        assert!(matches_filter(&item, "⌘⇧"), "the hint counts too");
+        assert!(matches_filter(&item, ""));
+        assert!(!matches_filter(&item, "tgl"), "no fuzzy subsequences");
+        assert!(!matches_filter(&item, "hidden xyz"));
     }
 }
