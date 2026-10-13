@@ -303,6 +303,52 @@ fn svg_is_rendered() {
 }
 
 #[test]
+fn qt_formats_cur_xbm_xpm_wbmp() {
+    let mut ico = Vec::new();
+    image::RgbaImage::from_pixel(4, 2, image::Rgba([0, 0, 255, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut ico), image::ImageFormat::Ico)
+        .unwrap();
+    ico[2] = 2; // a cursor
+    let mem = Arc::new(MemFs::new());
+    mem.add("arrow.cur", ico);
+    mem.add("b.xbm", "#define b_width 2\n#define b_height 1\nstatic char b_bits[] = { 0x01 };\n");
+    mem.add("p.xpm", "/* XPM */\nstatic char *p[] = {\n\"1 1 1 1\",\n\". c #00FF00\",\n\".\"};\n");
+    mem.add("w.wbmp", vec![0u8, 0, 1, 1, 0x80]);
+    for (name, info) in [("arrow.cur", "4×2 · CUR"), ("b.xbm", "2×1 · XBM"), ("p.xpm", "1×1 · XPM"), ("w.wbmp", "1×1 · WBMP")] {
+        let (id, loaded) = load(&mem.vpath(name));
+        assert_eq!(id, "image");
+        assert!(loaded.info.starts_with(info), "{name}: {}", loaded.info);
+    }
+}
+
+/// HEIC, ICNS and JPEG 2000 through ImageIO (1.x: Qt's macOS plugins).
+#[cfg(target_os = "macos")]
+#[test]
+fn imageio_formats_on_macos() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = dir.path().join("src.png");
+    std::fs::write(&png, png_bytes(128, 128)).unwrap(); // ICNS has no 64×64 slot
+    for (ext, format) in [("heic", "HEIC"), ("icns", "ICNS"), ("jp2", "JP2")] {
+        let out = dir.path().join(format!("x.{ext}"));
+        let ok = std::process::Command::new("sips")
+            .args(["-s", "format", ext])
+            .arg(&png)
+            .arg("--out")
+            .arg(&out)
+            .output()
+            .is_ok_and(|o| o.status.success());
+        assert!(ok, "sips could not write {ext}");
+        let (id, loaded) = load(&LocalFs::vpath(&out));
+        assert_eq!(id, "image");
+        assert!(loaded.info.starts_with(&format!("128×128 · {format} · ")), "{}", loaded.info);
+        let PreviewData::Image(img) = loaded.data else { panic!() };
+        assert_eq!((img.width, img.height), (128, 128));
+        let px = &img.frames[0].rgba[..4];
+        assert!(px[1] > 100 && px[0] < 40 && px[2] < 40 && px[3] == 255, "{ext}: {px:?}");
+    }
+}
+
+#[test]
 fn local_images_are_read_directly() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("x.png");

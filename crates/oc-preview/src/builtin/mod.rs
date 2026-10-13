@@ -1,7 +1,10 @@
 //! The previewers that ship with Orchard Commander.
 
+mod bitmaps;
 mod hex;
 mod image;
+#[cfg(target_os = "macos")]
+mod imageio;
 mod listing;
 mod media;
 #[cfg(feature = "pdf")]
