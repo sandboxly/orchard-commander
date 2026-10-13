@@ -132,6 +132,19 @@ pub(crate) fn start_from_dialog(app: &mut App, query: Query, form: Form, side: u
 /// Search in the background; the hits appear in panel `side` as a folder
 /// while it runs. Returns the results (they fill up as the search goes).
 pub fn start_search(app: &mut App, query: Query, side: usize) -> Arc<SearchResultsFS> {
+    // A running search this one replaces (in this panel and as the last
+    // results) can't be seen again: stop it instead of letting it walk on.
+    let orphans: Vec<Arc<SearchResultsFS>> = app
+        .try_state::<SearchState>()
+        .map(|st| st.tracked.iter().filter(|t| t.results.is_running()).map(|t| t.results.clone()).collect())
+        .unwrap_or_default();
+    let orphans: Vec<_> = orphans.into_iter().filter(|r| shown_sides(app, r).iter().all(|&s| s == side)).collect();
+    for t in app.state::<SearchState>().tracked.iter_mut() {
+        if orphans.iter().any(|o| Arc::ptr_eq(o, &t.results)) {
+            t.cancel.store(true, Ordering::Relaxed);
+            t.announced = true; // no "Search stopped" for a search nobody sees
+        }
+    }
     let results = Arc::new(SearchResultsFS::new(query));
     let cancel = Arc::new(AtomicBool::new(false));
     {
@@ -160,6 +173,7 @@ fn show_results(app: &mut App, side: usize, results: Arc<SearchResultsFS>) {
 
 /// A search ended: show its final hits and say how many.
 fn finished(app: &mut App, outcome: Result<(), String>) {
+    let failed = outcome.is_err();
     if let Err(e) = outcome {
         app.error(format!("Search failed: {e}"));
     }
@@ -174,7 +188,8 @@ fn finished(app: &mut App, outcome: Result<(), String>) {
             panel::reload(app, side);
         }
         let is_last = app.state::<SearchState>().last.as_ref().is_some_and(|l| Arc::ptr_eq(l, &results));
-        if !sides.is_empty() || is_last {
+        // A failure's message stays up (it would be replaced by "0 hits").
+        if !failed && (!sides.is_empty() || is_last) {
             let n = results.hit_count();
             let how = if results.was_cancelled() { "stopped" } else { "finished" };
             app.info(format!("Search {how}: {} hit{}", thousands(n as u64), if n == 1 { "" } else { "s" }));

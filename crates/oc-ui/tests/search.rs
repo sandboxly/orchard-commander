@@ -409,3 +409,58 @@ fn esc_is_left_alone_without_a_search() {
     press(&mut app, Key::Escape);
     assert!(app.toast.is_none());
 }
+
+#[test]
+fn cancelling_while_typed_folders_are_checked_starts_nothing() {
+    let e = env();
+    let mut app = app(&e);
+    press_with(&mut app, Key::Char('f'), Mods::primary());
+    for _ in 0..3 {
+        press(&mut app, Key::Tab);
+    }
+    type_text(&mut app, &e.src.join("sub").display().to_string()); // a typed folder: checked in the background
+    press(&mut app, Key::Enter);
+    assert_eq!(app.modal_titles(), ["Find files"], "still checking");
+    press(&mut app, Key::Escape);
+    assert!(app.modal_titles().is_empty());
+    settle(&mut app);
+    assert!(app.try_state::<SearchState>().is_none_or(|s| s.last_results().is_none()), "Esc cancelled the search");
+    assert_eq!(app.main.sides[0].panel.location, oc_local::local(&e.src));
+}
+
+#[test]
+fn a_new_search_stops_the_one_it_replaces() {
+    let e = env();
+    let mut app = app(&e);
+    let mut q = Query::new(vec![VPath::new(Arc::new(Endless), "")]);
+    q.max_depth = Some(1_000_000);
+    let endless = search::start_search(&mut app, q, 0);
+    wait_until(&mut app, "progress", Duration::from_secs(10), |_| endless.progress().folders() > 3);
+    // The second search takes the panel and "last results": the first can't be seen again.
+    let second = run_search(&mut app, 0, |q| {
+        q.roots = vec![oc_local::local(&e.src)];
+        q.names = "*.md".into();
+    });
+    wait_until(&mut app, "the first search to stop", Duration::from_secs(10), |_| !endless.is_running());
+    settle(&mut app);
+    assert!(endless.was_cancelled());
+    assert!(!search::is_running(&app));
+    assert_eq!(second.hit_count(), 1);
+    assert!(app.toast.as_ref().is_some_and(|t| t.text == "Search finished: 1 hit"), "{:?}", app.toast.as_ref().map(|t| &t.text));
+}
+
+#[test]
+fn a_search_in_the_other_panel_keeps_running() {
+    let e = env();
+    let mut app = app(&e);
+    let mut q = Query::new(vec![VPath::new(Arc::new(Endless), "")]);
+    q.max_depth = Some(1_000_000);
+    let endless = search::start_search(&mut app, q, 1);
+    wait_until(&mut app, "progress", Duration::from_secs(10), |_| endless.progress().folders() > 3);
+    // (No settle() while the endless search runs: it waits for all tasks.)
+    let md = search::start_search(&mut app, Query { names: "*.md".into(), ..Query::new(vec![oc_local::local(&e.src)]) }, 0);
+    wait_until(&mut app, "the second search", Duration::from_secs(10), |_| !md.is_running());
+    assert!(endless.is_running(), "still shown in the right panel");
+    press(&mut app, Key::Escape);
+    wait_until(&mut app, "the search to stop", Duration::from_secs(10), |_| !endless.is_running());
+}

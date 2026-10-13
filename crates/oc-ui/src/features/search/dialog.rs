@@ -307,6 +307,9 @@ pub(crate) struct Pending {
     pub id: Option<ModalId>,
     pub checking: bool,
     pub error: String,
+    /// The dialog is gone (Esc, Cancel, the window closed): a check that
+    /// finishes afterwards must not start the search.
+    pub closed: bool,
 }
 
 pub struct FindFilesDialog {
@@ -547,6 +550,9 @@ impl FindFilesDialog {
                 let id = {
                     let mut p = lock(&pending);
                     p.checking = false;
+                    if p.closed {
+                        return; // cancelled while the folders were checked
+                    }
                     if let Some(m) = &missing {
                         p.error = format!("Not a folder: {m}");
                     }
@@ -681,6 +687,12 @@ impl FindFilesDialog {
             _ => {}
         }
         ModalOutcome::Consumed
+    }
+}
+
+impl Drop for FindFilesDialog {
+    fn drop(&mut self) {
+        lock(&self.pending).closed = true;
     }
 }
 
