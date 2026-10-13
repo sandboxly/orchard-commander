@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened-runtime exceptions for the app: none. 1.x needed
+     allow-unsigned-executable-memory for Python's ctypes/libffi trampolines;
+     the Rust build doesn't generate code at run time, and the dylibs it loads
+     (FFmpeg linked, PDFium dlopen'ed) are signed with the same Developer ID,
+     so library validation passes without disable-library-validation. Not
+     sandboxed (a file manager), so no network or file-access entitlements. -->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

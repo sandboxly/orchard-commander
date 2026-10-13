@@ -18,6 +18,12 @@ in the macOS app. Options > About Orchard Commander opens it.
 Fonts are not bundled: Orchard Commander uses the fonts installed on the
 system.
 
+On macOS the FFmpeg libraries are not BtbN's but an LGPL-2.1-or-later build
+without GPL or non-free parts made by `packaging/macos/build-ffmpeg.sh` from
+the pinned release tarball; it writes `LICENSE.md`, `COPYING.LGPLv2.1` and
+`SOURCE.txt` (source URL, SHA-256, configure line), which
+`packaging/macos/package.sh` puts in `Contents/Resources/licenses/ffmpeg/`.
+
 ## For maintainers
 
 - `UnRAR.txt` is copied verbatim from `unrar_sys-0.5.8/vendor/unrar/license.txt`.
