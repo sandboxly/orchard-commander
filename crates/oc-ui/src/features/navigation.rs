@@ -25,7 +25,7 @@ pub fn register(reg: &mut Registry) {
     );
     reg.add(
         Command::new("nav.goto", "Go to path", goto_path)
-            .help("Type a directory to open in the active panel")
+            .help("Type a directory or a server address")
             .keys(&["Primary+G", "Primary+Shift+G"])
             .menu(Menu::Commands, "navigate"),
     );
@@ -156,12 +156,18 @@ pub fn transfer(app: &mut App, dest: usize) {
     }
 }
 
-/// ⌘G: type a folder (absolute, `~/…`, or relative to the active folder).
+/// ⌘G: type a folder (absolute, `~/…`, or relative to the active folder),
+/// or a server address (`sftp://…`, see [`crate::connections`]).
 pub fn goto_path(app: &mut App) {
     let side = app.main.files_side();
     let here = main_window::location(app, side);
-    dialogs::ask_text(app, "Go to", "Directory:", &here.display(), "Go", move |app, value| {
+    let message = format!("Directory, or server address ({}):", oc_provider::address_examples());
+    dialogs::ask_text(app, "Go to", &message, &here.display(), "Go", move |app, value| {
         let Some(value) = value else { return };
+        if crate::connections::is_url(&value) {
+            crate::connections::open_url(app, side, &value);
+            return;
+        }
         let path = expand_home(&value);
         let loc = if path.is_absolute() {
             oc_local::local(path)
@@ -186,14 +192,41 @@ pub fn expand_home(value: &str) -> PathBuf {
     PathBuf::from(value)
 }
 
-/// ⌥F1 / ⌥F2: drives and volumes (`oc_local::locations`), listed in the background.
+/// Opens a chooser entry in side `usize`.
+pub type OpenLocation = Box<dyn FnOnce(&mut App, usize)>;
+
+/// An extra entry of the ⌥F1 / ⌥F2 chooser, from a feature's
+/// [`LocationSource`](crate::commands::LocationSource) (saved servers, bookmarks…).
+pub struct LocationItem {
+    pub label: String,
+    /// Shown dimmed after the label (an address, a path).
+    pub hint: String,
+    /// Chosen: go there in side `usize`.
+    pub open: OpenLocation,
+}
+
+/// ⌥F1 / ⌥F2: drives and volumes (`oc_local::locations`, listed in the
+/// background), then the features' entries (servers ⇄, bookmarks ★).
 pub fn choose_location(app: &mut App, side: usize) {
     app.tasks.run_in_background(
         |_| oc_local::locations(),
         move |app, places| {
-            let items = places.iter().map(|(label, path)| PickerItem::new(label.clone(), path.display().to_string())).collect();
+            let sources = app.registry.location_sources.clone();
+            let mut extra: Vec<LocationItem> = Vec::new();
+            for source in sources {
+                extra.extend(source(app, side));
+            }
+            let mut items: Vec<PickerItem> =
+                places.iter().map(|(label, path)| PickerItem::new(label.clone(), path.display().to_string())).collect();
+            items.extend(extra.iter().map(|e| PickerItem::new(e.label.clone(), e.hint.clone())));
             let picker = Picker::new("Go to", items, move |app, choice| {
                 let Some(i) = choice else { return };
+                if let Some(k) = i.checked_sub(places.len()) {
+                    if let Some(item) = extra.into_iter().nth(k) {
+                        (item.open)(app, side);
+                    }
+                    return;
+                }
                 if app.main.sides[side].mode != SideMode::Files {
                     main_window::set_mode(app, side, SideMode::Files);
                 }

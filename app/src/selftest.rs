@@ -25,6 +25,8 @@ pub fn run() -> ExitCode {
     check("renderer", renderer());
     check("archives", archives());
     check("syntax highlighting", highlighting());
+    check("server connections", connection_types());
+    check("certificates", certificates());
     if failed == 0 {
         println!("all checks passed");
         ExitCode::SUCCESS
@@ -107,6 +109,39 @@ fn highlighting() -> Result<String, String> {
         Ok(set.syntaxes().len())
     })?;
     Ok(format!("{n} syntaxes loaded, Rust highlighted ({ms:.0} ms)"))
+}
+
+/// The connection types are registered (in 1.x's order) and read and write
+/// their addresses; the keychain is left alone (it may prompt).
+fn connection_types() -> Result<String, String> {
+    const EXPECTED: [&str; 6] = ["sftp", "smb", "webdavs", "webdav", "s3", "s3+http"];
+    let schemes: Vec<&str> = oc_provider::providers().iter().map(|p| p.scheme()).collect();
+    if schemes != EXPECTED {
+        return Err(format!("registered {schemes:?}, expected {EXPECTED:?}"));
+    }
+    for url in [
+        "sftp://me@example.com:2222/srv/www",
+        "smb://me@nas/media/films",
+        "webdavs://me@cloud.example.com/remote.php/dav/files/me",
+        "webdav://me@nas:8080/dav",
+        "s3://key@minio.local:9000/bucket/folder",
+        "s3+http://key@192.168.1.20:9000/bucket",
+    ] {
+        let scheme = oc_provider::scheme_of(url).ok_or(format!("{url}: no connection type"))?;
+        let provider = oc_provider::get(&scheme).ok_or(format!("{scheme}: not registered"))?;
+        let params = provider.parse_url(url).map_err(|e| format!("{url}: {e}"))?;
+        let back = provider.format_url(&params);
+        if back != url {
+            return Err(format!("{url} came back as {back}"));
+        }
+    }
+    Ok(format!("{} ({})", EXPECTED.join(", "), oc_provider::address_examples()))
+}
+
+/// The system's trusted certificates load (WebDAV / S3 over HTTPS).
+fn certificates() -> Result<String, String> {
+    let (_, ms) = timed(|| oc_remote_http::tls::system_config().map_err(|e| e.to_string()))?;
+    Ok(format!("system trust store loaded ({ms:.0} ms)"))
 }
 
 /// A one-file stored zip.

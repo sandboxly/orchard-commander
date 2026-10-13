@@ -93,6 +93,7 @@ fn main() -> ExitCode {
         }
     };
     oc_archive::register();
+    register_connection_types();
     let code = if args.self_test {
         selftest::run()
     } else if let Some(out) = &args.screenshot {
@@ -102,4 +103,12 @@ fn main() -> ExitCode {
     };
     oc_archive::cleanup_cache_dir();
     code
+}
+
+/// The server connection types, in 1.x's order (the connection editor's
+/// Type list): SFTP, SMB, WebDAV (HTTPS, HTTP), S3 (HTTPS, HTTP).
+pub fn register_connection_types() {
+    oc_sftp::register_builtin();
+    oc_smb::register_builtin();
+    oc_remote_http::register_builtin();
 }

@@ -20,6 +20,7 @@ app/ (binary "orchard-commander")        crates/oc-ui (all UI state and logic)
 └── screenshot.rs                         ├── widgets/        BoxFrame, tabs, buttons, text input, checkbox,
                                           │                   list, scrollbar, dropdown menu
                                           ├── features/       one module per feature + ALL (the registry list)
+                                          ├── connections/    servers: sessions, ⌘K dialogs, api (resolve_server)
                                           ├── modal.rs        Modal trait (dialog stack per window)
                                           ├── input.rs        Key/Mods/Event, winit conversion
                                           ├── shortcut.rs     "Primary+Shift+." parsing and display
@@ -128,7 +129,17 @@ reg.add(
 2. Add `pub mod <name>;` and one line `<name>::register,` to `ALL` in
    `features/mod.rs`. That is the only shared edit.
 3. In `register`: `reg.add(Command…)`, `reg.add_side_view(factory)`,
-   `reg.on_start(fn)`, `reg.on_settings_changed(fn)` as needed.
+   `reg.on_start(fn)`, `reg.on_settings_changed(fn)` as needed, and:
+   * `reg.add_location_source(fn(&App, side) -> Vec<LocationItem>)`: more
+     entries in the ⌥F1/⌥F2 chooser after the drives (`LocationItem { label,
+     hint, open: Box<dyn FnOnce(&mut App, side)> }` from
+     `features::navigation`). Called when the chooser opens, on the UI
+     thread: return what you have in memory, no I/O. Servers add "⇄ name"
+     (saved connections, then open sessions); bookmarks add "★ title".
+   * `reg.on_load_error(fn(&mut App, side, &VPath, &VfsError) -> bool)`: a
+     panel listing failed; return true to take over (the connections feature
+     reconnects a dropped session and lists again) instead of the error toast.
+   * `reg.on_shutdown(fn(&mut App))`: in `App::shutdown`; keep it bounded.
 4. Keep the feature's state in its own types. Where it must live in the app:
    * per side: a `SideView` (below);
    * a window: a `UiWindow` (below);
@@ -281,11 +292,65 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * Mouse wheel: scrolls the view, not the cursor (like 1.x's Qt views); the
   next cursor key scrolls the cursor back into view.
 
+## Servers: `connections/`
+
+`crates/oc-ui/src/connections/` (registered in `features::ALL`) ports 1.x's
+`connections.py`, `connect_dialogs.py` and main_window's connection code.
+
+* Connection types are the `oc_provider` registry. The binary registers them
+  at start (`register_connection_types` in `app/src/main.rs`: SFTP, SMB,
+  WebDAV, S3 — 1.x's order, which is the editor's Type list); tests call the
+  crates' `register_builtin()` themselves.
+* A saved connection is `oc_config::Connection` (connections.json, written on
+  a worker, re-read so other instances' changes survive). Its *account* is
+  `connections::account(&conn)` = `provider.account(params)` (e.g.
+  `sftp://me@host:2222`): the session key and the keychain user name under
+  service "Orchard Commander" — exactly 1.x's strings. Passwords are read and
+  written only on workers (the keychain may prompt) and only with
+  "Remember in the system keychain".
+* State: `app.state::<connections::Connections>()` — `sessions:
+  Arc<Sessions>` (one live `Arc<dyn FileSystem>` per account, shared with
+  workers; reconnects when `provider.is_connected` says no), `saved`.
+  `connections::use_credential_store(app, store)` swaps the keychain
+  (`headless_app` uses `MemoryCredentials`; never the real keychain in tests).
+* Connecting runs on a worker with a `ConnectContext` whose `confirm()` asks
+  through `tasks.ask_ui` (host keys, certificates; Cancel is the default)
+  and whose `data_dir()` is the config dir (known_hosts,
+  trusted_certificates.json). `AuthenticationRequired` → password prompt
+  (again with "The server didn't accept the password." if one was tried).
+* A listing that fails because the session broke (`RemoteError::{Connection,
+  AuthenticationRequired}` downcast from `VfsError::Io`, `NotConnected`/reset
+  kinds, or `!is_connected`) reconnects once per 10 s and lists again
+  (`on_load_error` hook).
+* ⌘K manager, ⇧⌘K disconnect (panels on that server go home), ⌘G accepts
+  any registered address (`connections::is_url` / `open_url`), ⌥F1/⌥F2 list
+  saved servers and open sessions.
+
+**API for other features** (`connections::api`, agreed with bookmarks — keep
+these signatures):
+
+```rust
+// {"kind": "server", "account": …, "path": …} → a live location (connecting,
+// asking for trust/passwords as needed). None: failed or cancelled (the user
+// was told). Doesn't touch the panels.
+pub fn resolve_server(app: &mut App, account: &str, path: &str,
+                      on_done: impl FnOnce(&mut App, Option<VPath>) + 'static);
+// The other way, for oc_config::locations::spec_of:
+pub fn spec_context(app: &App) -> ServerAccounts;          // impl SpecContext
+pub fn account_of(app: &App, fs: &dyn FileSystem) -> Option<String>;
+pub fn is_on_server(app: &App, location: &VPath) -> bool;
+```
+
+Also public: `connections::connect_in_panel(app, side, conn, secret)`,
+`connections::root_filesystem(&location)` (the server under nested archives).
+
 ## The binary
 
 * `orchard-commander [LEFT] [RIGHT]`.
 * `--self-test`: renderer (offscreen GPU device), fonts, archive opener on a
-  tiny zip, syntect, config dir. Exit 0 when all pass. CI runs it.
+  tiny zip, syntect, config dir, the server connection types (registered in
+  order, addresses round-trip) and the system certificate store. Exit 0 when
+  all pass. CI runs it.
 * `--screenshot OUT.png [--size COLSxROWS] [--scale F] [--keys "Down Space F5"]
   [LEFT] [RIGHT]`: headless app with the user's settings (nothing written),
   waits for listings, presses the keys, renders one frame, writes a PNG and

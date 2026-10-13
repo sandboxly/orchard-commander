@@ -23,6 +23,11 @@ oc-config.workspace = true
 oc-grid.workspace = true
 oc-preview.workspace = true
 oc-ui.workspace = true
+# Server connection types (registered at start).
+oc-provider = { path = "../crates/oc-provider" }
+oc-remote-http = { path = "../crates/oc-remote-http" }
+oc-sftp = { path = "../crates/oc-sftp" }
+oc-smb = { path = "../crates/oc-smb" }
 log = "0.4"
 serde_json = "1.0"
 tempfile.workspace = true
