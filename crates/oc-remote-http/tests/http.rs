@@ -234,3 +234,80 @@ fn buckets_in_another_region_are_asked_again() {
     assert_eq!(fs.bucket_regions().get("b").map(String::as_str), Some("eu-west-1"));
     assert_eq!(hits.load(Ordering::SeqCst), 2);
 }
+
+// -- Hostile or broken servers -------------------------------------------------------
+
+#[test]
+fn endless_error_bodies_and_interim_answers_are_bounded() {
+    let server = FakeServer::start(|q| match q.path.as_str() {
+        // 1xx answers forever: an error, not a hang.
+        "/interim" => Reply::Send(b"HTTP/1.1 100 Continue\r\n\r\n".repeat(100)),
+        // A huge error body: only its start is kept.
+        _ => {
+            let mut raw = b"HTTP/1.1 500 Oops\r\nContent-Length: 8388608\r\n\r\n".to_vec();
+            raw.extend(std::iter::repeat_n(b'x', 8 * 1024 * 1024));
+            Reply::Send(raw)
+        }
+    });
+    let c = client(server.port, Duration::from_secs(5));
+    let (r, body) = c.request("GET", "/error", &Headers::new(), Body::None).unwrap();
+    assert_eq!(r.status, 500);
+    assert_eq!(body.len(), 1024 * 1024);
+    let err = c.request("GET", "/interim", &Headers::new(), Body::None).unwrap_err();
+    assert!(err.to_string().contains("interim"), "{err}");
+}
+
+#[test]
+fn ipv6_hosts_are_bracketed_in_urls_and_host_headers() {
+    let c = HttpClient::new("fe80::1", 8443, ClientOptions { secure: true, ..Default::default() });
+    assert_eq!(c.authority(), "[fe80::1]:8443");
+    assert_eq!(c.origin(), "https://[fe80::1]:8443");
+    assert_eq!(c.netloc(), "fe80::1:8443"); // labels, as 1.x shows them
+    let c = HttpClient::new("::1", 80, ClientOptions::default());
+    assert_eq!(c.origin(), "http://[::1]");
+}
+
+/// A fake S3 where `k.txt` exists in bucket `b`, HEAD of `dst.txt` fails
+/// with a server error, and the listing ignores the prefix.
+fn broken_s3() -> FakeServer {
+    FakeServer::start(|q| match (q.method.as_str(), q.path.split('?').next().unwrap_or("")) {
+        ("HEAD", "/b/k.txt") => Reply::Send(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n".to_vec()),
+        ("HEAD", "/b/dst.txt") => Reply::Send(response("500 Internal Server Error", &[], b"")),
+        ("HEAD", "/b") => Reply::Send(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec()),
+        ("HEAD", _) => Reply::Send(response("404 Not Found", &[], b"")),
+        ("GET", "/b") => Reply::Send(response(
+            "200 OK",
+            &[],
+            b"<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>same</NextContinuationToken>\
+              <Contents><Key>dir/a.txt</Key><Size>1</Size></Contents>\
+              <Contents><Key>other/precious.txt</Key><Size>1</Size></Contents></ListBucketResult>",
+        )),
+        ("POST", "/b") => Reply::Send(response("200 OK", &[], b"<DeleteResult/>")),
+        ("PUT", _) | ("DELETE", _) => Reply::Send(response("200 OK", &[], b"")),
+        _ => Reply::Send(response("500 Internal Server Error", &[], b"")),
+    })
+}
+
+#[test]
+fn a_rename_never_overwrites_a_target_it_could_not_check() {
+    let server = broken_s3();
+    let fs = s3_fs(server.port, None);
+    let err = fs.rename("/b/k.txt", "/b/dst.txt").unwrap_err();
+    assert!(err.to_string().contains("500"), "{err}");
+    let writes: Vec<_> = server.requests().into_iter().filter(|q| q.method == "PUT" || q.method == "DELETE").collect();
+    assert!(writes.is_empty(), "nothing copied or deleted: {:?}", writes.iter().map(|q| (&q.method, &q.path)).collect::<Vec<_>>());
+}
+
+#[test]
+fn removing_a_folder_deletes_only_what_is_in_it() {
+    let server = broken_s3();
+    let fs = s3_fs(server.port, None);
+    fs.remove("/b/dir").unwrap();
+    let requests = server.requests();
+    // The repeated continuation token ended the listing (no endless loop).
+    let listings = requests.iter().filter(|q| q.method == "GET").count();
+    assert!(listings <= 4, "{listings} listings");
+    let deletes: Vec<String> =
+        requests.iter().filter(|q| q.method == "POST").map(|q| String::from_utf8_lossy(&q.body).into_owned()).collect();
+    assert!(deletes.iter().all(|body| body.contains("dir/a.txt") && !body.contains("precious")), "{deletes:?}");
+}

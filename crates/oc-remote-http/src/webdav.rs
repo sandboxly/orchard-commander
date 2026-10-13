@@ -485,12 +485,23 @@ impl Dav {
         if name.is_empty() { self.host.clone() } else { name.to_string() }
     }
 
-    fn exists(&self, path: &str) -> bool {
-        self.stat(path).is_ok()
+    /// Whether `path` exists; errors other than "not found" (the server is
+    /// gone, the password was rejected) are errors, as in Python's `exists`.
+    fn try_exists(&self, path: &str) -> Result<bool> {
+        match self.stat(path) {
+            Ok(_) => Ok(true),
+            Err(e) if e.is_not_found() => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
-    fn is_dir(&self, path: &str) -> bool {
-        self.stat(path).is_ok_and(|e| e.is_dir)
+    /// Whether `path` is a folder; errors other than "not found" are errors.
+    fn try_is_dir(&self, path: &str) -> Result<bool> {
+        match self.stat(path) {
+            Ok(e) => Ok(e.is_dir),
+            Err(e) if e.is_not_found() => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     // -- writing -------------------------------------------------------------------
@@ -498,19 +509,19 @@ impl Dav {
     fn mkdir(&self, path: &str, exist_ok: bool) -> Result<()> {
         let mut missing = Vec::new();
         let mut p = norm_abs(path);
-        while p != "/" && !self.exists(&p) {
+        while p != "/" && !self.try_exists(&p)? {
             let parent = dirname(&p).to_string();
             missing.push(std::mem::replace(&mut p, parent));
         }
         if missing.is_empty() {
-            if exist_ok && self.is_dir(path) {
+            if exist_ok && self.try_is_dir(path)? {
                 return Ok(());
             }
             return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(path))));
         }
         for p in missing.iter().rev() {
             if let Err(e) = self.request("MKCOL", p, &[200, 201, 204], true, &Headers::new(), None) {
-                if !e.is_permission() || !self.is_dir(p) {
+                if !e.is_permission() || !self.try_is_dir(p)? {
                     return Err(e); // 405: something is in the way (or a race)
                 }
                 if !exist_ok && *p == missing[0] {
@@ -522,11 +533,11 @@ impl Dav {
     }
 
     fn remove(&self, path: &str) -> Result<()> {
-        self.request("DELETE", path, &[200, 202, 204], self.is_dir(path), &Headers::new(), None).map(drop)
+        self.request("DELETE", path, &[200, 202, 204], self.try_is_dir(path)?, &Headers::new(), None).map(drop)
     }
 
     fn rename(&self, src: &str, dst: &str) -> Result<()> {
-        let collection = self.is_dir(src);
+        let collection = self.try_is_dir(src)?;
         let target = format!("{}{}{}", self.http.origin(), self.url_path(dst), if collection { "/" } else { "" });
         let headers = Headers::new().with("Destination", target).with("Overwrite", "F");
         self.request("MOVE", src, &[201, 204], collection, &headers, None).map(drop)
@@ -741,11 +752,11 @@ impl FileSystem for WebDavFileSystem {
     }
 
     fn exists(&self, path: &str) -> bool {
-        self.inner.exists(path)
+        self.inner.try_exists(path).unwrap_or(false)
     }
 
     fn is_dir(&self, path: &str) -> bool {
-        self.inner.is_dir(path)
+        self.inner.try_is_dir(path).unwrap_or(false)
     }
 
     /// From the folder's last listing (RFC 4331), if the server says.

@@ -35,6 +35,11 @@ const MAX_HEAD: usize = 64 * 1024;
 /// A forward seek up to this far in an open download reads on instead of
 /// starting a new request.
 const SKIP_LIMIT: u64 = 64 * 1024;
+/// Most of an error answer's body kept (they're small; a server streaming an
+/// endless one mustn't fill the memory). The rest goes with the connection.
+const MAX_ERROR_BODY: u64 = 1024 * 1024;
+/// Interim (1xx) answers accepted before the real one.
+const MAX_INTERIM: usize = 16;
 
 // ---------------------------------------------------------------------------
 // Headers, bodies, responses
@@ -300,8 +305,16 @@ impl HttpClient {
         if self.0.port == default { self.0.host.clone() } else { format!("{}:{}", self.0.host, self.0.port) }
     }
 
+    /// `netloc` as URLs and Host headers need it (IPv6 addresses in brackets).
+    pub fn authority(&self) -> String {
+        let host = &self.0.host;
+        let default = if self.0.secure { 443 } else { 80 };
+        let host = if host.contains(':') { format!("[{host}]") } else { host.clone() };
+        if self.0.port == default { host } else { format!("{host}:{}", self.0.port) }
+    }
+
     pub fn origin(&self) -> String {
-        format!("{}://{}", if self.0.secure { "https" } else { "http" }, self.netloc())
+        format!("{}://{}", if self.0.secure { "https" } else { "http" }, self.authority())
     }
 
     pub fn is_closed(&self) -> bool {
@@ -420,7 +433,11 @@ impl HttpClient {
                     return Ok((response, Payload::Stream(reader)));
                 }
                 let mut data = Vec::new();
-                reader.read_to_end(&mut data)?;
+                if response.status >= 300 {
+                    (&mut reader).take(MAX_ERROR_BODY).read_to_end(&mut data)?;
+                } else {
+                    reader.read_to_end(&mut data)?;
+                }
                 Ok((response, Payload::Data(data)))
             })();
             match result {
@@ -458,7 +475,7 @@ impl HttpClient {
     ) -> io::Result<(Response, Framing, bool)> {
         let mut head = format!("{method} {url} HTTP/1.1\r\n");
         if !headers.contains("Host") {
-            head.push_str(&format!("Host: {}\r\n", self.netloc()));
+            head.push_str(&format!("Host: {}\r\n", self.authority()));
         }
         for (k, v) in headers.iter() {
             if k.contains(['\r', '\n']) || v.contains(['\r', '\n']) {
@@ -506,7 +523,7 @@ impl HttpClient {
             }
         }
         w.flush()?;
-        loop {
+        for _ in 0..=MAX_INTERIM {
             let (response, version) = read_head(&mut conn.io)?;
             if (100..200).contains(&response.status) && response.status != 101 {
                 continue; // 100 Continue and friends
@@ -525,6 +542,7 @@ impl HttpClient {
                 && if version == 0 { connection.contains("keep-alive") } else { !connection.contains("close") };
             return Ok((response, framing, keep_alive));
         }
+        Err(io::Error::new(io::ErrorKind::InvalidData, "invalid response from the server: endless interim answers"))
     }
 }
 

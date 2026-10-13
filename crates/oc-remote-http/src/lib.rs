@@ -151,7 +151,14 @@ impl From<Error> for io::Error {
 pub fn describe_connect_error(host: &str, port: u16, err: &io::Error) -> String {
     let what = match err.kind() {
         io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "timed out".to_string(),
-        _ => err.to_string(),
+        _ => {
+            // The OS's description without std's " (os error N)" suffix (as oc-local does).
+            let text = err.to_string();
+            match text.rfind(" (os error ") {
+                Some(i) if text.ends_with(')') => text[..i].to_string(),
+                _ => text,
+            }
+        }
     };
     let mut message = format!("Cannot connect to {host}:{port}: {what}");
     if cfg!(target_os = "macos") && is_host_unreachable(err) && is_local(host) {
@@ -298,5 +305,8 @@ mod tests {
         assert_eq!(describe_connect_error("nas", 445, &e), "Cannot connect to nas:445: Connection refused");
         let e = io::Error::new(io::ErrorKind::WouldBlock, "Resource temporarily unavailable");
         assert_eq!(describe_connect_error("nas", 80, &e), "Cannot connect to nas:80: timed out");
+        let e = io::Error::from_raw_os_error(61);
+        let message = describe_connect_error("nas", 80, &e);
+        assert!(message.starts_with("Cannot connect to nas:80: ") && !message.contains("os error"), "{message}");
     }
 }

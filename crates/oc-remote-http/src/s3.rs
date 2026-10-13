@@ -615,7 +615,9 @@ impl S3 {
         }
         let own = host == self.host;
         let default = if self.secure { 443 } else { 80 };
-        let netloc = if own && self.port != default { format!("{host}:{}", self.port) } else { host.to_string() };
+        // The Host header (signed): IPv6 addresses in brackets.
+        let bracketed = if host.contains(':') { format!("[{host}]") } else { host.to_string() };
+        let netloc = if own && self.port != default { format!("{bracketed}:{}", self.port) } else { bracketed };
         let signer = Signer::new(&netloc, region, self.access_key.as_deref(), self.secret_key.as_deref());
         let client = HttpClient::new(
             host,
@@ -807,8 +809,14 @@ impl S3 {
         Ok(Entry::file(self.basename(path), size, mtime))
     }
 
-    fn exists(self: &Arc<Self>, path: &str) -> bool {
-        self.stat(path).is_ok()
+    /// Whether `path` exists; errors other than "not found" are errors, as in
+    /// Python's `exists` (a rename must not overwrite a file it couldn't see).
+    fn try_exists(self: &Arc<Self>, path: &str) -> Result<bool> {
+        match self.stat(path) {
+            Ok(_) => Ok(true),
+            Err(e) if e.is_not_found() => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     // -- writing -------------------------------------------------------------------
@@ -847,7 +855,7 @@ impl S3 {
     }
 
     fn create_bucket(self: &Arc<Self>, bucket: &str, exist_ok: bool) -> Result<()> {
-        if !exist_ok && self.exists(&format!("/{bucket}")) {
+        if !exist_ok && self.try_exists(&format!("/{bucket}"))? {
             // us-east-1 answers "200 OK" to a second create.
             return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(&format!("/{bucket}")))));
         }
@@ -944,17 +952,23 @@ impl S3 {
         if sk.is_empty() || dk.is_empty() {
             return Err(Error::os(io::ErrorKind::PermissionDenied, format!("Buckets can't be renamed: {}", self.display(src))));
         }
-        if self.exists(dst) {
+        if self.try_exists(dst)? {
             return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(dst))));
         }
         let entry = self.stat(src)?;
         if entry.is_dir {
+            let prefix = format!("{sk}/");
             let sources = self
-                .list(sb, &format!("{sk}/"), false, None)
+                .list(sb, &prefix, false, None)
                 .map(|i| i.map(|i| (i.size.parse::<u64>().unwrap_or(0), i.name)))
                 .collect::<Result<Vec<_>>>()?;
             for (size, name) in &sources {
-                self.copy(sb, name, db, &format!("{dk}/{}", &name[sk.len() + 1..]), *size)?;
+                // (A listing has only keys below the prefix; a server sending
+                // others mustn't make us copy them somewhere odd.)
+                let Some(rest) = name.strip_prefix(prefix.as_str()) else {
+                    return Err(Error::os(io::ErrorKind::Other, format!("{} listed {name} below {prefix}", self.type_name)));
+                };
+                self.copy(sb, name, db, &format!("{dk}/{rest}"), *size)?;
             }
             let names: Vec<String> = sources.into_iter().map(|(_, n)| n).collect();
             self.delete_keys(sb, &names)?;
@@ -1055,20 +1069,29 @@ impl Lister {
         let encoded = text_of(&root, "EncodingType") == "url";
         let decode = |s: String| if encoded { unquote_plus(&s) } else { s };
         for element in root.children() {
-            if is_tag(&element, "CommonPrefixes") {
+            let item = if is_tag(&element, "CommonPrefixes") {
                 let name = decode(text_of(&element, "Prefix"));
-                self.items.push_back(Item { is_prefix: true, name, size: String::new(), last_modified: String::new() });
+                Item { is_prefix: true, name, size: String::new(), last_modified: String::new() }
             } else if is_tag(&element, "Contents") {
-                self.items.push_back(Item {
+                Item {
                     is_prefix: false,
                     name: decode(text_of(&element, "Key")),
                     size: text_of(&element, "Size"),
                     last_modified: text_of(&element, "LastModified"),
-                });
+                }
+            } else {
+                continue;
+            };
+            // Only what was asked for: removing a folder deletes what its
+            // listing names, so a server ignoring the prefix mustn't widen it.
+            if item.name.starts_with(self.prefix.as_str()) {
+                self.items.push_back(item);
             }
         }
         let token = text_of(&root, "NextContinuationToken");
-        self.done = self.max_keys.is_some() || text_of(&root, "IsTruncated") != "true" || token.is_empty();
+        // (The same token again would ask for the same page forever.)
+        let repeated = self.token.as_deref() == Some(token.as_str());
+        self.done = self.max_keys.is_some() || text_of(&root, "IsTruncated") != "true" || token.is_empty() || repeated;
         self.token = Some(token);
         Ok(())
     }
@@ -1333,18 +1356,24 @@ impl FileSystem for S3FileSystem {
         }
         let (bucket, key) = split(path);
         let Some(bucket) = bucket else {
-            // Every bucket, each with one listing.
-            let mut all = vec![(RelPath::new(), root)];
-            for entry in self.inner.list_buckets()? {
-                all.push((vec![entry.name.clone()], entry.clone()));
-                for item in self.walk(&format!("/{}", entry.name))?.skip(1) {
-                    let (rel, child) = item?;
-                    let mut full = vec![entry.name.clone()];
-                    full.extend(rel);
-                    all.push((full, child));
-                }
-            }
-            return Ok(Box::new(all.into_iter().map(Ok)));
+            // Every bucket, each with one listing, as the walk gets there.
+            let buckets = self.inner.list_buckets()?;
+            let below = buckets.into_iter().flat_map(move |entry| {
+                let name = entry.name.clone();
+                let head = std::iter::once(Ok((vec![name.clone()], entry)));
+                let rest: WalkIter<'a> = match self.walk(&format!("/{name}")) {
+                    Ok(walk) => Box::new(walk.skip(1).map(move |item| {
+                        item.map(|(rel, child)| {
+                            let mut full = vec![name.clone()];
+                            full.extend(rel);
+                            (full, child)
+                        })
+                    })),
+                    Err(e) => Box::new(std::iter::once(Err(e))),
+                };
+                head.chain(rest)
+            });
+            return Ok(Box::new(first.chain(below)));
         };
         let prefix = if key.is_empty() { String::new() } else { format!("{key}/") };
         let lister = self.inner.list(bucket, &prefix, false, None);
@@ -1354,7 +1383,7 @@ impl FileSystem for S3FileSystem {
     }
 
     fn exists(&self, path: &str) -> bool {
-        self.inner.exists(path)
+        self.inner.try_exists(path).unwrap_or(false)
     }
 
     fn mkdir(&self, path: &str, exist_ok: bool) -> oc_vfs::Result<()> {

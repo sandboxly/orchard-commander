@@ -238,13 +238,21 @@ impl TrustedCertificates {
     }
 
     pub fn add(&self, host: &str, port: u16, fingerprint: &str) -> io::Result<()> {
+        // Two connections trusting certificates at once both keep theirs.
+        static WRITING: Mutex<()> = Mutex::new(());
+        let _writing = WRITING.lock().unwrap_or_else(|e| e.into_inner());
         let mut data = self.load();
         data.insert(format!("{host}:{port}"), serde_json::Value::String(fingerprint.to_string()));
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
+        let dir = self.path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        std::fs::create_dir_all(dir)?;
         let text = serde_json::to_string_pretty(&data).map_err(io::Error::other)?;
-        std::fs::write(&self.path, text)
+        // Written aside and renamed into place: another connection (or 1.x)
+        // reading it meanwhile never sees half a file, which would read as
+        // "nothing trusted" and lose the other entries on its next add.
+        let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+        io::Write::write_all(&mut tmp, text.as_bytes())?;
+        tmp.persist(&self.path).map_err(|e| e.error)?;
+        Ok(())
     }
 }
 

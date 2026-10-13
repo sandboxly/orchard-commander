@@ -34,15 +34,21 @@ pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 /// Broken-down UTC time of a Unix timestamp (whole seconds, floored).
 fn utc(t: f64) -> (i64, u32, u32, u32, u32, u32, i64) {
-    let secs = t.floor() as i64;
+    // Years 1..=9999 (as Python's datetime): no overflow on odd times.
+    let secs = (if t.is_finite() { t.floor() } else { 0.0 }).clamp(MIN_TIME, MAX_TIME) as i64;
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
     let (y, mo, d) = civil_from_days(days);
     (y, mo, d, (rem / 3600) as u32, (rem % 3600 / 60) as u32, (rem % 60) as u32, days)
 }
 
+/// 0001-01-01T00:00:00Z and 9999-12-31T23:59:59Z.
+const MIN_TIME: f64 = -62_135_596_800.0;
+const MAX_TIME: f64 = 253_402_300_799.0;
+
 fn timestamp(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> Option<f64> {
-    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 24 || mi > 59 || s > 61 {
+    // Python's datetime range; also keeps the arithmetic below from overflowing.
+    if !(1..=9999).contains(&y) || !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 24 || mi > 59 || s > 61 {
         return None;
     }
     Some((days_from_civil(y, mo, d) * 86_400 + i64::from(h) * 3600 + i64::from(mi) * 60 + i64::from(s)) as f64)
@@ -80,6 +86,9 @@ pub fn parse_http_date(text: &str) -> Option<f64> {
             month = parts.next().and_then(month_of);
             year = parts.next().and_then(|p| p.parse::<i64>().ok());
         } else if let Some(zone) = token.strip_prefix(['+', '-']) {
+            if zone.len() != 4 {
+                return None;
+            }
             let n: i64 = zone.parse().ok()?;
             let minutes = n / 100 * 60 + n % 100;
             offset = if token.starts_with('-') { -minutes * 60 } else { minutes * 60 };
@@ -166,6 +175,10 @@ mod tests {
         assert_eq!(parse_http_date("6 Nov 1994 08:49:37 UTC"), Some(t));
         assert_eq!(parse_http_date(""), None);
         assert_eq!(parse_http_date("garbage"), None);
+        // Hostile servers: no overflow, just unknown.
+        assert_eq!(parse_http_date("Sun, 06 Nov 9223372036854775807 08:49:37 GMT"), None);
+        assert_eq!(parse_http_date("Sun, 06 Nov 1994 08:49:37 +9223372036854775807"), None);
+        assert!(!format_http_date(f64::MAX).is_empty() && !format_http_date(f64::NAN).is_empty());
         assert_eq!(format_http_date(t), "Sun, 06 Nov 1994 08:49:37 GMT");
         assert_eq!(format_http_date(1_600_000_000.0), "Sun, 13 Sep 2020 12:26:40 GMT");
         assert_eq!(parse_http_date(&format_http_date(1_600_000_000.0)), Some(1_600_000_000.0));
@@ -177,6 +190,8 @@ mod tests {
         assert_eq!(parse_iso8601("2020-09-13T14:26:40+02:00"), Some(1_600_000_000.0));
         assert_eq!(parse_iso8601("2020-09-13T12:26:40.5Z"), Some(1_600_000_000.5));
         assert_eq!(parse_iso8601("nonsense"), None);
+        assert_eq!(parse_iso8601("9223372036854775807-01-01T00:00:00Z"), None);
+        assert_eq!(parse_iso8601("-9223372036854775807-01-01T00:00:00Z"), None);
     }
 
     #[test]
