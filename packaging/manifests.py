@@ -153,6 +153,7 @@ def chocolatey(version: str, sha: dict[str, str]) -> dict[str, str]:
     <licenseUrl>https://github.com/{REPO}/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/{REPO}</projectSourceUrl>
+    <packageSourceUrl>https://github.com/{REPO}/blob/main/packaging/manifests.py</packageSourceUrl>
     <docsUrl>{HOMEPAGE}manual/</docsUrl>
     <bugTrackerUrl>https://github.com/{REPO}/issues</bugTrackerUrl>
     <releaseNotes>https://github.com/{REPO}/releases/tag/v{version}</releaseNotes>
