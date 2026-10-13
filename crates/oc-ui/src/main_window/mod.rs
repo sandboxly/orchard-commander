@@ -8,7 +8,7 @@
 //! │╭ ~/path ─────────────────────────╮│╭ ~/other ──────────────────────╮│
 //! ││ Name ▲          Size  Modified  │││                               ││  panels / views
 //! │╰──────────── 3 dirs, 2 files ────╯│╰───────────────────────────────╯│
-//! │ [bottom pane: terminal, later]                                      │
+//! │ terminal (features::terminal, ⌘J / ⌃`)                              │
 //! │ F3 Preview F5 Copy …                                 ⌘P Commands    │  F-key bar
 //! └─────────────────────────────────────────────────────────────────────┘
 //! ```
@@ -38,7 +38,7 @@ pub struct MainWindow {
     pub sides: [Side; 2],
     /// The side with the keyboard focus.
     pub active: usize,
-    /// Rows reserved below the sides for a bottom pane (the terminal, later).
+    /// Rows reserved below the sides for a bottom pane (the terminal).
     pub bottom_rows: u16,
 }
 
@@ -150,6 +150,9 @@ pub(crate) fn resized(app: &mut App, _cols: u16, _rows: u16) {
             with_view(app, side, i, |v, app| v.resized(app, side, frame));
         }
     }
+    for hook in app.registry.on_resized.clone() {
+        hook(app);
+    }
 }
 
 /// A panel went somewhere else: remember the folder, tell the views.
@@ -168,6 +171,9 @@ pub(crate) fn location_changed(app: &mut App, side: usize) {
                 }
             });
         }
+    }
+    for hook in app.registry.on_location_changed.clone() {
+        hook(app, side);
     }
 }
 
@@ -247,7 +253,7 @@ pub(crate) fn draw(app: &App, f: &mut Frame, ctx: &DrawCtx) {
         menus::draw_strip(f, strip, None, ctx);
     }
     for (i, side) in main.sides.iter().enumerate() {
-        let active = main.active == i;
+        let active = main.active == i && !crate::features::terminal::has_focus(app);
         let labels = side.tab_labels();
         let tabs: Vec<Tab> = labels.iter().enumerate().map(|(k, label)| Tab { label, selected: k == side.mode_index() }).collect();
         draw_tabs(f, l.tabs[i], &tabs, active, ctx);
@@ -259,6 +265,7 @@ pub(crate) fn draw(app: &App, f: &mut Frame, ctx: &DrawCtx) {
             },
         }
     }
+    crate::features::terminal::draw(app, f, l.bottom, ctx);
     draw_footer(app, f, l.footer, ctx);
 }
 
@@ -335,6 +342,9 @@ pub(crate) fn draw_toast(app: &App, f: &mut Frame, ctx: &DrawCtx) {
 
 pub(crate) fn handle_event(app: &mut App, ev: &Event) -> Outcome {
     sync_rows(app);
+    if crate::features::terminal::pre_event(app, ev) == Outcome::Consumed {
+        return Outcome::Consumed;
+    }
     match ev {
         Event::Key(k) => {
             if let Some(cmd) = app.registry.for_key(k) {

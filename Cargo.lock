@@ -3883,6 +3883,7 @@ dependencies = [
  "oc-media",
  "oc-pdf",
  "oc-preview",
+ "oc-term",
  "oc-vfs",
  "ropey",
  "serde_json",

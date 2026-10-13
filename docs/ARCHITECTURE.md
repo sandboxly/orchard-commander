@@ -128,7 +128,9 @@ reg.add(
 2. Add `pub mod <name>;` and one line `<name>::register,` to `ALL` in
    `features/mod.rs`. That is the only shared edit.
 3. In `register`: `reg.add(Command…)`, `reg.add_side_view(factory)`,
-   `reg.on_start(fn)`, `reg.on_settings_changed(fn)` as needed.
+   `reg.on_start(fn)`, `reg.on_settings_changed(fn)`,
+   `reg.on_location_changed(fn(app, side))` (a panel arrived in another
+   folder), `reg.on_resized(fn)` (the main window's grid size changed) as needed.
 4. Keep the feature's state in its own types. Where it must live in the app:
    * per side: a `SideView` (below);
    * a window: a `UiWindow` (below);
@@ -184,9 +186,32 @@ impl SideView for MyView {
   `main_window::with_view_as::<MyView, _>(app, side, "id", |v, app| …)`
   (the view is taken out of the app meanwhile); drawing helpers and tests
   read it with `main_window::view_as::<MyView>(&app, side, "id")`.
-* A bottom pane (the terminal) has space reserved: `app.main.bottom_rows`
-  (`Layout::bottom`). Draw/route it from your feature (add the call in
-  `main_window::draw` / `handle_event` — one line each).
+* The bottom pane is the terminal (`features/terminal/`): it sets
+  `app.main.bottom_rows` (`Layout::bottom`) and is drawn / routed by one call
+  each in `main_window::draw` and `main_window::handle_event`
+  (`terminal::pre_event` runs before command shortcuts so a focused terminal
+  gets Esc, Tab and F-keys; it returns `Ignored` for the toggle and macOS ⌘
+  shortcuts). While it has the focus, `terminal::has_focus(app)` makes both
+  panels draw inactive.
+
+## The terminal: `features/terminal/`
+
+* `mod.rs`: state (`app.state::<Terminal>()`), ⌘J / ⌃` toggle, one
+  `oc_term::Session` per side started ~50 ms after showing at the final size
+  (`Session::start` runs on a worker), keys/mouse/copy/paste, the top border
+  drag, `terminal_visible` / `terminal_height` (1.x, logical px) +
+  `terminal_rows` (2.x, exact).
+* `view.rs`: `Snapshot` → grid cells (theme palette via
+  `oc_term::Palette::for_theme(foreground, surface, dark)`), cursor shapes,
+  key encoding. The grid renderer does bold/italic/underline/dim, wide
+  chars, box/powerline glyphs and the Nerd Font fallback.
+* `link.rs`: linked folders. A "terminal link" thread probes the shells
+  every 300 ms and posts only when something changed (no idle wake-ups);
+  paths are resolved (symlinks) there or in a background task, never on the
+  UI thread.
+* Session output wakes the UI only for the session on screen, coalesced to
+  one post per wake-up. Tests: `terminal::record_input` / `take_recorded`
+  capture what would be sent to the shell (`crates/oc-ui/tests/terminal.rs`).
 
 ## Images on screen: `images.rs`
 
@@ -413,7 +438,10 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * `--screenshot OUT.png [--size COLSxROWS] [--scale F] [--keys "Down Space F5"]
   [LEFT] [RIGHT]`: headless app with the user's settings (nothing written),
   waits for listings, presses the keys, renders one frame, writes a PNG and
-  prints timings. Use it to look at UI changes without a display.
+  prints timings. Use it to look at UI changes without a display. In
+  `--keys`, `text:abc` types text and `wait:500` runs timers and background
+  output for 500 ms (e.g. `"Ctrl+` wait:3000 text:ls Enter wait:500"`);
+  `ORCHARD_COMMANDER_CONFIG_DIR=<empty dir>` gives default settings.
 * `OC_TIMING=1` prints the startup phases and first-frame time;
   `OC_TIMING=exit` quits right after the first frame.
 * macOS: native menu (muda), Dock icon from `app/resources/icon-macos.png`

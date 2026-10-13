@@ -30,6 +30,12 @@ pub const MONO_FAMILIES: &[&str] = &[
 /// Families that carry Nerd Font icons, preferred for private-use characters.
 const NERD_FAMILIES: &[&str] = &["Symbols Nerd Font Mono", "Symbols Nerd Font"];
 
+/// Whether a family is a Nerd Font (patched with the prompt icons), by the
+/// names Nerd Fonts and powerlevel10k use (as 1.x's `nerd_fonts()`).
+pub(crate) fn is_nerd_family(name: &str) -> bool {
+    name.contains("Nerd Font") || name.ends_with(" NF") || name.ends_with(" NFM") || name.ends_with(" NFP") || name.contains(" NF ")
+}
+
 /// Per-platform fallbacks for symbols, emoji and CJK before scanning every font.
 #[cfg(target_os = "macos")]
 const PLATFORM_FALLBACKS: &[&str] = &[
@@ -531,16 +537,23 @@ impl FontSet {
         {
             add(&mut set, &mut seen, name);
         }
-        // Any installed "<X> Nerd Font Mono" also carries the icons: right
-        // after the configured and Symbols Nerd fonts, before the platform ones.
-        if let Some(face) = lib.db.faces().find(|face| {
-            face.families
-                .first()
-                .is_some_and(|(n, _)| n.ends_with("Nerd Font Mono"))
-                && face.weight == fontdb::Weight::NORMAL
-                && face.style == fontdb::Style::Normal
-                && !seen.contains(&face.id)
-        }) {
+        // Any installed Nerd Font ("FiraCode Nerd Font Mono", powerlevel10k's
+        // "MesloLGS NF") also carries the icons: right after the configured and
+        // Symbols Nerd fonts, before the platform ones; monospaced ones first.
+        if let Some(face) = lib
+            .db
+            .faces()
+            .filter(|face| {
+                face.families.first().is_some_and(|(n, _)| is_nerd_family(n))
+                    && face.weight == fontdb::Weight::NORMAL
+                    && face.style == fontdb::Style::Normal
+                    && !seen.contains(&face.id)
+            })
+            .min_by_key(|face| {
+                let name = face.families.first().map_or("", |(n, _)| n.as_str());
+                (!face.monospaced, !name.contains("Mono"), name.to_owned())
+            })
+        {
             seen.insert(face.id);
             set.fallbacks.push(face.id);
         }
@@ -668,6 +681,16 @@ impl FontSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nerd_font_names() {
+        for name in ["MesloLGS NF", "FiraCode Nerd Font Mono", "Hack Nerd Font", "JetBrainsMono NFM", "Iosevka NF Light"] {
+            assert!(is_nerd_family(name), "{name}");
+        }
+        for name in ["Menlo", "SF Mono", "Fira Code", "NFL Sans"] {
+            assert!(!is_nerd_family(name), "{name}");
+        }
+    }
 
     #[test]
     fn config_is_sanitized() {
