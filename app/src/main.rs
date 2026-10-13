@@ -33,7 +33,8 @@ pub struct Args {
     pub screenshot: Option<PathBuf>,
     pub size: (u16, u16),
     pub scale: f32,
-    /// `--keys "Down Down Space F5"`: keys pressed before the screenshot.
+    /// `--keys "Down Down Space F5"`: keys pressed before the screenshot;
+    /// `text:abc` types text, `wait:500` lets timers and output run for 500 ms.
     pub keys: Vec<String>,
 }
 

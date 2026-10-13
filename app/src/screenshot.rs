@@ -30,6 +30,27 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     let renderer = std::thread::spawn(move || HeadlessRenderer::new(font, scale));
     let listed = wait_for_listings(&mut app, Duration::from_secs(60));
     for key in &args.keys {
+        // "wait:MS": let timers and background output run (a shell printing its prompt).
+        if let Some(ms) = key.strip_prefix("wait:") {
+            let Ok(ms) = ms.parse::<u64>() else {
+                eprintln!("bad {key:?} (use wait:MILLISECONDS)");
+                return ExitCode::from(2);
+            };
+            let end = Instant::now() + Duration::from_millis(ms);
+            while Instant::now() < end {
+                app.process_tasks();
+                app.tick(Instant::now());
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            continue;
+        }
+        // "text:abc": type the text ("text:ls" Space "text:-l").
+        if let Some(text) = key.strip_prefix("text:") {
+            for c in text.chars() {
+                app.handle_event(MAIN_WINDOW, oc_ui::Event::Key(oc_ui::KeyEvent::typed(&c.to_string())));
+            }
+            continue;
+        }
         let Some(s) = oc_ui::Shortcut::parse(key) else {
             eprintln!("unknown key {key:?} (use names like Down, F5, Primary+P, Space, a)");
             return ExitCode::from(2);

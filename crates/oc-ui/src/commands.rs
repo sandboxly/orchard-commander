@@ -183,6 +183,10 @@ fn parse(spec: &str) -> Shortcut {
 pub type StartHook = fn(&mut App);
 /// Runs after settings changed (`App::update_settings`).
 pub type SettingsHook = fn(&mut App);
+/// Runs after a side's panel arrived in another folder (its listing is in).
+pub type LocationHook = fn(&mut App, usize);
+/// Runs after the main window's grid size changed.
+pub type ResizeHook = fn(&mut App);
 
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
@@ -193,6 +197,8 @@ pub struct Registry {
     pub(crate) side_views: Vec<SideViewFactory>,
     pub(crate) on_start: Vec<StartHook>,
     pub(crate) on_settings_changed: Vec<SettingsHook>,
+    pub(crate) on_location_changed: Vec<LocationHook>,
+    pub(crate) on_resized: Vec<ResizeHook>,
 }
 
 impl Registry {
@@ -235,6 +241,18 @@ impl Registry {
 
     pub fn on_settings_changed(&mut self, hook: SettingsHook) -> &mut Self {
         self.on_settings_changed.push(hook);
+        self
+    }
+
+    /// `hook(app, side)` after panel `side` arrived in another folder.
+    pub fn on_location_changed(&mut self, hook: LocationHook) -> &mut Self {
+        self.on_location_changed.push(hook);
+        self
+    }
+
+    /// After the main window's grid size changed (window resized, font changed).
+    pub fn on_resized(&mut self, hook: ResizeHook) -> &mut Self {
+        self.on_resized.push(hook);
         self
     }
 
