@@ -1,0 +1,20 @@
+[package]
+name = "oc-smb"
+description = "SMB 2/3 (Windows / Samba share) file system for Orchard Commander"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oc-vfs.workspace = true
+oc-provider = { path = "../oc-provider" }
+thiserror.workspace = true
+# Pure-Rust SMB2/3 client (no libsmbclient): pipelined I/O, a credit pool that
+# waits instead of failing, response/send timeouts. See the crate docs.
+smb2 = { version = "0.28.0", default-features = false, features = ["tokio"] }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "sync", "time"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+oc-local.workspace = true
+serde_json = "1.0.154"
