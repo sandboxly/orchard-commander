@@ -438,6 +438,18 @@ impl GridRenderer {
         self.store_image(id.0, width, height, rgba)
     }
 
+    /// Store pixels under an id the caller chose ([`ImageId::external`]):
+    /// creates the image, or replaces its pixels (the size may change).
+    pub fn set_image(
+        &mut self,
+        id: ImageId,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> Result<(), GridError> {
+        self.store_image(id.0, width, height, rgba)
+    }
+
     pub fn remove_image(&mut self, id: ImageId) {
         if let Some(img) = self.images.remove(&id.0) {
             img.texture.destroy();

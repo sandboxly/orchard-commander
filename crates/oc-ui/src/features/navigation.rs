@@ -101,6 +101,7 @@ pub fn reload_all(app: &mut App) {
     for side in 0..2 {
         panel::reload(app, side);
     }
+    super::preview::refresh_all(app);
 }
 
 pub fn toggle_hidden(app: &mut App) {

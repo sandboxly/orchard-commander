@@ -1,7 +1,7 @@
 //! Orchard Commander: `orchard-commander [LEFT] [RIGHT]`.
 //!
 //! Developer/CI flags:
-//! - `--self-test`: check the renderer, fonts, archives, highlighting and the
+//! - `--self-test`: check the renderer, fonts, archives, highlighting, PDFium and the
 //!   config dir, print what was checked, exit 0 if all is well (CI runs it on
 //!   installed packages).
 //! - `--screenshot OUT.png [--size COLSxROWS] [LEFT] [RIGHT]`: build the main

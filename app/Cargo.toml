@@ -21,7 +21,8 @@ oc-local.workspace = true
 oc-archive = { path = "../crates/oc-archive", default-features = false }
 oc-config.workspace = true
 oc-grid.workspace = true
-oc-preview.workspace = true
+oc-preview = { workspace = true, features = ["pdf"] }
+oc-pdf = { path = "../crates/oc-pdf" }
 oc-ui.workspace = true
 log = "0.4"
 serde_json = "1.0"

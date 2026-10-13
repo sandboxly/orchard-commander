@@ -21,6 +21,7 @@ pub mod commands;
 pub mod dialogs;
 pub mod features;
 pub mod geom;
+pub mod images;
 pub mod input;
 pub mod main_window;
 pub mod menus;

@@ -3,6 +3,12 @@
 pub trait Clipboard {
     fn get_text(&mut self) -> Option<String>;
     fn set_text(&mut self, text: &str);
+
+    /// Put an image (straight RGBA8, rows top to bottom) on the clipboard.
+    /// Err: why that didn't work.
+    fn set_image(&mut self, _width: u32, _height: u32, _rgba: &[u8]) -> Result<(), String> {
+        Err("this clipboard takes no images".into())
+    }
 }
 
 /// A clipboard in memory (tests, or when the system one is unavailable).
@@ -16,6 +22,14 @@ impl Clipboard for MemoryClipboard {
 
     fn set_text(&mut self, text: &str) {
         self.0 = Some(text.to_owned());
+    }
+
+    /// Accepted (and forgotten) when the data has the right size.
+    fn set_image(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+        if rgba.len() != width as usize * height as usize * 4 {
+            return Err("bad image data".into());
+        }
+        Ok(())
     }
 }
 
@@ -58,5 +72,13 @@ impl Clipboard for SystemClipboard {
             }
             None => self.fallback.set_text(text),
         }
+    }
+
+    fn set_image(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+        let Some(c) = self.get() else {
+            return Err("no system clipboard".into());
+        };
+        let image = arboard::ImageData { width: width as usize, height: height as usize, bytes: rgba.into() };
+        c.set_image(image).map_err(|e| e.to_string())
     }
 }

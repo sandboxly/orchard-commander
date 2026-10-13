@@ -167,6 +167,9 @@ impl SideView for MyView {
     fn follows_other_panel(&self) -> bool { true }   // Preview semantics (focus stays on the other panel)
     fn target_changed(&mut self, app: &mut App, side: usize, target: Option<VPath>) { … }
     fn deactivated(&mut self, app: &mut App, side: usize) { … }
+    fn resized(&mut self, app: &mut App, side: usize, frame: Rect) { … }   // window/font size changed
+    fn as_any(&self) -> Option<&dyn Any> { Some(self) }                    // opt in to with_view_as / view_as
+    fn as_any_mut(&mut self) -> Option<&mut dyn Any> { Some(self) }
 }
 ```
 
@@ -177,15 +180,76 @@ impl SideView for MyView {
   panel's cursor moves (and when it is shown). Load content in the
   background (`app.tasks`), keep a request counter or `CancelToken` to drop
   stale results, call `app.redraw()` when done.
-* `features/preview_stub.rs` is the placeholder Preview: replace its body
-  with `oc_preview::Registry` (the archive hook is already registered, see
-  below). Images: upload via the window's `GridRenderer` — the binary owns
-  renderers, so add a `PlatformRequest` / image cache hook when the preview
-  agent needs it (planned: `App` keeps decoded RGBA by key, the platform
-  uploads and hands back `ImageId`s).
+* Timers and task results reach their view with
+  `main_window::with_view_as::<MyView, _>(app, side, "id", |v, app| …)`
+  (the view is taken out of the app meanwhile); drawing helpers and tests
+  read it with `main_window::view_as::<MyView>(&app, side, "id")`.
 * A bottom pane (the terminal) has space reserved: `app.main.bottom_rows`
   (`Layout::bottom`). Draw/route it from your feature (add the call in
   `main_window::draw` / `handle_event` — one line each).
+
+## Images on screen: `images.rs`
+
+The UI never touches the GPU. A feature puts straight RGBA8 pixels into the
+app-wide image store and draws a placement naming them; the binary uploads
+what a frame shows (only when the pixels changed) into each window's
+renderer (`ImageSync`, in `platform.rs` and `screenshot.rs`) and frees the
+textures of removed images.
+
+```rust
+let key = images::store(app).insert(w, h, Arc::new(rgba));    // Arc<dyn Pixels>: Vec<u8>, PDF pages…
+f.add_image(ImagePlacement::new(key.id(), PxRect::new(x, y, dw, dh)));   // in draw
+images::store(app).set(key, w, h, next_frame);                 // animation / video frame: same key
+images::store(app).remove(key);                                // when the view goes away
+```
+
+`key.id()` is an `oc_grid::ImageId::external(..)`; `GridRenderer::set_image`
+stores pixels under such caller-chosen ids. `ctx.cell_px` / `app.cell_px`
+are physical pixels, so `cells × cell_px` already includes the display
+scale: render PDF pages and fit images to that.
+
+## The Preview: `features/preview/`
+
+`mod.rs` is the pane (`PreviewView`, a `SideView`): debounced loading
+through `oc_preview::Registry::global()` on a worker with cancellation, the
+previous content kept until the next one is ready, "View as" chips
+(Shift+F3; the choice per extension lasts until quit), title = file name,
+subtitle = the previewer's info, cloud placeholders ("Downloading … from
+the cloud"; above 25 MB "Download and preview"; "Try again"). Reload panels
+loads it again. `PreviewOptions` (an app state) holds the cloud fetch
+timeout (tests shorten it).
+
+What shows below the chips is a `views::ContentView`, one per kind of
+`PreviewData`: `text.rs` (highlighted text, hex, listings, plus the shared
+painting and scrolling helpers), `markdown.rs`, `image.rs` (right-click
+Open/Copy via `dialogs::PopupMenu`, `Clipboard::set_image`), `pdf.rs`,
+`message.rs`.
+
+```rust
+pub trait ContentView: Any {
+    fn kind(&self) -> &'static str;                                 // "pdf", "media", …
+    fn draw(&self, app: &App, f: &mut Frame, area: Rect, ctx: &DrawCtx, focused: bool);
+    fn handle_event(&mut self, app: &mut App, h: Handle, ev: &Event, area: Rect) -> Outcome;  // keys after Tab; mouse
+    fn shown(&mut self, app: &mut App, h: Handle, area: Rect);     // upload images, start timers / playback
+    fn resized(&mut self, app: &mut App, h: Handle, area: Rect);
+    fn clear(&mut self, app: &mut App);                            // remove images, cancel timers, stop playback
+    fn text(&self) -> Option<String>;                              // tests
+    fn as_any(&self) -> &dyn Any;  fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+// From a timer, task result or player event — the view, if it is still the one shown:
+h.with::<MyContent, _>(app, |view, app, area| …);
+```
+
+Loading is two steps: `views::prepare(PreviewData) -> Prepared` runs on the
+worker (put expensive preparation there), `views::make(Prepared, &VPath)`
+builds the view on the UI thread. **The media player's slot:**
+`Prepared::Media(MediaData)` is passed through and `make` shows a message
+for it for now; the player view replaces that one arm (a new
+`features/preview/media.rs`). Its settings go in `Settings.extra` as
+`preview.media.<key>` (`oc_media::MediaPrefs`), video frames go through the
+image store (`set` on one key), `shown` / `clear` start and stop playback.
+For "play the next file" the view needs a way to ask the pane to move the
+other panel's cursor (add it to the pane then).
 
 ## Dialogs: `modal.rs`, `dialogs/`
 
@@ -199,6 +263,7 @@ dialogs::ask_text(app, "Make directory", "Create in …:", "", "Create", |app, t
 dialogs::message(app, "Copying", &error, Severity::Error);
 let id = app.show(ProgressBox::new("Copying", state, token));   app.close_modal(id);
 app.show(Picker::new("Go to", items, |app, choice| …).on_highlight(|app, i| …));
+app.show(PopupMenu::new(vec![MenuEntry::item("&Open", "")], col, row, |app, i| …));   // context menu
 app.show(MessageBox::new("File exists", text, &["&Overwrite", "&All", "&Skip", "S&kip all", "Cancel"], 2)
     .on_choice(|app, idx| …));
 ```
@@ -285,7 +350,8 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 
 * `orchard-commander [LEFT] [RIGHT]`.
 * `--self-test`: renderer (offscreen GPU device), fonts, archive opener on a
-  tiny zip, syntect, config dir. Exit 0 when all pass. CI runs it.
+  tiny zip, syntect, PDFium (loads and renders a page), config dir. Exit 0
+  when all pass. CI runs it.
 * `--screenshot OUT.png [--size COLSxROWS] [--scale F] [--keys "Down Space F5"]
   [LEFT] [RIGHT]`: headless app with the user's settings (nothing written),
   waits for listings, presses the keys, renders one frame, writes a PNG and

@@ -25,6 +25,7 @@ pub fn run() -> ExitCode {
     check("renderer", renderer());
     check("archives", archives());
     check("syntax highlighting", highlighting());
+    check("pdf", pdf());
     if failed == 0 {
         println!("all checks passed");
         ExitCode::SUCCESS
@@ -107,6 +108,13 @@ fn highlighting() -> Result<String, String> {
         Ok(set.syntaxes().len())
     })?;
     Ok(format!("{n} syntaxes loaded, Rust highlighted ({ms:.0} ms)"))
+}
+
+/// PDFium loads (bundled next to the binary / in Frameworks) and draws a page.
+fn pdf() -> Result<String, String> {
+    let ((), ms) = timed(|| oc_pdf::self_test().map_err(|e| e.to_string()))?;
+    let path = oc_pdf::library_path().map_err(|e| e.to_string())?;
+    Ok(format!("PDFium from {} rendered a page ({ms:.0} ms)", path.display()))
 }
 
 /// A one-file stored zip.

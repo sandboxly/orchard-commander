@@ -289,6 +289,28 @@ pub struct FillRect {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ImageId(pub(crate) u64);
 
+impl ImageId {
+    /// Marks ids chosen by the caller ([`ImageId::external`]), so they never
+    /// collide with the ones `upload_image` hands out.
+    const EXTERNAL: u64 = 1 << 63;
+
+    /// An id the caller picks (an app-side image store's key) for images
+    /// stored with `GridRenderer::set_image`: frames can refer to an image
+    /// without knowing which renderer draws them.
+    pub const fn external(key: u64) -> Self {
+        ImageId(key | Self::EXTERNAL)
+    }
+
+    /// The key given to [`ImageId::external`], if this is such an id.
+    pub const fn external_key(self) -> Option<u64> {
+        if self.0 & Self::EXTERNAL != 0 {
+            Some(self.0 & !Self::EXTERNAL)
+        } else {
+            None
+        }
+    }
+}
+
 /// An uploaded image drawn into a rectangle, optionally clipped (a preview
 /// scrolled partly out of its panel). Drawn above cell backgrounds, below text.
 #[derive(Clone, Copy, PartialEq, Debug)]
