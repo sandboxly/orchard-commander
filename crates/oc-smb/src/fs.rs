@@ -2,7 +2,7 @@
 
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use oc_vfs::{
     Capabilities, Entry, FileSystem, ListOptions, ReadStream, RelPath, Result, VfsError, WalkIter, WriteStream,
@@ -79,6 +79,14 @@ fn socket_addr(server: &str, port: u16) -> String {
     }
 }
 
+/// The whole handshake (TCP, NEGOTIATE, two SESSION_SETUPs, TREE_CONNECT,
+/// the first listing) gets twice the connect timeout: the library bounds the
+/// TCP connect by it but waits its 30 s response timeout for each answer,
+/// whereas Python's `connection_timeout` bounded the handshake too.
+fn connect_limit(timeout: Duration) -> Duration {
+    (timeout * 2).max(Duration::from_secs(5))
+}
+
 /// Connect to `\\server\share`. Errors with AuthenticationRequired or a
 /// connection message (port of `smb.connect`).
 pub fn connect(
@@ -101,8 +109,7 @@ pub fn connect(
         ..ClientConfig::default()
     };
     let share_name = share.clone();
-    let limit = opts.timeout * 2 + Duration::from_secs(30);
-    let result = run(limit, async move {
+    let result = run(connect_limit(opts.timeout), async move {
         let mut client = SmbClient::connect(config).await?;
         let mut tree = client.connect_share(&share_name).await?;
         client.list_directory(&mut tree, "").await?; // proves the share exists and is readable
@@ -133,7 +140,7 @@ pub fn list_shares(server: &str, opts: &ConnectOptions) -> std::result::Result<V
         domain: domain.to_string(),
         ..ClientConfig::default()
     };
-    let result = run(opts.timeout * 2 + Duration::from_secs(30), async move {
+    let result = run(connect_limit(opts.timeout), async move {
         let mut client = SmbClient::connect(config).await?;
         let shares = client.list_shares().await?;
         Ok::<_, Failure>(shares.into_iter().map(|s| s.name).collect::<Vec<_>>())
@@ -169,8 +176,23 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
+    /// The connection, for one request. If it is known to have dropped (a
+    /// NAS reboot, a Wi-Fi roam), it is revived first, while nothing of this
+    /// request has been sent yet: the library replays only idempotent
+    /// requests by itself, so without this a mkdir, rename, delete or upload
+    /// would keep failing with "Disconnected" until something listed.
     pub(crate) async fn session(&self) -> SmbResult<MappedMutexGuard<'_, Session>> {
-        MutexGuard::try_map(self.state.lock().await, |s| s.as_mut()).map_err(|_| Failure::Closed)
+        let mut guard = MutexGuard::try_map(self.state.lock().await, |s| s.as_mut()).map_err(|_| Failure::Closed)?;
+        if guard.client.is_disconnected() {
+            let s = &mut *guard;
+            // A stat replays after reviving the session and its tree.
+            if let Err(e) = s.client.stat(&mut s.tree, "").await
+                && s.client.is_disconnected()
+            {
+                return Err(e.into());
+            }
+        }
+        Ok(guard)
     }
 
     /// `\\server\share\a\b`, for error messages (as smbclient showed them).
@@ -223,6 +245,12 @@ fn join(path: &str, names: &[&str]) -> String {
     out
 }
 
+/// A name that is one entry of its directory: not empty, not "." or "..",
+/// no separator or NUL.
+fn is_plain_name(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\0'])
+}
+
 /// `posixpath.basename` ("" at the root).
 fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or("")
@@ -233,12 +261,14 @@ fn unix_time(t: FileTime) -> f64 {
     if t.0 == 0 { 0.0 } else { (i128::from(t.0) - EPOCH_DIFF) as f64 / 1e7 }
 }
 
-fn system_time(mtime: f64) -> SystemTime {
-    if mtime >= 0.0 {
-        UNIX_EPOCH + Duration::from_secs_f64(mtime)
-    } else {
-        UNIX_EPOCH.checked_sub(Duration::from_secs_f64(-mtime)).unwrap_or(UNIX_EPOCH)
-    }
+/// A Unix time as an SMB FILETIME, or None if it has none (NaN, infinite,
+/// or outside what FILETIME can hold). 0 and -1 mean "leave unchanged" /
+/// "stop updating" on the wire, so the result is kept clear of both.
+fn file_time(mtime: f64) -> Option<FileTime> {
+    const EPOCH_DIFF: f64 = 116_444_736_000_000_000.0;
+    let ticks = (mtime * 1e7).round() + EPOCH_DIFF;
+    // i64::MAX as f64 rounds up to 2^63, so `<` keeps the cast in range.
+    (ticks.is_finite() && ticks >= 1.0 && ticks < i64::MAX as f64).then_some(FileTime(ticks as u64))
 }
 
 fn entry(name: String, is_dir: bool, size: u64, modified: FileTime, attributes: FileAttributes) -> Entry {
@@ -288,12 +318,10 @@ impl SmbFileSystem {
     /// Whether the connection is still usable (else reconnect).
     pub fn is_connected(&self) -> bool {
         let shared = self.shared.clone();
-        run(CLOSE_TIMEOUT, async move {
-            match shared.session().await {
-                Ok(s) => !s.client.is_disconnected(),
-                Err(_) => false,
-            }
-        })
+        run(
+            CLOSE_TIMEOUT,
+            async move { shared.state.lock().await.as_ref().is_some_and(|s| !s.client.is_disconnected()) },
+        )
         .unwrap_or(false)
     }
 
@@ -310,7 +338,9 @@ impl SmbFileSystem {
             let listing = s.client.list_directory(&mut s.tree, &p).await?;
             Ok(listing
                 .into_iter()
-                .filter(|e| e.name != "." && e.name != "..")
+                // "." and ".." (and, from a hostile server, names that would
+                // climb out of a copy's destination) are not entries.
+                .filter(|e| is_plain_name(&e.name))
                 .map(|e| entry(e.name, e.is_directory, e.size, e.modified, e.attributes))
                 .collect())
         })
@@ -495,7 +525,12 @@ impl FileSystem for SmbFileSystem {
     fn set_mtime(&self, path: &str, mtime: f64) -> Result<()> {
         let shared = self.shared.clone();
         let p = rel(path);
-        let t = system_time(mtime);
+        let Some(t) = file_time(mtime) else {
+            return Err(VfsError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid modification time {mtime}: '{}'", self.shared.unc(path)),
+            )));
+        };
         exec(async move {
             let mut guard = shared.session().await?;
             let s = &mut *guard;
@@ -572,13 +607,32 @@ impl Iterator for Walk<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::UNIX_EPOCH;
 
     #[test]
     fn times() {
         assert_eq!(unix_time(FileTime(0)), 0.0);
         assert_eq!(unix_time(FileTime(116_444_736_000_000_000 + 15_000_000)), 1.5);
-        let st = system_time(1_600_000_000.25);
-        assert_eq!(unix_time(FileTime::from_system_time(st)), 1_600_000_000.25);
+        assert_eq!(unix_time(file_time(1_600_000_000.25).unwrap()), 1_600_000_000.25);
+        assert_eq!(
+            file_time(1_600_000_000.25),
+            Some(FileTime::from_system_time(UNIX_EPOCH + Duration::from_millis(1_600_000_000_250)))
+        );
+        assert_eq!(unix_time(file_time(-86_400.0).unwrap()), -86_400.0); // before 1970
+        // Garbage from a source file system never panics or sends 0 / -1.
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e300, -1e300, -11_644_473_600.0] {
+            assert_eq!(file_time(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn hostile_names_are_not_entries() {
+        for name in ["a", "a b", ".hidden", "...", "x\\y"] {
+            assert!(is_plain_name(name), "{name}");
+        }
+        for name in ["", ".", "..", "../etc", "a/b", "nul\0"] {
+            assert!(!is_plain_name(name), "{name:?}");
+        }
     }
 
     #[test]

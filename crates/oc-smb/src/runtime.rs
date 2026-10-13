@@ -47,6 +47,12 @@ impl<T: Send + 'static> Pending<T> {
         Pending { rx, abort: task.abort_handle() }
     }
 
+    /// Stop it without waiting: the result is no longer wanted. Safe for SMB
+    /// requests, whose late answers the library discards.
+    pub(crate) fn cancel(self) {
+        self.abort.abort();
+    }
+
     /// The result, or None if it took longer than `limit` (the task is then
     /// aborted) or the task died.
     pub(crate) fn wait(self, limit: Duration) -> Option<T> {

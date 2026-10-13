@@ -43,7 +43,9 @@ fn impacket_tree() -> tempfile::TempDir {
 #[test]
 fn wrong_password() {
     let root = impacket_tree();
-    let Some(server) = start_impacket(root.path()) else { return };
+    let Some(server) = start_impacket(root.path()) else {
+        return;
+    };
     match server.connect_with("nope") {
         Err(SmbConnectError::AuthenticationRequired(msg)) => {
             assert_eq!(msg, "Authentication failed for tester on 127.0.0.1")
@@ -56,7 +58,9 @@ fn wrong_password() {
 #[test]
 fn browse_and_download() {
     let root_dir = impacket_tree();
-    let Some(server) = start_impacket(root_dir.path()) else { return };
+    let Some(server) = start_impacket(root_dir.path()) else {
+        return;
+    };
     let remote: Arc<dyn FileSystem> = Arc::new(server.connect().unwrap());
     let root = VPath::new(remote.clone(), "/");
     assert!(root.parent().is_none());
@@ -114,11 +118,72 @@ fn unreachable_server() {
     }
 }
 
+/// A fake server on a local port: `reply` gets each accepted socket.
+fn fake_server(reply: fn(std::net::TcpStream)) -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || reply(stream));
+        }
+    });
+    port
+}
+
+fn connect_to(port: u16) -> (Result<oc_smb::SmbFileSystem, SmbConnectError>, Duration) {
+    let opts = ConnectOptions {
+        port,
+        username: Some(USER.into()),
+        password: Some(PASSWORD.into()),
+        timeout: Duration::from_secs(2),
+    };
+    let started = std::time::Instant::now();
+    (oc_smb::connect("127.0.0.1", "SHARE", &opts), started.elapsed())
+}
+
+/// A server that accepts the connection and then never answers must not
+/// hang the connect.
+#[test]
+fn silent_server_times_out() {
+    let port = fake_server(|stream| {
+        std::thread::sleep(Duration::from_secs(120));
+        drop(stream);
+    });
+    let (result, took) = connect_to(port);
+    match result {
+        Err(SmbConnectError::Connection(msg)) => {
+            assert!(msg.starts_with(&format!("Cannot connect to 127.0.0.1:{port}: ")), "{msg}")
+        }
+        other => panic!("expected a connection error, got {:?}", other.err()),
+    }
+    // Bounded by the connect timeout (2 s here), as Python's was.
+    assert!(took < Duration::from_secs(8), "took {took:?}");
+}
+
+/// Garbage instead of SMB: an error, no panic, no hang.
+#[test]
+fn garbage_server_fails_cleanly() {
+    let port = fake_server(|mut stream| {
+        let mut buf = [0u8; 4096];
+        let _ = stream.read(&mut buf);
+        // A NetBIOS length prefix promising a frame, then nonsense; then a
+        // well-formed length with a truncated SMB2 header.
+        let _ = stream.write_all(&[0, 0, 0, 80, 0xFE, b'S', b'M', b'B', 64, 0, 1, 0]);
+        let _ = stream.write_all(&[0xde, 0xad, 0xbe, 0xef].repeat(17));
+        std::thread::sleep(Duration::from_secs(5));
+    });
+    let (result, took) = connect_to(port);
+    assert!(matches!(result, Err(SmbConnectError::Connection(_))), "{:?}", result.err());
+    assert!(took < Duration::from_secs(8), "took {took:?}");
+}
+
 // -- Samba: full read/write ---------------------------------------------------------------
 
 #[test]
 fn samba_contract() {
-    let Some(server) = start_samba(None) else { return };
+    let Some(server) = start_samba(None) else {
+        return;
+    };
     let remote: Arc<dyn FileSystem> = Arc::new(server.connect().unwrap());
     oc_vfs::testing::check_filesystem(&VPath::new(remote.clone(), "/"));
     remote.close();
@@ -126,7 +191,9 @@ fn samba_contract() {
 
 #[test]
 fn samba_write_operations() {
-    let Some(server) = start_samba(None) else { return };
+    let Some(server) = start_samba(None) else {
+        return;
+    };
     let remote: Arc<dyn FileSystem> = Arc::new(server.connect().unwrap());
     let root = VPath::new(remote.clone(), "/");
     let tmp = tempfile::tempdir().unwrap();
@@ -189,7 +256,9 @@ fn samba_write_operations() {
 
 #[test]
 fn samba_wrong_password_and_missing_share() {
-    let Some(server) = start_samba(None) else { return };
+    let Some(server) = start_samba(None) else {
+        return;
+    };
     assert!(matches!(server.connect_with("nope"), Err(SmbConnectError::AuthenticationRequired(_))));
     let opts = ConnectOptions {
         port: server.port,
@@ -212,7 +281,9 @@ fn samba_wrong_password_and_missing_share() {
 /// run out of credits on a server granting few, like many NAS boxes.
 #[test]
 fn concurrent_use_with_few_credits() {
-    let Some(server) = start_samba(Some(16)) else { return };
+    let Some(server) = start_samba(Some(16)) else {
+        return;
+    };
     let remote: Arc<dyn FileSystem> = Arc::new(server.connect().unwrap());
     let data: Vec<u8> = (0..8 * 1024 * 1024u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8).collect();
     let mut w = remote.open_write("/movie.mp4").unwrap();
@@ -272,7 +343,9 @@ fn concurrent_use_with_few_credits() {
 #[test]
 #[ignore = "benchmark"]
 fn samba_throughput() {
-    let Some(server) = start_samba(None) else { return };
+    let Some(server) = start_samba(None) else {
+        return;
+    };
     let remote: Arc<dyn FileSystem> = Arc::new(server.connect().unwrap());
     let data: Vec<u8> = (0..128 * 1024 * 1024u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8).collect();
     let mb = data.len() as f64 / 1e6;
@@ -299,4 +372,42 @@ fn samba_throughput() {
         assert_eq!(total, data.len());
         eprintln!("upload {:.0} MB/s, download {:.0} MB/s", mb / up.as_secs_f64(), mb / down.as_secs_f64());
     }
+}
+
+/// A NAS that drops the connection (reboot, Wi-Fi roam): the file system
+/// comes back by itself, also when the next request is not a listing (the
+/// library replays only idempotent requests, so writes used to keep failing
+/// with "Disconnected" until something listed).
+#[test]
+fn samba_dropped_connection_recovers() {
+    let Some(server) = start_samba(None) else {
+        return;
+    };
+    let remote: Arc<dyn FileSystem> = Arc::new(server.connect().unwrap());
+    let mut w = remote.open_write("/a.txt").unwrap();
+    w.write_all(b"before").unwrap();
+    w.finish().unwrap();
+    let reader = remote.open_read("/a.txt").unwrap(); // its handle dies with the connection
+
+    server.drop_client_connections();
+    std::thread::sleep(Duration::from_millis(300)); // the client sees the reset
+    remote.mkdir("/d", false).unwrap();
+    server.drop_client_connections();
+    std::thread::sleep(Duration::from_millis(300));
+    let mut w = remote.open_write("/d/b.txt").unwrap();
+    w.write_all(b"after").unwrap();
+    w.finish().unwrap();
+    server.drop_client_connections();
+    std::thread::sleep(Duration::from_millis(300));
+    remote.rename("/a.txt", "/c.txt").unwrap();
+    server.drop_client_connections();
+    std::thread::sleep(Duration::from_millis(300));
+    remote.remove("/c.txt").unwrap();
+    drop(reader); // closing a handle of the dead session is harmless
+
+    let mut text = String::new();
+    remote.open_read("/d/b.txt").unwrap().read_to_string(&mut text).unwrap();
+    assert_eq!(text, "after");
+    assert_eq!(remote.list_dir("/", all()).unwrap().iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["d"]);
+    remote.close();
 }

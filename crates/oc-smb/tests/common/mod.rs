@@ -44,6 +44,15 @@ impl Drop for Server {
 }
 
 impl Server {
+    /// Drop every client connection the Samba container serves (as a NAS
+    /// reboot or a Wi-Fi roam would), keeping smbd itself running.
+    pub fn drop_client_connections(&self) {
+        let Guard::Container(name) = &self.guard else { panic!("not a Samba container") };
+        let script = "smbstatus -p | awk '$1 ~ /^[0-9]+$/ {print $1}' | xargs -r kill -9";
+        let out = Command::new("docker").args(["exec", name, "sh", "-c", script]).output().expect("docker exec");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
     pub fn connect(&self) -> Result<SmbFileSystem, SmbConnectError> {
         self.connect_with(PASSWORD)
     }

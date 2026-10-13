@@ -117,7 +117,9 @@ impl SmbReader {
             Some((offset, pending)) if offset == pos => pending.wait(OP_TIMEOUT).unwrap_or(Err(Failure::TimedOut))?,
             stale => {
                 if let Some((_, pending)) = stale {
-                    drop(pending); // jumped elsewhere: let it finish unseen
+                    // Jumped elsewhere: stop it rather than let it hold the
+                    // connection for a block nobody reads.
+                    pending.cancel();
                 }
                 self.block = if sequential { (self.block * 2).min(MAX_BLOCK) } else { MIN_BLOCK };
                 let len = (want as u64).clamp(self.block, MAX_BLOCK.max(self.block));
@@ -139,11 +141,14 @@ impl SmbReader {
     }
 
     fn close(&mut self) {
-        let Some(reader) = self.reader.take() else { return };
-        let prefetch = self.prefetch.take();
+        let Some(reader) = self.reader.take() else {
+            return;
+        };
+        if let Some((_, pending)) = self.prefetch.take() {
+            pending.cancel();
+        }
         let _ = run(CLOSE_TIMEOUT, async move {
-            drop(prefetch);
-            // A prefetch that was dropped may still hold the reader briefly.
+            // The cancelled prefetch lets go of the reader at its next poll.
             let mut reader = reader;
             for _ in 0..100 {
                 match Arc::try_unwrap(reader) {
@@ -328,7 +333,28 @@ impl SmbWriter {
         first
     }
 
+    /// Bytes one WRITE may carry now: [`Self::chunk`], lowered to what half
+    /// the credit window funds once the server has shown its ceiling (a WRITE
+    /// charging more than the ceiling could never be sent).
+    fn fundable(&self) -> usize {
+        match self.conn.credit_ceiling() {
+            Some(ceiling) => self.chunk.min(usize::from((ceiling / 2).max(1)) * 65536),
+            None => self.chunk,
+        }
+    }
+
     fn send(&mut self, data: Vec<u8>) -> io::Result<()> {
+        let fundable = self.fundable();
+        if data.len() > fundable {
+            for piece in data.chunks(fundable) {
+                self.send_one(piece.to_vec())?;
+            }
+            return Ok(());
+        }
+        self.send_one(data)
+    }
+
+    fn send_one(&mut self, data: Vec<u8>) -> io::Result<()> {
         while self.inflight.len() >= WRITE_WINDOW {
             self.wait_oldest()?;
         }
@@ -419,9 +445,12 @@ impl WriteStream for SmbWriter {
 impl Drop for SmbWriter {
     fn drop(&mut self) {
         if !self.closed {
-            // Not finished: stop here, but release the handle right away so the
-            // caller can delete the partial file.
-            let _ = self.wait_all();
+            // Not finished (cancelled or failed): drop what is still on the
+            // wire and release the handle right away, so the caller can
+            // delete the partial file.
+            for pending in self.inflight.drain(..) {
+                pending.cancel();
+            }
             let _ = self.close_handle();
         }
     }

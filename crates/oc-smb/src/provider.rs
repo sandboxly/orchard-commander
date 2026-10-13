@@ -162,6 +162,22 @@ mod tests {
         // Saved connection from test_fsproviders.py.
         let saved = params(json!({"host": "192.168.1.20", "username": "alice", "share": "Media"}));
         assert_eq!(p.format_url(&saved), "smb://alice@192.168.1.20/Media");
+        // The old connections.json format stored unset ports as null.
+        let legacy = params(json!({"host": "192.168.1.20", "username": "alice", "port": null, "share": "Media"}));
+        assert_eq!(p.format_url(&legacy), "smb://alice@192.168.1.20/Media");
+        assert_eq!(p.account(&legacy), "smb://alice@192.168.1.20/Media");
+        // Host case is kept for stored params; IPv6 hosts are not bracketed
+        // (keychain accounts must match Python's byte for byte).
+        let d = params(json!({"host": "H.Local", "share": "S", "username": "A"}));
+        assert_eq!(
+            (p.format_url(&d), p.account(&d), p.describe(&d)),
+            ("smb://A@H.Local/S".to_string(), "smb://A@H.Local/S".to_string(), "A@H.Local".to_string())
+        );
+        let v6 = params(json!({"host": "fe80::1", "share": "s", "port": 4455}));
+        assert_eq!(
+            (p.format_url(&v6), p.account(&v6), p.describe(&v6)),
+            ("smb://fe80::1:4455/s".to_string(), "smb://fe80::1:4455/s".to_string(), "fe80::1".to_string())
+        );
     }
 
     #[test]
@@ -176,6 +192,9 @@ mod tests {
     fn bad_urls_and_validation() {
         let p = SmbProvider;
         assert_eq!(p.parse_url("smb://server").unwrap_err(), "SMB addresses need a share: smb://server/share");
+        assert_eq!(p.parse_url("smb://server/").unwrap_err(), "SMB addresses need a share: smb://server/share");
+        assert_eq!(p.parse_url("smb://").unwrap_err(), "No server in address: smb://");
+        assert_eq!(p.parse_url("smb:///share").unwrap_err(), "No server in address: smb:///share");
         assert!(p.parse_url("sftp://server/x").is_err());
         assert_eq!(p.validate(&params(json!({"host": "", "share": "x"}))).as_deref(), Some("Enter server."));
         assert_eq!(p.validate(&params(json!({"host": "h"}))).as_deref(), Some("Enter share."));
