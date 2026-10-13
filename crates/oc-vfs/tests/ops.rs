@@ -329,6 +329,9 @@ fn trash_is_grouped_by_file_system() {
     ops::trash(&[vp(&a, "x"), vp(&b, "y"), vp(&a, "y"), vp(&b, "x")]).unwrap();
     assert_eq!(a.trashed(), ["x", "y"]);
     assert_eq!(b.trashed(), ["y", "x"]);
+    // One call per file system: the OS trash handles a batch as one operation.
+    assert_eq!(a.trash_calls(), [["x", "y"]]);
+    assert_eq!(b.trash_calls(), [["y", "x"]]);
     assert!(a.paths().is_empty() && b.paths().is_empty());
     // One file system without a trash refuses the whole batch up front.
     let (plain, _) = mem();
@@ -336,6 +339,30 @@ fn trash_is_grouped_by_file_system() {
     a.add_file("w", "4");
     assert!(matches!(ops::trash(&[vp(&a, "w"), vp(&plain, "z")]), Err(VfsError::ReadOnly(_))));
     assert!(a.contains("w"));
+}
+
+#[test]
+fn trash_waits_for_a_slow_backend_and_reports_its_failure() {
+    let caps = Capabilities { writable: true, can_trash: true, can_rename: true, watchable: false };
+    let fs = Arc::new(MemFS::with_capabilities(caps));
+    fs.add_file("a", "1");
+    fs.add_file("b", "2");
+    let gate = testing::Gate::new();
+    fs.set_trash_gate(Some(gate.clone()));
+    let paths = [vp(&fs, "a"), vp(&fs, "b")];
+    let worker = std::thread::spawn(move || ops::trash(&paths));
+    while gate.waiting() == 0 {
+        std::thread::yield_now();
+    }
+    assert!(fs.contains("a") && fs.trash_calls().is_empty(), "held by the gate");
+    gate.open();
+    worker.join().unwrap().unwrap();
+    assert!(fs.paths().is_empty());
+    // A failing trash moves nothing.
+    fs.add_file("c", "3");
+    fs.set_faults(Faults { trash_fails: true, ..Faults::default() });
+    assert!(ops::trash(&[vp(&fs, "c")]).is_err());
+    assert!(fs.contains("c"));
 }
 
 #[test]

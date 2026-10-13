@@ -150,7 +150,9 @@ reg.add(
    A feature that renames or moves files calls
    `commands::files_moved(app, &old_to_new)` before reloading the panels
    (multi-rename does); one that shows files by location (search results:
-   `SearchResultsFS::relocate`) listens with `on_files_moved`.
+   `SearchResultsFS::relocate`) listens with `on_files_moved`, and with
+   `reg.on_files_removed(fn(&mut App, &HashSet<VPath>))` for what a trash /
+   delete job removed (`SearchResultsFS::forget`).
    Also:
    * `reg.add_location_source(fn(&App, side) -> Vec<LocationItem>)`: more
      entries in the ⌥F1/⌥F2 chooser after the drives (`LocationItem { label,
@@ -536,6 +538,16 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * Copy/move: `oc_local::copy` (native local-to-local, streaming otherwise);
   delete/trash/mkdir: `oc_vfs::ops`. `oc_vfs::ops::materialize` uses
   `FileSystem::materialize` first (archives extract into their own cache).
+* `app.operation` is the one copy/move at a time (its File exists dialogs).
+  F8 trash/delete doesn't take it: `fileops::Removals` (app state) queues
+  the jobs and runs them one after another in the background; their
+  entries leave both panels (and search results) when the user confirms,
+  and `panel::listed` keeps hiding their paths until their job has ended
+  (a panel inside a folder being removed goes to where it was). When a job
+  succeeds, `commands::files_removed` tells features before the panels
+  reload (search results forget the hits at once).
+  A slow job says so on its panel's bottom line (`FilePanel::note`);
+  quitting waits for the running job and runs the queued ones (bounded).
 * Folder watching: `panel/watch.rs` (notify), debounced 250 ms, reload keeps
   the cursor; never supersedes a listing still on its way. Watchers are
   started and stopped on a worker (FSEvents starts/joins a thread). A

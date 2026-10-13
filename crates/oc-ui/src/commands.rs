@@ -20,7 +20,7 @@
 //! Shortcut strings use `Primary` for ⌘ on macOS / Ctrl elsewhere (see
 //! [`Shortcut::parse`]); `.mac_keys()` / `.other_keys()` add platform-only ones.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use oc_vfs::VPath;
@@ -235,6 +235,22 @@ pub fn files_moved(app: &mut App, moved: &HashMap<VPath, VPath>) {
         hook(app, moved);
     }
 }
+/// Runs when a trash / delete job has removed files, before the panels
+/// reload: e.g. search results drop their hits at once. See [`files_removed`].
+pub type RemovedHook = fn(&mut App, &HashSet<VPath>);
+
+/// Tell every feature that files were trashed or deleted (calls the
+/// [`Registry::on_files_removed`] hooks).
+pub fn files_removed(app: &mut App, removed: &HashSet<VPath>) {
+    if removed.is_empty() {
+        return;
+    }
+    let hooks = app.registry.on_files_removed.clone();
+    for hook in hooks {
+        hook(app, removed);
+    }
+}
+
 /// Extra entries for the drive / location chooser (⌥F1 / ⌥F2) of side
 /// `side`, e.g. saved servers or bookmarks. Called on the UI thread when the
 /// chooser opens: no I/O, only what the feature already has in memory.
@@ -261,6 +277,7 @@ pub struct Registry {
     pub(crate) on_resized: Vec<ResizeHook>,
     pub(crate) on_files_changed: Vec<FilesChangedHook>,
     pub(crate) on_files_moved: Vec<MovedHook>,
+    pub(crate) on_files_removed: Vec<RemovedHook>,
     pub(crate) location_sources: Vec<LocationSource>,
     pub(crate) on_load_error: Vec<LoadErrorHook>,
     pub(crate) on_shutdown: Vec<ShutdownHook>,
@@ -330,6 +347,12 @@ impl Registry {
     /// Called with old -> new locations after files were renamed or moved.
     pub fn on_files_moved(&mut self, hook: MovedHook) -> &mut Self {
         self.on_files_moved.push(hook);
+        self
+    }
+
+    /// Called with the locations a trash / delete job removed.
+    pub fn on_files_removed(&mut self, hook: RemovedHook) -> &mut Self {
+        self.on_files_removed.push(hook);
         self
     }
 

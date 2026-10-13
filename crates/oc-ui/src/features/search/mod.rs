@@ -9,12 +9,13 @@
 //! started. A timer refreshes the panels showing running results (new hits,
 //! the "searching…" counters); Esc stops the search; ⇧⌘F shows the last
 //! results again. After file operations the hits whose files are gone are
-//! dropped ([`Registry::on_files_changed`]); renamed ones follow
+//! dropped ([`Registry::on_files_changed`]; trashed ones at once,
+//! [`Registry::on_files_removed`] → [`forget`]); renamed ones follow
 //! ([`Registry::on_files_moved`] → [`relocate`]).
 
 pub mod dialog;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -56,6 +57,7 @@ pub fn register(reg: &mut Registry) {
     );
     reg.on_files_changed(prune_then_reload);
     reg.on_files_moved(relocate);
+    reg.on_files_removed(forget);
 }
 
 /// A search the app knows about: the last one and any shown in a panel.
@@ -304,6 +306,23 @@ fn prune_then_reload(app: &mut App) {
             }
         },
     );
+}
+
+/// A trash / delete job removed `removed`: drop their hits now (the
+/// background prune would come only after the panels' reload, and the hits
+/// would show again meanwhile); panels showing the results are listed again.
+pub fn forget(app: &mut App, removed: &HashSet<VPath>) {
+    let all: Vec<Arc<SearchResultsFS>> = match app.try_state::<SearchState>() {
+        Some(st) => st.tracked.iter().map(|t| t.results.clone()).collect(),
+        None => return,
+    };
+    for results in all {
+        if results.forget(removed) > 0 {
+            for side in shown_sides(app, &results) {
+                panel::reload(app, side);
+            }
+        }
+    }
 }
 
 /// Follow renamed files: `moved` maps old to new locations (multi-rename,

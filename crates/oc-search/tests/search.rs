@@ -4,7 +4,7 @@
 mod common;
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{MAIN_SEPARATOR, Path};
 use std::sync::Arc;
@@ -562,6 +562,23 @@ fn results_folder_acts_on_real_files() {
     assert!(results.changes() > before);
     assert!(listing(&root).is_empty());
     assert_eq!(results.prune(), 0);
+}
+
+#[test]
+fn results_forget_what_was_trashed() {
+    let (_tmp, project) = project();
+    let query = Query { names: "*.py".into(), ..Query::new(vec![local(&project)]) };
+    let results = Arc::new(SearchResultsFS::new(query));
+    results.run(|| false).unwrap();
+    let root = VPath::new(results.clone(), "");
+    let before = results.changes();
+    // A folder takes the hits below it along; nothing is looked up on disk.
+    let removed = HashSet::from([local(&project.join("src").join("deep")), local(&project.join("src").join("util.py"))]);
+    assert_eq!(results.forget(&removed), 2);
+    assert!(results.changes() > before);
+    assert_eq!(listing(&root), ["src/main.py"]);
+    assert_eq!(results.forget(&removed), 0);
+    assert_eq!(results.forget(&HashSet::new()), 0);
 }
 
 #[test]

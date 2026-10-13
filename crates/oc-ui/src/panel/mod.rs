@@ -70,6 +70,9 @@ pub struct FilePanel {
     pub jobs: usize,
     /// Replaces the status line while `jobs` run ("opening x.zip…").
     pub busy_text: Option<String>,
+    /// Replaces the status line while work this panel started runs on in
+    /// the background, the panel staying usable ("moving 3 items to the trash…").
+    pub note: Option<String>,
     quick: Option<(String, Instant)>,
     ndirs: usize,
     nfiles: usize,
@@ -107,6 +110,7 @@ impl FilePanel {
             loading_hint: false,
             jobs: 0,
             busy_text: None,
+            note: None,
             quick: None,
             ndirs: 0,
             nfiles: 0,
@@ -232,6 +236,31 @@ impl FilePanel {
         }
         self.list.select(row, self.rows);
         self.quick = None;
+    }
+
+    /// Take the entries `gone` names out of the listing (and the marks) at
+    /// once: they are being deleted. If the cursor's entry goes, the cursor
+    /// moves to the entry after the last one removed, or at the end to the
+    /// one before it. False if nothing was removed.
+    pub fn remove_entries(&mut self, gone: impl Fn(&str) -> bool) -> bool {
+        let Some(last) = self.entries.iter().rposition(|e| gone(&e.name)) else {
+            return false;
+        };
+        let keep = if self.cursor_entry().is_some_and(|e| gone(&e.name)) {
+            self.entries[last + 1..].first().or_else(|| self.entries[..last].iter().rev().find(|e| !gone(&e.name)))
+        } else {
+            self.cursor_entry()
+        };
+        let keep = keep.map(|e| e.name.clone());
+        let on_parent = self.cursor_name() == Some(PARENT);
+        self.entries.retain(|e| !gone(&e.name));
+        self.marked.retain(|n| !gone(n));
+        self.recount();
+        self.list.set_len(self.len());
+        let row = if on_parent { Some(0) } else { keep.and_then(|n| self.row_of(&n)) };
+        self.list.select(row.unwrap_or(0), self.rows);
+        self.quick = None;
+        true
     }
 
     fn recount(&mut self) {
@@ -389,6 +418,9 @@ impl FilePanel {
         }
         if self.loading_hint && self.completed != self.request {
             return "loading…".into();
+        }
+        if let Some(note) = &self.note {
+            return note.clone();
         }
         let fs = &self.location.fs;
         let place = match (fs.status_text(), self.free) {
@@ -553,8 +585,12 @@ fn listed(
     side: usize,
     request: u64,
     opts: LoadOptions,
-    result: Result<Listed, (String, Option<oc_vfs::VfsError>)>,
+    mut result: Result<Listed, (String, Option<oc_vfs::VfsError>)>,
 ) {
+    if let Ok(l) = &mut result {
+        // Still on its way to the trash: it would only blink back.
+        crate::features::fileops::hide_removed(app, &l.location, &mut l.entries);
+    }
     let p = panel_mut(app, side);
     if request != p.request {
         return; // superseded by a newer load
@@ -764,8 +800,9 @@ fn reload_when_quiet(app: &mut App, side: usize) {
         Some(due) if due > now => {
             app.schedule(due - now, move |app| reload_when_quiet(app, side));
         }
-        // Our own copy/move/delete is still changing the folder: it reloads
-        // both panels when it ends, so wait for that instead.
+        // Our own copy/move is still changing the folder: it reloads both
+        // panels when it ends, so wait for that instead. (Trash / delete jobs
+        // don't hold this up: their entries stay hidden, `listed`.)
         _ if busy => {
             app.schedule(WATCH_DEBOUNCE, move |app| reload_when_quiet(app, side));
         }

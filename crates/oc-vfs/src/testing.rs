@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
@@ -46,6 +46,48 @@ pub struct Faults {
     pub write_limit: Option<usize>,
     /// `rename` always fails (like servers that refuse renames).
     pub rename_fails: bool,
+    /// `trash` fails before moving anything.
+    pub trash_fails: bool,
+}
+
+/// Holds whoever [`wait`](Gate::wait)s until it is [`open`](Gate::open)ed
+/// (a slow backend under the test's control). Clones share the gate.
+#[derive(Clone, Debug, Default)]
+pub struct Gate(Arc<(Mutex<GateState>, Condvar)>);
+
+#[derive(Debug, Default)]
+struct GateState {
+    open: bool,
+    waiting: usize,
+}
+
+impl Gate {
+    pub fn new() -> Self {
+        Gate::default()
+    }
+
+    fn state(&self) -> MutexGuard<'_, GateState> {
+        self.0.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn open(&self) {
+        self.state().open = true;
+        self.0.1.notify_all();
+    }
+
+    pub fn wait(&self) {
+        let mut st = self.state();
+        st.waiting += 1;
+        while !st.open {
+            st = self.0.1.wait(st).unwrap_or_else(|e| e.into_inner());
+        }
+        st.waiting -= 1;
+    }
+
+    /// How many are held right now.
+    pub fn waiting(&self) -> usize {
+        self.state().waiting
+    }
 }
 
 #[derive(Debug)]
@@ -55,6 +97,10 @@ struct State {
     /// and parents before their children, which `walk` relies on.
     items: BTreeMap<String, Item>,
     trashed: Vec<String>,
+    /// The paths of each `trash` call.
+    trash_calls: Vec<Vec<String>>,
+    /// `trash` waits for this first.
+    trash_gate: Option<Gate>,
     faults: Faults,
 }
 
@@ -121,7 +167,7 @@ impl MemFS {
     pub fn with_capabilities(caps: Capabilities) -> Self {
         let mut items = BTreeMap::new();
         items.insert(String::new(), Item { node: Node::Dir, mtime: 0.0 });
-        MemFS { state: Arc::new(Mutex::new(State { items, trashed: Vec::new(), faults: Faults::default() })), caps }
+        MemFS { state: Arc::new(Mutex::new(State { items, trashed: Vec::new(), trash_calls: Vec::new(), trash_gate: None, faults: Faults::default() })), caps }
     }
 
     /// Convenience: wrap in an `Arc` and return the root `VPath`.
@@ -135,6 +181,11 @@ impl MemFS {
 
     pub fn set_faults(&self, faults: Faults) {
         self.lock().faults = faults;
+    }
+
+    /// Make `trash` wait until `gate` opens (None: no waiting).
+    pub fn set_trash_gate(&self, gate: Option<Gate>) {
+        self.lock().trash_gate = gate;
     }
 
     /// Put a file in place regardless of capabilities, creating parents
@@ -178,6 +229,11 @@ impl MemFS {
     /// Paths passed to `trash`, in order.
     pub fn trashed(&self) -> Vec<String> {
         self.lock().trashed.clone()
+    }
+
+    /// The paths of each `trash` call, one list per call.
+    pub fn trash_calls(&self) -> Vec<Vec<String>> {
+        self.lock().trash_calls.clone()
     }
 
     fn make_parents(st: &mut State, path: &str) {
@@ -388,7 +444,15 @@ impl FileSystem for MemFS {
         if !self.caps.can_trash {
             return Err(VfsError::ReadOnly(self.read_only_reason()));
         }
+        let gate = self.lock().trash_gate.clone();
+        if let Some(gate) = gate {
+            gate.wait();
+        }
         let mut st = self.lock();
+        st.trash_calls.push(paths.to_vec());
+        if st.faults.trash_fails {
+            return Err(io_err(io::ErrorKind::PermissionDenied, "simulated trash failure".into()));
+        }
         for path in paths {
             if !st.items.contains_key(path.as_str()) || path.is_empty() {
                 return Err(not_found(path));
