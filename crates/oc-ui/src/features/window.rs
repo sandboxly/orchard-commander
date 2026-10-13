@@ -19,8 +19,7 @@ pub fn register(reg: &mut Registry) {
         })
         .help("Open the menu bar")
         .keys(&["F9"])
-        .fkey("F9", "Menu")
-        .hidden_from_palette(),
+        .fkey("F9", "Menu"),
     );
     reg.add(
         Command::new("app.quit", "Quit", |app| app.quit())
@@ -68,13 +67,14 @@ pub fn zoom(app: &mut App, delta: i64) {
     app.update_settings(move |s| s.font_size = size);
 }
 
-/// ⌘P: every command, fuzzy-filtered; Enter runs it.
+/// ⌘P: every command, fuzzy-filtered; Enter runs it (1.x lists them all,
+/// "Menu" and "Stop search" too; one that can't run now does nothing).
 pub fn command_palette(app: &mut App) {
     let cmds: Vec<(&'static str, PickerItem)> = app
         .registry
         .commands()
         .iter()
-        .filter(|c| c.in_palette && c.is_enabled(app))
+        .filter(|c| c.in_palette)
         .map(|c| {
             let keys = c.shortcuts.iter().map(|s| s.display()).collect::<Vec<_>>().join(", ");
             (c.id, PickerItem::new(c.title.clone(), if keys.is_empty() { c.help.clone() } else { keys }))
