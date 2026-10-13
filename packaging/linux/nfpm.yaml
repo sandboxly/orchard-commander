@@ -39,7 +39,10 @@ overrides:
       - libc6 (>= 2.35)
       - libstdc++6
       - libgcc-s1
-      - libasound2 | libasound2t64
+      # Versioned: unversioned, Ubuntu 24.04's apt satisfies `libasound2` with
+      # liboss4-salsa-asound2 (an OSS shim), and the app then fails to start
+      # (undefined symbol snd_pcm_info_get_stream).
+      - libasound2t64 (>= 1.0.16) | libasound2 (>= 1.0.16)
       # Loaded at run time: keyboard handling, windows (X11; Wayland is
       # recommended), fonts, the system's CA certificates (WebDAV/S3 over HTTPS).
       - libxkbcommon0
