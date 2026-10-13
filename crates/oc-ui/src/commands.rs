@@ -23,6 +23,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use oc_vfs::VPath;
+
 use crate::app::App;
 use crate::input::KeyEvent;
 use crate::main_window::side::SideViewFactory;
@@ -183,6 +185,21 @@ fn parse(spec: &str) -> Shortcut {
 pub type StartHook = fn(&mut App);
 /// Runs after settings changed (`App::update_settings`).
 pub type SettingsHook = fn(&mut App);
+/// Runs after a feature renamed or moved files (old location -> new), before
+/// the panels reload: e.g. search results follow the files. See [`files_moved`].
+pub type MovedHook = fn(&mut App, &HashMap<VPath, VPath>);
+
+/// Tell every feature that files were renamed or moved (calls the
+/// [`Registry::on_files_moved`] hooks).
+pub fn files_moved(app: &mut App, moved: &HashMap<VPath, VPath>) {
+    if moved.is_empty() {
+        return;
+    }
+    let hooks = app.registry.on_files_moved.clone();
+    for hook in hooks {
+        hook(app, moved);
+    }
+}
 
 /// Everything features contribute: commands, side views, hooks.
 #[derive(Default)]
@@ -193,6 +210,7 @@ pub struct Registry {
     pub(crate) side_views: Vec<SideViewFactory>,
     pub(crate) on_start: Vec<StartHook>,
     pub(crate) on_settings_changed: Vec<SettingsHook>,
+    pub(crate) on_files_moved: Vec<MovedHook>,
 }
 
 impl Registry {
@@ -235,6 +253,12 @@ impl Registry {
 
     pub fn on_settings_changed(&mut self, hook: SettingsHook) -> &mut Self {
         self.on_settings_changed.push(hook);
+        self
+    }
+
+    /// Called with old -> new locations after files were renamed or moved.
+    pub fn on_files_moved(&mut self, hook: MovedHook) -> &mut Self {
+        self.on_files_moved.push(hook);
         self
     }
 

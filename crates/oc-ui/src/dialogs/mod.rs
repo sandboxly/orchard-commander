@@ -13,7 +13,7 @@ mod progress;
 pub use input::InputBox;
 pub use message::MessageBox;
 pub use picker::{Picker, PickerItem, fuzzy_score};
-pub use progress::{ProgressBox, ProgressState};
+pub use progress::{ProgressBox, ProgressState, draw_bar};
 
 use oc_grid::Frame;
 use unicode_segmentation::UnicodeSegmentation;

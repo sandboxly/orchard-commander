@@ -128,7 +128,12 @@ reg.add(
 2. Add `pub mod <name>;` and one line `<name>::register,` to `ALL` in
    `features/mod.rs`. That is the only shared edit.
 3. In `register`: `reg.add(Command…)`, `reg.add_side_view(factory)`,
-   `reg.on_start(fn)`, `reg.on_settings_changed(fn)` as needed.
+   `reg.on_start(fn)`, `reg.on_settings_changed(fn)`,
+   `reg.on_files_moved(fn(&mut App, &HashMap<VPath, VPath>))` as needed.
+   A feature that renames or moves files calls
+   `commands::files_moved(app, &old_to_new)` before reloading the panels
+   (multi-rename does); one that shows files by location (search results:
+   `SearchResultsFS::relocate`) listens with `on_files_moved`.
 4. Keep the feature's state in its own types. Where it must live in the app:
    * per side: a `SideView` (below);
    * a window: a `UiWindow` (below);

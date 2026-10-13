@@ -3876,6 +3876,8 @@ dependencies = [
  "oc-config",
  "oc-grid",
  "oc-local",
+ "oc-rename",
+ "oc-search",
  "oc-vfs",
  "tempfile",
  "unicode-segmentation",
