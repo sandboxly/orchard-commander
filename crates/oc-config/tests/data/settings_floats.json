@@ -1,0 +1,26 @@
+{
+  "color_scheme": "",
+  "follow_system_appearance": null,
+  "light_scheme": "",
+  "dark_scheme": "",
+  "font_family": "",
+  "font_style": "",
+  "font_size": 9,
+  "line_spacing": 0.85,
+  "frame_style": "",
+  "menu_bar_visible": null,
+  "show_hidden": null,
+  "play_next": null,
+  "terminal_shell": "",
+  "terminal_link": null,
+  "left_path": "",
+  "right_path": "",
+  "extra": {
+    "ratio": 1e-05,
+    "big": 1e+16,
+    "neg": -0.0,
+    "whole": 3.0,
+    "ctl": "a\u0001\u007f\u2028",
+    "list": []
+  }
+}

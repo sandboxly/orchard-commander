@@ -11,11 +11,16 @@ use std::io::{self, Read, Seek, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod ops;
+pub mod testing;
 pub mod transfer;
 pub use transfer::{Conflict, Progress, Transfer, TransferCallbacks};
 
 /// Path below a walk's starting point, as parts.
 pub type RelPath = Vec<String>;
+
+/// What [`FileSystem::walk`] yields: the same type implementors may spell out in full.
+pub type WalkIter<'a> = Box<dyn Iterator<Item = Result<(RelPath, Entry)>> + 'a>;
 
 /// Chunk size for streaming copies.
 pub const CHUNK: usize = 1024 * 1024;
@@ -283,7 +288,7 @@ pub trait FileSystem: Send + Sync {
 
     /// `path` itself (as an empty RelPath) and everything below it, directories
     /// before their contents.
-    fn walk<'a>(&'a self, path: &str) -> Result<Box<dyn Iterator<Item = Result<(RelPath, Entry)>> + 'a>>;
+    fn walk<'a>(&'a self, path: &str) -> Result<WalkIter<'a>>;
 
     fn exists(&self, path: &str) -> bool {
         self.stat(path).is_ok()
@@ -384,10 +389,10 @@ impl VPath {
 
     /// An archive's root is named after the archive.
     pub fn name(&self) -> String {
-        if self.fs.parent_path(&self.path).is_none() {
-            if let Some(c) = self.fs.container() {
-                return c.name();
-            }
+        if self.fs.parent_path(&self.path).is_none()
+            && let Some(c) = self.fs.container()
+        {
+            return c.name();
         }
         self.fs.basename(&self.path)
     }

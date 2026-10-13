@@ -3,6 +3,19 @@ name = "oc-grid"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "GPU character-grid renderer (wgpu) that the Orchard Commander UI draws into"
 
 [dependencies]
-oc-vfs.workspace = true
+wgpu = "30.0.1"
+winit = "0.30.13"
+swash = "0.2.10"
+fontdb = { version = "0.24.0", features = ["fs", "memmap", "fontconfig"] }
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "simd"] }
+bytemuck = { version = "1.25.2", features = ["derive"] }
+pollster = "1.0.1"
+unicode-width = "0.2.2"
+unicode-segmentation = "1.13.3"
+thiserror = "2"
+png = "0.18.1"
+rustc-hash = "2.1"
+memmap2 = "0.9"

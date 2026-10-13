@@ -6,3 +6,7 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+sha1_smol = "1.0"
+
+[dev-dependencies]
+tempfile.workspace = true

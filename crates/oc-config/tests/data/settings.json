@@ -1,0 +1,29 @@
+{
+  "color_scheme": "nord",
+  "follow_system_appearance": null,
+  "light_scheme": "",
+  "dark_scheme": "",
+  "font_family": "",
+  "font_style": "",
+  "font_size": 15,
+  "line_spacing": 1.25,
+  "frame_style": "",
+  "menu_bar_visible": null,
+  "show_hidden": false,
+  "play_next": null,
+  "terminal_shell": "",
+  "terminal_link": null,
+  "left_path": "/home/j\u00f6rg/\u00d6 \ud83d\ude00",
+  "right_path": "",
+  "extra": {
+    "geometry": "AdnQywADAAA=",
+    "cols": [
+      1,
+      2.5,
+      null
+    ],
+    "nested": {
+      "b": true
+    }
+  }
+}
