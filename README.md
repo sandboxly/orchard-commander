@@ -17,7 +17,7 @@ Website: https://sandboxly.github.io/orchard-commander/
 | System | Download | Package manager |
 | --- | --- | --- |
 | macOS 14 or later, Apple silicon | [Orchard-Commander-macOS.dmg](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-macOS.dmg) | `brew install --cask sandboxly/tap/orchard-commander` |
-| Windows 10 and 11, 64-bit | [Installer](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe), [portable zip](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip) | |
+| Windows 10 and 11, 64-bit | [Installer](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe), [portable zip](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip) | `winget install Sandboxly.OrchardCommander` or `choco install orchard-commander` |
 | Linux, x86-64 | [AppImage](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage), [.deb](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb), [.rpm](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm), [.tar.gz](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz) | |
 
 All versions are on the [releases page](https://github.com/sandboxly/orchard-commander/releases).
