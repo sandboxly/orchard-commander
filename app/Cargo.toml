@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version = "1.90"
-description = "A two-panel file manager in the spirit of Norton and Total Commander"
+description = "A two-panel file manager for macOS, Windows and Linux"
 
 [[bin]]
 name = "orchard-commander"

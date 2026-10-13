@@ -9,7 +9,7 @@ section: utils
 priority: optional
 maintainer: Stephan Lengl <lengl.stephan@gmail.com>
 description: |
-  Two-panel file manager in the spirit of Norton and Total Commander.
+  Two-panel file manager for macOS, Windows and Linux.
   Previews for code, images, PDFs, audio and video; archives and SFTP, SMB,
   WebDAV and S3 servers as folders; find files, multi-rename and a built-in
   terminal.

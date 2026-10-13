@@ -43,7 +43,7 @@ fn show(app: &mut App) {
 pub fn about_text(licenses: Option<&Path>) -> String {
     let mut text = format!(
         "Orchard Commander {}\n\
-         A two-panel file manager in the spirit of Norton and Total Commander.\n\
+         A two-panel file manager for macOS, Windows and Linux.\n\
          https://sandboxly.github.io/orchard-commander/\n\n\
          Copyright (c) 2026 Stephan Lengl. MIT license.\n\n\
          Includes FFmpeg (LGPL 3.0 or later), PDFium (BSD-3-Clause), UnRAR (RARLAB's \

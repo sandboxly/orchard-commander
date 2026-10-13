@@ -32,7 +32,7 @@ pub fn register(reg: &mut Registry) {
     );
     reg.add(
         Command::new("panel.swap", "Swap panels", swap_panels)
-            .help("Exchange the left and right folders (Total Commander: Ctrl+U)")
+            .help("Exchange the left and right folders")
             .keys(&["Primary+U"])
             .menu(Menu::Commands, "panels"),
     );
