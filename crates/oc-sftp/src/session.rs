@@ -227,8 +227,15 @@ impl Conn {
     /// Give back a stream's channel: kept for reuse unless it broke or
     /// another stream still uses it.
     pub fn checkin(&self, sftp: Arc<Sftp>) {
-        let before = sftp.users.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| Some(n.saturating_sub(1)));
-        let left = before.unwrap_or(0).saturating_sub(1);
+        // Saturating decrement (fetch_update is deprecated on newer Rust,
+        // its replacement try_update is too new for older ones).
+        let mut before = sftp.users.load(Ordering::Relaxed);
+        while let Err(now) =
+            sftp.users.compare_exchange_weak(before, before.saturating_sub(1), Ordering::Relaxed, Ordering::Relaxed)
+        {
+            before = now;
+        }
+        let left = before.saturating_sub(1);
         if left > 0 || !sftp.stream || sftp.is_dead() || !self.is_connected() {
             return;
         }

@@ -227,7 +227,7 @@ fn samba_write_operations() {
     // Errors read like the Python version's.
     let err = remote.stat("/missing.txt").unwrap_err();
     assert!(err.is_not_found());
-    assert_eq!(err.to_string(), format!(r"[Errno 2] No such file or directory: '\\127.0.0.1\SHARE\missing.txt'"));
+    assert_eq!(err.to_string(), r"[Errno 2] No such file or directory: '\\127.0.0.1\SHARE\missing.txt'");
     let err = remote.mkdir("/new", false).unwrap_err();
     assert!(err.to_string().starts_with("[Errno 17] File exists"), "{err}");
     let err = remote.rename("/up.txt", "/new").unwrap_err();

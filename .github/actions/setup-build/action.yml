@@ -23,7 +23,9 @@ runs:
   steps:
     - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10
       with:
-        toolchain: stable
+        # Pinned: each new stable brings deprecations and clippy lints, and
+        # CI runs clippy with -D warnings. Bump on purpose.
+        toolchain: "1.99.0"
         components: ${{ inputs.components }}
 
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -48,7 +50,11 @@ runs:
     - name: FFmpeg (macOS, Homebrew)
       if: runner.os == 'macOS'
       shell: bash
-      run: brew install ffmpeg pkg-config
+      # ffmpeg@8: ffmpeg-next 8.1 does not build against FFmpeg 9 (Homebrew's
+      # plain `ffmpeg`). Keg-only, so point ffmpeg-sys-next at it.
+      run: |
+        brew install ffmpeg@8 pkg-config
+        echo "FFMPEG_DIR=$(brew --prefix ffmpeg@8)" >> "$GITHUB_ENV"
 
     - name: libclang for bindgen (Windows)
       if: runner.os == 'Windows'

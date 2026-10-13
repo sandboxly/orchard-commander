@@ -81,7 +81,7 @@ impl<'a> Cur<'a> {
 /// UTF-16LE text as mutagen decodes it, NULs stripped at both ends (lossy
 /// where mutagen would fail on the whole file).
 pub(crate) fn utf16le(data: &[u8]) -> String {
-    let units: Vec<u16> = data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = data.as_chunks::<2>().0.iter().map(|&c| u16::from_le_bytes(c)).collect();
     String::from_utf16_lossy(&units).trim_matches('\0').to_string()
 }
 

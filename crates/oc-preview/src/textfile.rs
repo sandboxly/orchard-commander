@@ -197,8 +197,7 @@ fn decode_unicode(body: &[u8], enc: Encoding) -> Option<String> {
             if !body.len().is_multiple_of(2) {
                 return None;
             }
-            let units = body.chunks_exact(2).map(|c| {
-                let pair = [c[0], c[1]];
+            let units = body.as_chunks::<2>().0.iter().map(|&pair| {
                 if enc == Encoding::Utf16Le { u16::from_le_bytes(pair) } else { u16::from_be_bytes(pair) }
             });
             char::decode_utf16(units).collect::<Result<String, _>>().ok()
@@ -207,9 +206,10 @@ fn decode_unicode(body: &[u8], enc: Encoding) -> Option<String> {
             if !body.len().is_multiple_of(4) {
                 return None;
             }
-            body.chunks_exact(4)
-                .map(|c| {
-                    let quad = [c[0], c[1], c[2], c[3]];
+            body.as_chunks::<4>()
+                .0
+                .iter()
+                .map(|&quad| {
                     char::from_u32(if enc == Encoding::Utf32Le { u32::from_le_bytes(quad) } else { u32::from_be_bytes(quad) })
                 })
                 .collect()

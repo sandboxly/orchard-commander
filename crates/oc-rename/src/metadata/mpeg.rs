@@ -597,7 +597,7 @@ impl TsHead {
         if pid == 0 && self.pmt_pid.is_none() {
             if let Some(s) = pat.push(start, payload) {
                 // program number, PID: the first real program (0 is the network table)
-                self.pmt_pid = s.get(8..).unwrap_or_default().chunks_exact(4).find_map(|e| {
+                self.pmt_pid = s.get(8..).unwrap_or_default().as_chunks::<4>().0.iter().find_map(|e| {
                     (u16::from_be_bytes([e[0], e[1]]) != 0).then(|| u16::from_be_bytes([e[2] & 0x1F, e[3]]))
                 });
             }

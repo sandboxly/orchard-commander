@@ -21,7 +21,8 @@
 # packaging/stage.sh copies only the libraries the app links.
 #
 # macOS has no LGPL build here: use Homebrew's ffmpeg for development
-# (`brew install ffmpeg`); the release bundle is made by packaging/macos/.
+# (`brew install ffmpeg@8`, FFMPEG_DIR=$(brew --prefix ffmpeg@8): ffmpeg-next
+# 8.1 does not build against FFmpeg 9); the release bundle is made by packaging/macos/.
 #
 # When updating: pick a month-end autobuild-YYYY-MM-DD-* release, take the
 # sums from the GitHub API (assets[].digest) or `sha256sum`, and update
@@ -42,7 +43,7 @@ asset_of() {
     linux-arm64) echo "$BUILD-linuxarm64-lgpl-shared-$SERIES.tar.xz" ;;
     win-x64) echo "$BUILD-win64-lgpl-shared-$SERIES.zip" ;;
     win-arm64) echo "$BUILD-winarm64-lgpl-shared-$SERIES.zip" ;;
-    mac-*) echo "no LGPL FFmpeg build for macOS here: brew install ffmpeg (see the header of $0)" >&2; return 1 ;;
+    mac-*) echo "no LGPL FFmpeg build for macOS here: brew install ffmpeg@8 (see the header of $0)" >&2; return 1 ;;
     *) echo "unsupported platform: $1 (one of: ${ALL[*]})" >&2; return 1 ;;
   esac
 }

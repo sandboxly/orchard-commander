@@ -394,7 +394,7 @@ fn opaque_background_stays_opaque_under_text_and_overlays() {
         Layer::AboveText,
     );
     let img = r.render(&f).unwrap();
-    let translucent = img.data.chunks_exact(4).filter(|p| p[3] != 255).count();
+    let translucent = img.data.as_chunks::<4>().0.iter().filter(|p| p[3] != 255).count();
     assert_eq!(translucent, 0, "pixels with alpha < 255");
 }
 

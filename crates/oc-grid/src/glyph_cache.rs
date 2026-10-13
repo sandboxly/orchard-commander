@@ -334,7 +334,7 @@ impl GlyphCache {
         };
         let data = match img.content {
             swash::scale::image::Content::SubpixelMask => {
-                img.data.chunks_exact(4).map(|p| p[3]).collect()
+                img.data.as_chunks::<4>().0.iter().map(|p| p[3]).collect()
             }
             _ => img.data,
         };

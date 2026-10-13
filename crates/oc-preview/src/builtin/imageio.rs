@@ -200,7 +200,7 @@ pub fn decode(data: &[u8], format: &'static str) -> Result<ImageData, String> {
 }
 
 fn unpremultiply(rgba: &mut [u8]) {
-    for p in rgba.chunks_exact_mut(4) {
+    for p in rgba.as_chunks_mut::<4>().0 {
         let a = p[3] as u32;
         if a != 0 && a != 255 {
             for c in &mut p[..3] {
