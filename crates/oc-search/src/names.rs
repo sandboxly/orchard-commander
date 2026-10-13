@@ -89,7 +89,7 @@ fn compile_masks(masks: &[&str], case: bool) -> Result<Regex, regex::Error> {
         if mask.contains(['*', '?', '[']) {
             translate(mask, &mut pattern);
         } else {
-            // TC: plain text matches anywhere in the name.
+            // Plain text matches anywhere in the name.
             pattern.push_str(".*");
             pattern.push_str(&regex::escape(mask));
             pattern.push_str(".*");

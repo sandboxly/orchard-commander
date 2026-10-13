@@ -1,4 +1,4 @@
-//! "Organize bookmarks" (TC's "Configure"): the bookmark tree with Title /
+//! "Organize bookmarks": the bookmark tree with Title /
 //! Folder / Other panel columns; reorder by dragging (into folders, too) or
 //! ▲ ▼, add folders and separators, edit, delete. Changes apply only with
 //! OK (port of `BookmarkOrganizer` and `EditBookmarkDialog`).

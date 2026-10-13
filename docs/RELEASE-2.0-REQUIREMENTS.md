@@ -25,18 +25,18 @@ under a tag + `python-1.x` branch). Tell ocmd-python when close to ready; it doe
 - Legacy "fcmd" migration may be dropped in 2.0
 
 ## Feature parity with 1.1.1
-Two panels with TC keys, marking, hidden files, reload keeping cursor, F5/F6/F7/F8, File-exists dialog O/A/S/K;
+Two panels with the classic keys, marking, hidden files, reload keeping cursor, F5/F6/F7/F8, File-exists dialog O/A/S/K;
 previews (F3 / Shift+F3 View as): listing, image, PDF, audio/video + waveform, markdown, highlighted text, hex;
 media: remembered mute, autoplay (player + global), play next on end (configurable);
 archives as folders, nested, also on servers (RAR: 1.x uses 7z; Rust uses the vendored unrar crate);
 SFTP/SMB/WebDAV/S3 (connections.json + keychain); Find Files virtual folder (acts on real files, ".." to search root);
-Multi-Rename with TC masks + [=field] metadata (MP3 tags, video resolution, EXIF) + undo; bookmarks (⌘D, ⌥⌘D);
+Multi-Rename with masks + [=field] metadata (MP3 tags, video resolution, EXIF) + undo; bookmarks (⌘D, ⌥⌘D);
 terminal panel (session per side, PowerShell on Windows, mouse reporting, two-way folder linking via OSC 7/process cwd,
 cd only at prompt, Nerd Font/powerline glyphs);
 F4 editor (Shift+F4 new file, keeps encoding/BOM/line endings, temp+atomic replace keeping permissions, servers too,
 archives read-only, reload on outside change, find/replace, go to line ⌘L/⌥⌘L, undo/redo, own File/Edit menu on macOS);
 themes (built-in schemes incl. gruvbox + user TOML, font, line spacing, frame style, live settings);
-NC menus Left/Files/Commands/Options/Right (native on macOS + in-window strip via F9); command palette ⌘P; zoom.
+Menus Left/Files/Commands/Options/Right (native on macOS + in-window strip via F9); command palette ⌘P; zoom.
 Full key list: ../fcmd/docs/manual/13-keyboard-reference.md
 
 ## Gotchas to carry over

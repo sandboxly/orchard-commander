@@ -1,4 +1,4 @@
-//! Batch renaming: TC mask placeholders, search & replace, planning checks,
+//! Batch renaming: mask placeholders, search & replace, planning checks,
 //! safe execution, undo. Port of `tests/test_rename.py`, plus a differential
 //! test against outputs recorded from the Python version.
 

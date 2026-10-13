@@ -1,4 +1,4 @@
-//! Name and extension masks: TC placeholders expanded for one item.
+//! Name and extension masks: placeholders expanded for one item.
 //!
 //! Positions and ranges count characters (Unicode scalar values), as in the
 //! Python version, so `[N1-3]` and error positions agree with what users see.
@@ -130,7 +130,7 @@ fn parse_range(spec: &str) -> Option<(i64, Option<Sep>, Option<i64>)> {
     }
 }
 
-/// TC ranges: '2-5', '2,5', '2-', '-8,5', '-8-5', '2--5', '-5-', '3' (one char).
+/// Ranges: '2-5', '2,5', '2-', '-8,5', '-8-5', '2--5', '-5-', '3' (one char).
 /// `at` is the byte offset of the placeholder in `mask`, for errors.
 fn slice<'t>(text: &'t str, spec: &str, mask: &str, at: usize) -> Result<&'t str, NameError> {
     if spec.is_empty() {

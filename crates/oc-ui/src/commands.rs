@@ -131,7 +131,7 @@ impl Command {
         self
     }
 
-    /// Put it in an NC menu, in a section of it (see [`crate::menus`]).
+    /// Put it in a menu, in a section of it (see [`crate::menus`]).
     pub fn menu(mut self, menu: Menu, section: &'static str) -> Self {
         self.menu = Some((menu, section));
         self

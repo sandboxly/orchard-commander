@@ -1,5 +1,5 @@
 //! Search & replace with Python `re.sub` semantics: replacement templates
-//! (`$1` like TC, `\1` / `\g<name>` like Python) and the way empty matches
+//! (`$1`, `\1` / `\g<name>` like Python) and the way empty matches
 //! are replaced, so RegEx renames give the same names as before.
 
 use std::borrow::Cow;
@@ -386,7 +386,7 @@ fn python_class(chars: &[char], start: usize, ignore_case: bool, out: &mut Strin
     Some(i)
 }
 
-/// `$1` like TC becomes `\1` like Python (Python's `\$(\d+)`, Unicode digits included).
+/// `$1` becomes `\1` like Python (Python's `\$(\d+)`, Unicode digits included).
 fn dollar_groups(replacement: &str) -> std::borrow::Cow<'_, str> {
     static DOLLAR: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"\$(\d+)").expect("valid"));
     DOLLAR.replace_all(replacement, r"\${1}")

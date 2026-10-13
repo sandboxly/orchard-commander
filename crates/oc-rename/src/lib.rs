@@ -1,6 +1,6 @@
 //! Batch renaming with name patterns (multi-rename, ⌘M / Ctrl+M).
 //!
-//! A [`Rule`] turns each file's old name into a new one in three steps, as in TC:
+//! A [`Rule`] turns each file's old name into a new one in three steps:
 //!
 //! 1. the **masks** — name and extension — with placeholders in brackets:
 //!    `[N]` name, `[E]` extension, ranges like `[N2-5] [N2,5] [N2-] [N-8,5]

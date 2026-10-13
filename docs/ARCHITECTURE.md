@@ -13,7 +13,7 @@ app/ (binary "orchard-commander")        crates/oc-ui (all UI state and logic)
 │                --screenshot             │                   tasks, timers, command execution
 ├── platform.rs  winit event loop,        ├── tasks.rs        run_in_background / spawn / post / ask_ui
 │                GPU surfaces, input      ├── commands.rs     Command + Registry (ids, shortcuts, F-keys, menus)
-│                conversion, wake-ups     ├── menus.rs        NC menus model, in-window strip (F9)
+│                conversion, wake-ups     ├── menus.rs        menus model, in-window strip (F9)
 ├── macos.rs     native menu (muda),      ├── main_window/    layout, drawing, input routing, side views
 │                Dock icon                ├── panel/          FilePanel state, listing, watching, drawing
 ├── selftest.rs                           ├── dialogs/        MessageBox, InputBox, ProgressBox, Picker
@@ -97,7 +97,7 @@ reg.add(
         .mac_keys(&["Cmd+Alt+C"])           // macOS only   (example)
         .other_keys(&["Ctrl+Insert"])       // Windows/Linux only (example)
         .fkey("F5", "Copy")                 // F-key bar
-        .menu(Menu::Files, "ops")           // NC menu + section (see menus.rs)
+        .menu(Menu::Files, "ops")           // menu + section (see menus.rs)
         .menu_label("Copy…")                // if the menu text differs from the title
         .checked(|app| ...)                 // check mark in menus
         .enabled(|app| ...),                // greyed out / not run when false

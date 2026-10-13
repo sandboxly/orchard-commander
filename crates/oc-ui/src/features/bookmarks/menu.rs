@@ -3,9 +3,8 @@
 //! and "* Organize bookmarks…" (port of `build_menu` and `HotkeyMenu`).
 //!
 //! Typing an entry's hotkey opens it; if several entries share the letter,
-//! it moves between them and Enter opens the highlighted one (like Total
-//! Commander, the same on every platform). Hovering a folder opens its
-//! submenu, as in a Qt menu.
+//! it moves between them and Enter opens the highlighted one (the same on
+//! every platform). Hovering a folder opens its submenu.
 
 use oc_config::Spec;
 use oc_config::bookmarks::{self as store, Bookmark, Item};
