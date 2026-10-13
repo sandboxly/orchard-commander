@@ -18,24 +18,28 @@ pub(crate) fn decode(source: MediaSource, shared: &WaveShared) {
     shared.finish(result);
 }
 
+/// Decoded blocks go to the shared levels at once (so a stalled source
+/// still shows everything decoded before it); viewers are woken at most
+/// every [`PUBLISH_EVERY`].
 struct Batch {
-    peaks: Vec<f32>,
-    rms: Vec<f32>,
+    pending: bool,
     since: Instant,
 }
 
 impl Batch {
-    fn add(&mut self, (p, r): (Vec<f32>, Vec<f32>), shared: &WaveShared) {
-        self.peaks.extend(p);
-        self.rms.extend(r);
-        shared.progress();
-        if self.since.elapsed() >= PUBLISH_EVERY {
-            self.flush(shared);
+    fn add(&mut self, block: (Vec<f32>, Vec<f32>), shared: &WaveShared) {
+        self.pending |= !block.0.is_empty();
+        let notify = self.pending && self.since.elapsed() >= PUBLISH_EVERY;
+        shared.push(block, notify);
+        if notify {
+            self.pending = false;
+            self.since = Instant::now();
         }
     }
 
     fn flush(&mut self, shared: &WaveShared) {
-        shared.push((std::mem::take(&mut self.peaks), std::mem::take(&mut self.rms)));
+        shared.push((Vec::new(), Vec::new()), self.pending);
+        self.pending = false;
         self.since = Instant::now();
     }
 }
@@ -49,7 +53,7 @@ fn run(source: MediaSource, shared: &WaveShared) -> Result<(Vec<f32>, Vec<f32>),
     let mut decoder = context.decoder().audio().map_err(|e| describe(&e))?;
 
     let mut acc = BlockAccumulator::default();
-    let mut batch = Batch { peaks: Vec::new(), rms: Vec::new(), since: Instant::now() };
+    let mut batch = Batch { pending: false, since: Instant::now() };
     let mut frame = ff::frame::Audio::empty();
     let mut mono = Vec::new();
     let mut decoded = false;

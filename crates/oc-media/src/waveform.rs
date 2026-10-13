@@ -196,12 +196,11 @@ impl WaveShared {
         self.last_progress.store(self.started.elapsed().as_millis() as u64, Ordering::Release);
     }
 
-    pub(crate) fn push(&self, (peaks, rms): (Vec<f32>, Vec<f32>)) {
+    /// Add decoded blocks; `notify` tells the viewers (the decoder batches
+    /// that). Unnotified blocks are still there when the watchdog gives up.
+    pub(crate) fn push(&self, (peaks, rms): (Vec<f32>, Vec<f32>), notify: bool) {
         self.progress();
-        if peaks.is_empty() {
-            return;
-        }
-        {
+        if !peaks.is_empty() {
             let mut l = self.lock();
             if l.complete {
                 return; // gave up meanwhile
@@ -209,7 +208,9 @@ impl WaveShared {
             l.peaks.extend(peaks);
             l.rms.extend(rms);
         }
-        self.bump();
+        if notify {
+            self.bump();
+        }
     }
 
     /// Decoding ended: the last partial block, or why it failed.

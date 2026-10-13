@@ -88,7 +88,8 @@ fn directory_summary() {
     std::fs::write(src.join(".hidden"), "h").unwrap();
     let target = LocalFs::vpath(&src);
     let text = content::directory_summary(&target, false).unwrap();
-    assert!(text.starts_with("1 directory, 2 files (15 B)\n\npkg/\nmain.py"), "{text}");
+    let sep = std::path::MAIN_SEPARATOR; // folders end in os.sep, as in 1.x
+    assert!(text.starts_with(&format!("1 directory, 2 files (15 B)\n\npkg{sep}\nmain.py")), "{text}");
     assert!(!text.contains(".hidden"));
     assert!(content::directory_summary(&target, true).unwrap().contains(".hidden"));
 }

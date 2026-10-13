@@ -250,7 +250,13 @@ fn error_reason_is_strerror() {
     let io = |msg: &str| VfsError::Io(io::Error::new(io::ErrorKind::PermissionDenied, msg));
     assert_eq!(error_reason(&io("[Errno 13] Permission denied: '/x'")), "Permission denied");
     assert_eq!(error_reason(&io("[Errno 61] Connection refused")), "Connection refused");
-    assert_eq!(error_reason(&VfsError::Io(io::Error::from_raw_os_error(13))), "Permission denied");
+    // The OS's own text without " (os error N)": EACCES / ERROR_ACCESS_DENIED.
+    let code = if cfg!(windows) { 5 } else { 13 };
+    let os = io::Error::from_raw_os_error(code);
+    let want = os.to_string().replace(&format!(" (os error {code})"), "");
+    assert_eq!(error_reason(&VfsError::Io(os)), want);
+    #[cfg(unix)]
+    assert_eq!(want, "Permission denied");
     // 1.x's remote file systems raise FileExistsError / FileNotFoundError.
     assert_eq!(error_reason(&VfsError::AlreadyExists("sftp://h/docs".into())), "File exists");
     assert_eq!(error_reason(&VfsError::NotFound("sftp://h/x".into())), "No such file or directory");

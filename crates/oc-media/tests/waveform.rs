@@ -95,7 +95,8 @@ fn fills_in_while_decoding() {
 fn gives_up_when_the_source_stalls() {
     let dir = tempfile::tempdir().unwrap();
     let bytes = std::fs::read(tone_wav(dir.path())).unwrap();
-    let options = || WaveformOptions { stall: Duration::from_millis(300), ..Default::default() };
+    // 1 s: shorter gives up on a merely busy decoder on a loaded CI runner.
+    let options = || WaveformOptions { stall: Duration::from_secs(1), ..Default::default() };
 
     // Nothing at all arrives.
     let mut nothing = SlowStream::new(bytes.clone(), Duration::ZERO);

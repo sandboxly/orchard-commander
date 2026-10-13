@@ -42,7 +42,12 @@ fn sh_in(argv: &[&str], columns: usize, lines: usize) -> Sh {
 }
 
 fn sh() -> Sh {
-    sh_in(&["/bin/sh"], 60, 12)
+    let s = sh_in(&["/bin/sh"], 60, 12);
+    // Type only at the prompt: input written before the shell is ready is
+    // echoed by the tty first, and the prompt then lands in front of the
+    // command's first output line ("$ line0").
+    eventually("prompt", || !screen_text(&s.session).trim().is_empty());
+    s
 }
 
 fn screen_text(session: &Session) -> String {

@@ -507,19 +507,23 @@ mod tests {
 
     #[test]
     fn describe_and_names() {
-        let home = Path::new("/home/me");
-        let d = |s: &Spec| s.as_ref().describe_with_home(Some(home));
-        assert_eq!(d(&local("/home/me")), "~");
-        assert_eq!(d(&local("/home/me/Projects")), "~/Projects");
-        assert_eq!(d(&local("/home/meier")), "/home/meier");
-        let slash = Path::new("/home/me/"); // HOME=/home/me/
+        use std::path::PathBuf;
+        // Local paths as the platform writes them: `/home/me` is
+        // `C:\home\me` on Windows (like `str(Path.home())` there).
+        let os = |p: &str| if cfg!(windows) { format!("C:{}", p.replace('/', "\\")) } else { p.to_string() };
+        let home = PathBuf::from(os("/home/me"));
+        let d = |s: &Spec| s.as_ref().describe_with_home(Some(&home));
+        assert_eq!(d(&local(&os("/home/me"))), "~");
+        assert_eq!(d(&local(&os("/home/me/Projects"))), os("~/Projects").trim_start_matches("C:"));
+        assert_eq!(d(&local(&os("/home/meier"))), os("/home/meier"));
+        let slash = PathBuf::from(os("/home/me/")); // HOME=/home/me/
         assert_eq!(
-            local("/home/me/x").as_ref().describe_with_home(Some(slash)),
-            "~/x"
+            local(&os("/home/me/x")).as_ref().describe_with_home(Some(&slash)),
+            os("~/x").trim_start_matches("C:")
         );
-        let root = Path::new("/"); // HOME=/ (e.g. in a container)
-        assert_eq!(local("/").as_ref().describe_with_home(Some(root)), "~");
-        assert_eq!(local("/x").as_ref().describe_with_home(Some(root)), "/x");
+        let root = PathBuf::from(os("/")); // HOME=/ (e.g. in a container)
+        assert_eq!(local(&os("/")).as_ref().describe_with_home(Some(&root)), "~");
+        assert_eq!(local(&os("/x")).as_ref().describe_with_home(Some(&root)), os("/x"));
         assert_eq!(
             d(&Spec::server("sftp://root@web", "/var/www/")),
             "sftp://root@web/var/www"
@@ -529,9 +533,9 @@ mod tests {
             "mem://me@bucket/projects"
         );
         assert_eq!(d(&Spec::server("sftp://h", "")), "sftp://h");
-        let zip = Spec::archive(local("/home/me/pack.zip"), "docs/");
-        assert_eq!(d(&zip), "~/pack.zip/docs");
-        assert_eq!(d(&Spec::archive(local("/x/a.zip"), "")), "/x/a.zip");
+        let zip = Spec::archive(local(&os("/home/me/pack.zip")), "docs/");
+        assert_eq!(d(&zip), format!("{}/docs", os("~/pack.zip").trim_start_matches("C:")));
+        assert_eq!(d(&Spec::archive(local(&os("/x/a.zip")), "")), os("/x/a.zip"));
         assert_eq!(d(&spec(json!({"kind": "?"}))), "?");
 
         assert_eq!(zip.name(), "docs");

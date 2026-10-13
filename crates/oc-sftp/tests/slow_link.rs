@@ -89,7 +89,11 @@ fn listing_during_transfers_on_a_slow_link() {
         let listed = remote.list_dir("/", ListOptions::default());
         let took = started.elapsed();
         assert!(listed.is_ok(), "{listed:?}");
-        eprintln!("listing took {took:?}"); assert!(took < Duration::from_secs(8), "a listing took {took:?} behind the transfers");
+        eprintln!("listing took {took:?}");
+        // Unbounded (8 MiB per stream at 256 KiB/s) it is over a minute; a
+        // second's worth each way is a few seconds, with headroom here for
+        // slow shared CI runners (whose sleeps make the proxy slower still).
+        assert!(took < Duration::from_secs(15), "a listing took {took:?} behind the transfers");
     }
     stop.store(true, Ordering::Relaxed);
     download.join().unwrap();

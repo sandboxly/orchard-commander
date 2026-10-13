@@ -454,7 +454,19 @@ fn set_attrs(path: &Path, file: Option<&fs::File>, a: &FileAttributes) -> io::Re
         let times = fs::FileTimes::new().set_modified(t(mtime)).set_accessed(t(a.atime.unwrap_or(mtime)));
         match file {
             Some(f) => f.set_times(times)?,
-            None => fs::File::open(path)?.set_times(times)?,
+            None => {
+                let mut options = fs::OpenOptions::new();
+                options.read(true);
+                // Windows: setting times needs FILE_WRITE_ATTRIBUTES (a
+                // read-only handle is refused), and folders open only with
+                // FILE_FLAG_BACKUP_SEMANTICS.
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::OpenOptionsExt;
+                    options.access_mode(0x0100).custom_flags(0x0200_0000);
+                }
+                options.open(path)?.set_times(times)?
+            }
         }
     }
     Ok(())

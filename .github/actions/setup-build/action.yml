@@ -40,12 +40,13 @@ runs:
         # Build: bindgen (ffmpeg-sys-next) needs libclang; cpal links ALSA,
         # keyring's Secret Service backend links libdbus.
         # Run time (tests, --self-test): winit's keyboard libraries, a
-        # software GPU (Mesa lavapipe/llvmpipe) for the renderer, fonts.
+        # software GPU (Mesa lavapipe/llvmpipe) for the renderer, fonts
+        # (CJK too: the renderer tests draw wide characters).
         sudo apt-get install -y --no-install-recommends \
           pkg-config libclang-dev libasound2-dev libdbus-1-dev \
           libxkbcommon0 libxkbcommon-x11-0 libx11-xcb1 libwayland-client0 \
           libvulkan1 mesa-vulkan-drivers libegl1 libegl-mesa0 libgl1-mesa-dri \
-          fontconfig fonts-dejavu-core
+          fontconfig fonts-dejavu-core fonts-noto-cjk
 
     - name: FFmpeg (macOS, Homebrew)
       if: runner.os == 'macOS'

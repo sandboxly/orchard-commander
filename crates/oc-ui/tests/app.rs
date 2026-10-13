@@ -262,7 +262,10 @@ fn native_menus_show_the_first_shortcut() {
     assert_eq!(shown(&app, "files.trash"), f(8));
     assert_eq!(shown(&app, "search.find"), oc_ui::Shortcut::new(Key::F(7), Mods::ALT).display());
     assert_eq!(shown(&app, "nav.location_left"), oc_ui::Shortcut::new(Key::F(1), Mods::ALT).display());
-    assert_eq!(shown(&app, "app.quit"), oc_ui::Shortcut::new(Key::Char('q'), Mods::primary()).display());
+    // Quit: ⌘Q in the macOS app menu (Qt's QuitRole did the same); elsewhere
+    // the first shortcut like every other item, F10 (1.x on Windows/Linux).
+    let quit = if cfg!(target_os = "macos") { oc_ui::Shortcut::new(Key::Char('q'), Mods::primary()).display() } else { f(10) };
+    assert_eq!(shown(&app, "app.quit"), quit);
     app.menu_key_equivalent("files.mkdir"); // F7 through the menu
     assert_eq!(app.modal_titles(), ["Make directory"]);
 }
