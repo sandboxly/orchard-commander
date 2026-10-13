@@ -25,9 +25,9 @@ impl DsfInfo {
         if self.sample_rate == 0 { 0.0 } else { self.sample_count as f64 / self.sample_rate as f64 }
     }
 
-    /// Bits per second (mutagen: rate x bits x channels).
+    /// Bits per second (mutagen: rate x bits x channels); crafted values saturate.
     pub fn bitrate(&self) -> u64 {
-        self.sample_rate as u64 * self.bits_per_sample as u64 * self.channels as u64
+        (self.sample_rate as u64).saturating_mul(self.bits_per_sample as u64).saturating_mul(self.channels as u64)
     }
 }
 
@@ -155,5 +155,8 @@ mod tests {
             let _ = read(&mut Cursor::new(file[..cut].to_vec()), cut as u64);
         }
         assert_eq!(DsfInfo::default().length(), 0.0);
+        // Crafted format values: no overflow.
+        let info = DsfInfo { channels: u32::MAX, sample_rate: u32::MAX, bits_per_sample: u32::MAX, ..DsfInfo::default() };
+        assert_eq!(info.bitrate(), u64::MAX);
     }
 }

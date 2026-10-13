@@ -75,11 +75,18 @@ impl MetadataProvider for AudioTags {
         let ext = src.suffix();
         let is_video = VIDEO.contains(&ext.as_str());
         let magic = read_at(src.file, 0, 16)?;
-        if asf::is_asf(&magic) {
-            return Ok(asf::read(&mut BufReader::new(&mut *src.file))?.audio_fields());
-        }
-        if dsf::is_dsf(&magic) {
-            return dsf_fields(src.file);
+        let other = if asf::is_asf(&magic) {
+            Some(asf::read(&mut BufReader::new(&mut *src.file))?.audio_fields())
+        } else if dsf::is_dsf(&magic) {
+            Some(dsf_fields(src.file)?)
+        } else {
+            None
+        };
+        if let Some(mut out) = other {
+            if is_video {
+                out.remove("bitrate"); // as below: no audio properties for videos
+            }
+            return Ok(out);
         }
         let tagged = match probe(src.file, &ext, true) {
             Ok(Some(t)) => t,

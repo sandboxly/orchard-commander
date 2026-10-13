@@ -647,10 +647,13 @@ impl TsHead {
         while let Some(e) = s.get(at..at + 5) {
             let (kind, pid) = (e[0], u16::from_be_bytes([e[1] & 0x1F, e[2]]));
             self.streams.push(pid);
-            if self.video.is_none()
-                && let Some(codec) = stream_codec(kind)
-            {
-                self.video = Some((pid, codec));
+            if let Some(codec) = stream_codec(kind) {
+                match self.video {
+                    None => self.video = Some((pid, codec)),
+                    // Guessed from a PES packet before the map came: now the codec is known.
+                    Some((guess, Codec::Unknown)) if guess == pid => self.video = Some((pid, codec)),
+                    Some(_) => {}
+                }
             }
             at += 5 + ((e[3] as usize & 0x0F) << 8 | e[4] as usize);
         }
@@ -982,6 +985,39 @@ mod tests {
         assert_eq!(info.size, Some((1920, 1080)));
         assert_eq!(info.fps, Some(25.0));
         assert!((info.seconds.unwrap() - 3.0).abs() < 1e-9, "{:?}", info.seconds);
+    }
+
+    /// An HEVC SPS from x265 (1278x718: coded 1280x720 with a conformance window).
+    const HEVC_SPS: [u8; 45] = [
+        0x42, 0x01, 0x01, 0x04, 0x08, 0x00, 0x00, 0x03, 0x00, 0x9E, 0x08, 0x00, 0x00, 0x03, 0x00, 0x00, 0x78, 0x90,
+        0x00, 0x50, 0x10, 0x05, 0xA3, 0xBB, 0xCB, 0x2B, 0x2A, 0x52, 0x61, 0x78, 0x0B, 0x70, 0x20, 0x20, 0x00, 0x40,
+        0x00, 0x00, 0x03, 0x00, 0x40, 0x00, 0x00, 0x0C, 0x82,
+    ];
+
+    #[test]
+    fn hevc_size() {
+        assert_eq!(hevc_sps(&HEVC_SPS), Some(VideoParams { size: Some((1278, 718)), fps: None }));
+        for cut in 0..HEVC_SPS.len() {
+            let _ = hevc_sps(&HEVC_SPS[..cut]);
+        }
+    }
+
+    #[test]
+    fn program_map_after_the_first_video_packet() {
+        // A recording cut so that video comes before the first PAT/PMT: the
+        // stream type, once known, still decides how the headers are read.
+        let mut first = vec![0, 0, 0, 1];
+        first.extend(HEVC_SPS);
+        let (pat, pmt) = pat_pmt(0x24);
+        let mut file = ts(0x100, &pes(0xE0, Some(90_000), &first), false);
+        file.extend([ts(0, &pat, false), ts(0x1000, &pmt, false)].concat());
+        for frame in 1..50u64 {
+            file.extend(ts(0x100, &pes(0xE0, Some(90_000 + frame * 1800), &[0x55; 300]), false));
+        }
+        let len = file.len() as u64;
+        let info = read(&mut Cursor::new(file.clone()), len, &file[..1024]).unwrap();
+        assert_eq!(info.size, Some((1278, 718)));
+        assert_eq!(info.fps, Some(50.0)); // from the time stamps
     }
 
     #[test]

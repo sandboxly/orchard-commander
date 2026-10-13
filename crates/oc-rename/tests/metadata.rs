@@ -274,6 +274,65 @@ fn damaged_media_files_have_no_metadata() {
     assert_eq!(read(&tmp.path().join("app.ts")), Metadata::new());
 }
 
+/// The providers themselves (the registry turns a panic into "no metadata",
+/// which would hide one): damaged copies of every fixture — bytes changed,
+/// cut short, the end scrambled — never panic (overflow checks included in
+/// test builds) and are read quickly.
+#[test]
+fn damaged_media_files_never_panic() {
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n.max(1) as u64) as usize
+        }
+    }
+    let providers: [&dyn MetadataProvider; 2] = [&metadata::MediaProperties, &metadata::AudioTags];
+    let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+    for name in MEDIA_FIXTURES {
+        let whole = std::fs::read(data(name)).unwrap();
+        for round in 0..160 {
+            let mut d = whole.clone();
+            match round % 4 {
+                0 => {
+                    let near_start = rng.next().is_multiple_of(2);
+                    for _ in 0..1 + rng.below(16) {
+                        let k = rng.below(if near_start { d.len().min(4096) } else { d.len() });
+                        d[k] = rng.next() as u8;
+                    }
+                }
+                1 => d.truncate(rng.below(d.len())),
+                2 => {
+                    for _ in 0..1 + rng.below(64) {
+                        let k = rng.below(d.len().min(65_536));
+                        d[k] = [0, 0xFF, 0x7F, 0x80, 0x47, 1][rng.below(6)];
+                    }
+                }
+                _ => {
+                    let from = d.len() - 1 - rng.below(d.len().min(65_536));
+                    for b in &mut d[from..] {
+                        if rng.next().is_multiple_of(3) {
+                            *b = rng.next() as u8;
+                        }
+                    }
+                }
+            }
+            let started = std::time::Instant::now();
+            for provider in providers.iter().filter(|p| p.handles(name)) {
+                let mut file = std::io::Cursor::new(&d[..]);
+                let mut src = Source { name, local_path: None, file: &mut file };
+                let _ = provider.read(&mut src);
+            }
+            assert!(started.elapsed().as_secs() < 5, "{name} round {round}: {:?}", started.elapsed());
+        }
+    }
+}
+
 #[test]
 fn media_files_elsewhere_are_streamed() {
     let mem = MemFS::new();

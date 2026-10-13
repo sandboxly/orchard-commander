@@ -74,8 +74,10 @@ pub(crate) fn read(r: &mut dyn ReadSeek, len: u64) -> io::Result<VideoInfo> {
     if let (Some(w), Some(h)) = (dim(script.width), dim(script.height)) {
         info.size = Some((w, h));
     }
-    info.seconds = script.duration;
-    info.fps = script.framerate;
+    // Live recordings often say 0 (or nothing): then the frames and last tag tell.
+    let positive = |v: Option<f64>| v.filter(|v| *v > 0.0);
+    info.seconds = positive(script.duration);
+    info.fps = positive(script.framerate);
     if let Some(frame) = frame {
         info.size = info.size.or(frame.size);
         info.fps = info.fps.or(frame.fps);
@@ -350,6 +352,22 @@ mod tests {
         let info = read(&mut Cursor::new(file.clone()), file.len() as u64).unwrap();
         assert_eq!(info.size, Some((176, 100)));
         assert_eq!(info.seconds, Some(3600.25));
+        assert_eq!(info.fps, None);
+    }
+
+    #[test]
+    fn zero_duration_in_metadata_falls_back() {
+        // Live recordings write duration 0 (and sometimes framerate 0).
+        let meta = metadata(&[
+            amf_num("duration", 0.0),
+            amf_num("width", 320.0),
+            amf_num("height", 240.0),
+            amf_num("framerate", 0.0),
+        ]);
+        let file = flv(&[tag(18, 0, &meta), tag(9, 0, &[0x22, 0, 0]), tag(9, 7_040, &[0x22, 0, 0])]);
+        let info = read(&mut Cursor::new(file.clone()), file.len() as u64).unwrap();
+        assert_eq!(info.size, Some((320, 240)));
+        assert_eq!(info.seconds, Some(7.04));
         assert_eq!(info.fps, None);
     }
 
