@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use oc_grid::winit;
-use oc_grid::{FontConfig, Frame, WindowRenderer};
+use oc_grid::{FontConfig, Frame, Rendered, WindowRenderer};
 use oc_ui::input::{from_winit, mods_from_winit};
 use oc_ui::{App, AppConfig, Event, MAIN_WINDOW, MouseButton, MouseEvent, MouseKind, PlatformRequest, WinId};
 use winit::application::ApplicationHandler;
@@ -45,7 +45,14 @@ struct Win {
     ime_allowed: bool,
     /// Which of the app's images this window's renderer has.
     images: oc_ui::images::ImageSync,
+    /// The window was hidden at the last redraw: try again at this time
+    /// (or as soon as it shows).
+    hidden_retry: Option<Instant>,
 }
+
+/// How often a hidden window looks whether it can draw again, in case the
+/// window system doesn't say when it shows.
+const HIDDEN_RETRY: Duration = Duration::from_millis(250);
 
 impl Win {
     fn cell_px(&self) -> (f32, f32) {
@@ -199,6 +206,7 @@ impl Platform {
             scroll_px: 0.0,
             ime_allowed: false,
             images: Default::default(),
+            hidden_retry: None,
         };
         let cell = win.cell_px();
         let app = self.app();
@@ -358,20 +366,37 @@ impl Platform {
                 t_render.elapsed().as_secs_f64() * 1e3
             );
         }
-        match rendered {
-            Ok(Some(_)) => {
-                if !self.first_frame {
-                    self.first_frame = true;
-                    if self.timing {
-                        eprintln!("first frame after {:.1} ms", self.started.elapsed().as_secs_f64() * 1e3);
-                    }
-                    if self.exit_after_first_frame {
-                        let _ = self.proxy.send_event(AppEvent::Menu("app.quit".into()));
-                    }
-                }
+        let shown = match rendered {
+            Ok(Rendered::Shown(_)) => {
+                w.hidden_retry = None;
+                Some("")
             }
-            Ok(None) => w.window.request_redraw(),
-            Err(e) => log::error!("render failed: {e}"),
+            // Not now: when it shows again (Occluded(false)), or a look later
+            // in case that never comes. Asking again at once would spin.
+            Ok(Rendered::Hidden) => {
+                w.hidden_retry.get_or_insert_with(|| Instant::now() + HIDDEN_RETRY);
+                // Startup benchmarks on a locked screen or in CI still end.
+                self.exit_after_first_frame.then_some(" (drawn; the window is hidden, nothing presented)")
+            }
+            Ok(Rendered::Retry) => {
+                w.window.request_redraw();
+                None
+            }
+            Err(e) => {
+                log::error!("render failed: {e}");
+                None
+            }
+        };
+        if let Some(note) = shown
+            && !self.first_frame
+        {
+            self.first_frame = true;
+            if self.timing {
+                eprintln!("first frame after {:.1} ms{note}", self.started.elapsed().as_secs_f64() * 1e3);
+            }
+            if self.exit_after_first_frame {
+                let _ = self.proxy.send_event(AppEvent::Menu("app.quit".into()));
+            }
         }
         // The input method's candidate window goes where the text cursor is.
         if let Some(c) = w.frame.cursor {
@@ -409,9 +434,17 @@ impl Platform {
         self.sync_menu_bar();
         let redraw = self.app().take_redraw();
         let app = self.app.as_ref().expect("app");
+        let now = Instant::now();
+        let mut deadline = app.next_deadline();
         for w in self.windows.values_mut() {
-            if redraw {
+            if w.hidden_retry.is_some_and(|t| t <= now) {
+                w.hidden_retry = None;
                 w.window.request_redraw();
+            } else if redraw {
+                w.window.request_redraw();
+            }
+            if let Some(t) = w.hidden_retry {
+                deadline = Some(deadline.map_or(t, |d| d.min(t)));
             }
             let ime = app.wants_text_input(w.id);
             if ime != w.ime_allowed {
@@ -419,7 +452,7 @@ impl Platform {
                 w.window.set_ime_allowed(ime);
             }
         }
-        match app.next_deadline() {
+        match deadline {
             Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
             None => el.set_control_flow(ControlFlow::Wait),
         }
@@ -476,6 +509,12 @@ impl ApplicationHandler<AppEvent> for Platform {
             WindowEvent::CloseRequested => {
                 let id = self.windows[&key].id;
                 self.app().close_requested(id);
+            }
+            WindowEvent::Occluded(false) => {
+                let w = self.windows.get_mut(&key).expect("checked");
+                if w.hidden_retry.take().is_some() {
+                    w.window.request_redraw();
+                }
             }
             WindowEvent::Resized(size) => {
                 let w = self.windows.get_mut(&key).expect("checked");

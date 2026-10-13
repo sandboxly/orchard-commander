@@ -107,6 +107,18 @@ fn reload_keeps_cursor_row_or_name() {
 }
 
 #[test]
+fn quick_search_matches_like_lowering_the_name() {
+    for (name, needle) in [("Alpha", "al"), ("ALPHA.TXT", "alpha.t"), ("Äpfel", "äp"), ("ÉCOLE", "éc"), ("a", "ab"), ("Straße", "stra")] {
+        assert_eq!(starts_with_lowered(name, needle), name.to_lowercase().starts_with(needle), "{name} / {needle}");
+    }
+    assert!(starts_with_lowered("Readme.md", "read"));
+    assert!(!starts_with_lowered("Readme.md", "reed"));
+    assert!(!starts_with_lowered("Re", "readme"));
+    assert!(starts_with_lowered("Ärger", "är"));
+    assert!(!starts_with_lowered("arger", "är"));
+}
+
+#[test]
 fn quick_search() {
     let mut p = panel_with(&[("Alpha", true), ("beta", false), ("bravo", false), ("charlie", false)]);
     let t0 = Instant::now();

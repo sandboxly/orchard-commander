@@ -34,7 +34,7 @@ pub use frame::{
 };
 pub use headless::{HeadlessRenderer, RgbaImage, render_to_image};
 pub use renderer::{GridRenderer, PrepareStats};
-pub use window::WindowRenderer;
+pub use window::{Rendered, WindowRenderer};
 
 /// Re-exported so callers can match the exact wgpu/winit versions.
 pub use {wgpu, winit};

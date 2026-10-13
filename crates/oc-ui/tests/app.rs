@@ -116,6 +116,32 @@ fn swap_reload_and_hidden_files() {
 }
 
 #[test]
+fn sorting_reorders_the_listing_keeping_cursor_and_marks() {
+    let e = env();
+    fs::create_dir(e.left.join("zdir")).unwrap();
+    fs::write(e.left.join("a.txt"), "x".repeat(300)).unwrap();
+    fs::write(e.left.join("b.txt"), "x").unwrap();
+    fs::write(e.left.join("c.txt"), "x".repeat(20)).unwrap();
+    let mut app = app(&e);
+    put_cursor_on(&mut app, 0, "c.txt");
+    app.main.sides[0].panel.marked.insert("a.txt".into());
+    oc_ui::panel::sort_by(&mut app, 0, oc_vfs::SortKey::Size);
+    settle(&mut app);
+    assert_eq!(names(&app, 0), ["zdir", "b.txt", "c.txt", "a.txt"], "folders first, then by size");
+    assert_eq!(cursor(&app, 0).as_deref(), Some("c.txt"));
+    assert!(app.main.sides[0].panel.marked.contains("a.txt"));
+    oc_ui::panel::sort_by(&mut app, 0, oc_vfs::SortKey::Size);
+    settle(&mut app);
+    assert_eq!(names(&app, 0), ["zdir", "a.txt", "c.txt", "b.txt"], "reversed");
+    assert_eq!(cursor(&app, 0).as_deref(), Some("c.txt"));
+    // While a listing is on its way, the new order applies to it.
+    oc_ui::panel::reload(&mut app, 0);
+    oc_ui::panel::sort_by(&mut app, 0, oc_vfs::SortKey::Name);
+    settle(&mut app);
+    assert_eq!(names(&app, 0), ["zdir", "a.txt", "b.txt", "c.txt"]);
+}
+
+#[test]
 fn zoom_and_sort_persist() {
     let e = env();
     let mut app = app(&e);
