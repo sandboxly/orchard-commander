@@ -252,16 +252,19 @@ fn refresh(app: &mut App, side: usize, moved: &HashMap<VPath, VPath>) {
     let location = p.location.clone();
     let new_location = relocated(&location, moved);
     let shown = new_location.clone().unwrap_or_else(|| location.clone());
-    let select = p
+    let renamed = p
         .cursor_target()
         .and_then(|c| moved.get(&c).cloned())
         .filter(|new| new.parent().as_ref() == Some(&shown))
         .map(|new| new.name());
-    if new_location.is_none() && select.is_none() {
+    if new_location.is_none() && renamed.is_none() {
         panel::reload(app, side);
         return;
     }
-    let keep_cursor = select.is_none();
+    // In a renamed folder the cursor stays on its name (the folder's
+    // location changes, so "keep the cursor" alone would reset it).
+    let keep_cursor = renamed.is_none();
+    let select = renamed.or_else(|| p.cursor_name().filter(|n| *n != panel::PARENT).map(str::to_owned));
     panel::load(app, side, shown, LoadOptions { select, keep_cursor, walk_up: true });
 }
 

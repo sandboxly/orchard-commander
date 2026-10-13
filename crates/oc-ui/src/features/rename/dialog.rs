@@ -242,6 +242,9 @@ pub struct RenameDialog {
     menu: Option<OpenMenu>,
     /// Width of the status column (its longest text).
     status_w: u16,
+    /// The line below the table, computed with the plan (drawing stays
+    /// proportional to the visible rows).
+    summary: String,
     meta: Option<MetaReader>,
     /// The preview is older than the fields (large batches: a timer is due).
     dirty: bool,
@@ -278,6 +281,7 @@ impl RenameDialog {
             buttons: ButtonRow::new(&["Rename", "Cancel"], 0),
             menu: None,
             status_w: 0,
+            summary: String::new(),
             meta: None,
             dirty: false,
             timer: None,
@@ -307,6 +311,10 @@ impl RenameDialog {
 
     /// The line below the table.
     pub fn summary(&self) -> String {
+        self.summary.clone()
+    }
+
+    fn compute_summary(&self) -> String {
         let plan = &self.plan;
         if !plan.mask_error.is_empty() {
             return plan.mask_error.clone();
@@ -364,6 +372,7 @@ impl RenameDialog {
         let exists = self.exists.clone();
         self.plan = plan_with(&Renamer::new(&self.rule), &self.items, &|l| exists.exists(l));
         self.status_w = (0..self.items.len()).map(|i| width(&self.row(i).1)).max().unwrap_or(0);
+        self.summary = self.compute_summary();
         self.buttons.buttons[0].enabled = self.plan.can_run();
         app.redraw();
     }
@@ -424,13 +433,14 @@ impl RenameDialog {
     fn take_metadata(&mut self) -> bool {
         let Some(m) = &self.meta else { return false };
         let arrived = std::mem::take(&mut *m.results.lock().unwrap_or_else(|e| e.into_inner()));
-        for (i, meta, error) in &arrived {
-            if let Some(item) = self.items.get_mut(*i) {
-                item.meta = Some(Arc::new(meta.clone()));
-                item.meta_error = error.clone();
+        let any = !arrived.is_empty();
+        for (i, meta, error) in arrived {
+            if let Some(item) = self.items.get_mut(i) {
+                item.meta = Some(Arc::new(meta));
+                item.meta_error = error;
             }
         }
-        !arrived.is_empty()
+        any
     }
 
     /// The dialog closes: stop the metadata reader and the timer.
@@ -487,7 +497,12 @@ impl RenameDialog {
     fn move_focus(&mut self, delta: isize) {
         let i = FOCUS_ORDER.iter().position(|f| *f == self.focus).unwrap_or(0) as isize;
         let n = FOCUS_ORDER.len() as isize;
-        self.set_focus(FOCUS_ORDER[(i + delta).rem_euclid(n) as usize]);
+        let field = FOCUS_ORDER[(i + delta).rem_euclid(n) as usize];
+        self.set_focus(field);
+        // Like Qt: a field reached from the keyboard has its text selected.
+        if let Some(input) = self.input_mut(field) {
+            input.select_all();
+        }
     }
 
     /// Insert a placeholder at the cursor of a mask field (replacing its selection).
@@ -526,7 +541,7 @@ impl RenameDialog {
         }
         entries.push(MenuEntry::item(FALLBACK_HINT.0, FALLBACK_HINT.1));
         actions.push(MenuAction::Insert(FALLBACK_HINT.0.into()));
-        let menu = DropdownMenu::new(entries, button.right(), button.bottom());
+        let menu = DropdownMenu::new(entries, button.x, button.bottom());
         self.set_focus(field);
         self.menu = Some(OpenMenu { menu, actions, target: field, parent: None });
     }
@@ -747,8 +762,7 @@ impl RenameDialog {
         }
 
         self.draw_table(f, &l, ctx);
-        let summary = self.summary();
-        put(f, l.summary.x, l.summary.y, &oc_grid::elide_right(&summary, l.summary.w as usize), Style::new(c.muted, c.surface), l.summary.w);
+        put(f, l.summary.x, l.summary.y, &oc_grid::elide_right(&self.summary, l.summary.w as usize), Style::new(c.muted, c.surface), l.summary.w);
         self.buttons.draw(f, l.buttons, ctx, self.focus == Field::Buttons);
 
         if let Some(m) = &self.menu {

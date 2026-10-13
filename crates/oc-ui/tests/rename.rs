@@ -401,3 +401,70 @@ fn big_batches_update_the_preview_after_a_pause() {
     assert_eq!(listed.len(), 2100);
     assert!(listed.iter().all(|n| n.starts_with('g')));
 }
+
+#[test]
+fn a_panel_showing_a_renamed_folder_keeps_its_cursor() {
+    let e = env();
+    fs::create_dir_all(e.left.join("old")).unwrap();
+    for n in ["a.txt", "b.txt", "c.txt"] {
+        fs::write(e.left.join("old").join(n), "").unwrap();
+    }
+    let mut app = app(&e);
+    panel::load(&mut app, 1, oc_local::local(e.left.join("old")), LoadOptions::default());
+    settle(&mut app);
+    put_cursor_on(&mut app, 1, "b.txt");
+    put_cursor_on(&mut app, 0, "old");
+    open(&mut app);
+    type_text(&mut app, "new");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert_eq!(app.main.sides[1].panel.location, oc_local::local(e.left.join("new")));
+    assert_eq!(app.main.sides[1].panel.cursor_name(), Some("b.txt"));
+}
+
+#[test]
+fn tab_selects_the_next_field_s_text() {
+    let e = env();
+    fs::write(e.left.join("a.txt"), "").unwrap();
+    let mut app = app(&e);
+    put_cursor_on(&mut app, 0, "a.txt");
+    open(&mut app);
+    press(&mut app, Key::Tab); // extension: [E] selected, like Qt
+    type_text(&mut app, "md");
+    assert_eq!(new_names(&app), ["a.md"]);
+    press(&mut app, Key::Escape);
+}
+
+#[test]
+fn the_dialog_draws_in_any_window_size() {
+    let e = env();
+    for n in ["a.txt", "b.txt"] {
+        fs::write(e.left.join(n), "").unwrap();
+    }
+    let mut app = app(&e);
+    mark(&mut app, 0, &["a.txt", "b.txt"]);
+    open(&mut app);
+    for (cols, rows) in [(140, 42), (80, 24), (40, 12), (12, 4), (3, 2), (1, 1)] {
+        app.resize(MAIN_WINDOW, cols, rows);
+        for keys in [&[][..], &[(Key::Down, Mods::ALT)][..], &[(Key::End, Mods::NONE), (Key::Up, Mods::NONE), (Key::Right, Mods::NONE)][..]] {
+            for &(k, m) in keys {
+                press_with(&mut app, k, m);
+            }
+            let mut f = oc_grid::Frame::new(cols, rows, oc_grid::Rgba::BLACK);
+            app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
+        }
+        press(&mut app, Key::Escape);
+        press(&mut app, Key::Escape);
+        assert!(rename::dialog(&app).is_some(), "Escape closes the menus first");
+        // A click anywhere must not panic either.
+        for (c, r) in [(0, 0), (cols / 2, rows / 2), (cols.saturating_sub(1), rows.saturating_sub(1))] {
+            app.handle_event(MAIN_WINDOW, oc_ui::Event::Mouse(oc_ui::MouseEvent { kind: oc_ui::MouseKind::Down(oc_ui::MouseButton::Left), col: c, row: r, mods: Mods::NONE }));
+        }
+        while rename::dialog(&app).is_some() {
+            press(&mut app, Key::Escape);
+        }
+        app.resize(MAIN_WINDOW, 140, 42);
+        open(&mut app);
+    }
+    press(&mut app, Key::Escape);
+}
