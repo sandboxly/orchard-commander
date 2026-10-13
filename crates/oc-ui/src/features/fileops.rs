@@ -2,7 +2,12 @@
 //! File exists dialog (asked from the worker through `ask_ui`), a progress
 //! dialog with Cancel, and errors in a toast (port of the file
 //! operation half of `main_window.py` and `ui/operations.py`).
+//!
+//! Trash and delete don't wait for the disk: the entries leave the panels at
+//! once and the work runs as background jobs, one after another, beside a
+//! copy or move ([`Removals`]).
 
+use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -20,6 +25,9 @@ use crate::tasks::{CancelToken, Tasks};
 
 /// At most this often the progress dialog is redrawn.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
+
+/// A trash / delete job running this long says so on its panel's bottom line.
+const REMOVAL_NOTE_DELAY: Duration = Duration::from_millis(500);
 
 pub fn register(reg: &mut Registry) {
     reg.add(
@@ -50,6 +58,7 @@ pub fn register(reg: &mut Registry) {
             .fkey("F8", "Trash")
             .menu(Menu::Files, "ops"),
     );
+    reg.on_shutdown(finish_removals);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -230,10 +239,16 @@ fn conflict_asker(tasks: Tasks) -> impl FnMut(&str, &str) -> Conflict {
 }
 
 /// Run an operation on a worker; afterwards both panels reload keeping
-/// their cursors and the source's marks are cleared.
+/// their cursors and the source's marks are cleared. Trash and delete are
+/// queued instead (see [`Removals`]).
 pub fn run(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>, side: usize) {
+    if matches!(kind, Kind::Trash | Kind::Delete) {
+        remove(app, kind, sources, side);
+        return;
+    }
     // Until the worker has ended, also while a cancelled one winds down
-    // (1.x: `isRunning()`); `finished` clears it.
+    // (1.x: `isRunning()`); `finished` clears it. One copy/move at a time:
+    // its File exists dialogs need the user's undivided attention.
     if app.operation.is_some() {
         app.warn("Another file operation is still running");
         return;
@@ -242,7 +257,7 @@ pub fn run(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>
     let token = CancelToken::new();
     app.operation = Some(token.clone());
     let state = Arc::new(Mutex::new(ProgressState::default()));
-    let progress_dialog = matches!(kind, Kind::Copy | Kind::Move).then(|| app.show(ProgressBox::new(title, state.clone(), token.clone())));
+    let progress_dialog = Some(app.show(ProgressBox::new(title, state.clone(), token.clone())));
     let tasks = app.tasks.clone();
     let running = Arc::new(AtomicBool::new(true));
     app.operation_running = Some(running.clone());
@@ -250,26 +265,20 @@ pub fn run(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>
         move || {
             // Cleared however the worker ends (also on a panic): quitting waits for it.
             let _running = RunningGuard(running);
-            match kind {
-                Kind::Trash => oc_vfs::ops::trash(&sources),
-                Kind::Delete => oc_vfs::ops::delete(&sources),
-                Kind::Copy | Kind::Move => {
-                    let target = target.expect("copy/move has a target");
-                    let mut ask = conflict_asker(tasks.clone());
-                    let mut last = Instant::now() - PROGRESS_INTERVAL;
-                    let mut report = |p: &Progress| {
-                        let now = Instant::now();
-                        if now - last >= PROGRESS_INTERVAL || p.files_done == p.files_total {
-                            last = now;
-                            state.lock().unwrap_or_else(|e| e.into_inner()).progress = p.clone();
-                            tasks.post(|app| app.redraw());
-                        }
-                    };
-                    let cancelled = token.as_fn();
-                    let callbacks = TransferCallbacks { on_conflict: &mut ask, on_progress: Some(&mut report), is_cancelled: &cancelled };
-                    oc_local::copy(&sources, &target, kind == Kind::Move, callbacks)
+            let target = target.expect("copy/move has a target");
+            let mut ask = conflict_asker(tasks.clone());
+            let mut last = Instant::now() - PROGRESS_INTERVAL;
+            let mut report = |p: &Progress| {
+                let now = Instant::now();
+                if now - last >= PROGRESS_INTERVAL || p.files_done == p.files_total {
+                    last = now;
+                    state.lock().unwrap_or_else(|e| e.into_inner()).progress = p.clone();
+                    tasks.post(|app| app.redraw());
                 }
-            }
+            };
+            let cancelled = token.as_fn();
+            let callbacks = TransferCallbacks { on_conflict: &mut ask, on_progress: Some(&mut report), is_cancelled: &cancelled };
+            oc_local::copy(&sources, &target, kind == Kind::Move, callbacks)
         },
         move |app, result| finished(app, side, title, progress_dialog, result),
     );
@@ -304,4 +313,194 @@ pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::m
         panel::reload(app, s);
     }
     crate::commands::files_changed(app);
+}
+
+// ---------------------------------------------------------------------------
+// Trash / delete in the background
+// ---------------------------------------------------------------------------
+
+/// The trash and delete jobs: one runs, the others wait their turn (first
+/// come, first served). They don't take `app.operation`, so F8 works while
+/// a copy runs or another trash job is still busy, and a copy can start
+/// meanwhile. Their paths stay hidden from every listing until their job
+/// has ended ([`hide_removed`]), so a reload in between doesn't bring them
+/// back and they can't be chosen again.
+///
+/// Why this can take long at all: local files go through `oc_local`'s
+/// `trash_paths` to the OS trash. On Windows that is the shell's file
+/// operation, which visits every file inside a folder to make it
+/// restorable: slow for big trees, folders kept in sync by cloud storage
+/// clients and network drives. Nothing here can speed that up; it can only
+/// stay out of the way.
+#[derive(Default)]
+pub struct Removals {
+    running: Option<Removal>,
+    queue: VecDeque<Removal>,
+    /// True while the running job's worker thread lives (quitting waits for it).
+    worker: Option<Arc<AtomicBool>>,
+    next_id: u64,
+    /// The running job takes long enough to say so on the bottom line.
+    noted: bool,
+}
+
+struct Removal {
+    id: u64,
+    kind: Kind,
+    paths: Vec<VPath>,
+    side: usize,
+}
+
+impl Removals {
+    fn jobs(&self) -> impl Iterator<Item = &Removal> {
+        self.running.iter().chain(&self.queue)
+    }
+}
+
+/// A trash or delete job is running or waiting.
+pub fn removing(app: &App) -> bool {
+    app.try_state::<Removals>().is_some_and(|r| r.jobs().next().is_some())
+}
+
+/// Leave out of a listing of `location` what a trash / delete job is still
+/// removing (search results: by the files they stand for).
+pub(crate) fn hide_removed(app: &App, location: &VPath, entries: &mut Vec<Entry>) {
+    let Some(removals) = app.try_state::<Removals>() else { return };
+    let pending: HashSet<&VPath> = removals.jobs().flat_map(|j| &j.paths).collect();
+    if !pending.is_empty() {
+        entries.retain(|e| !pending.contains(&location.child(&[&e.name]).resolved()));
+    }
+}
+
+/// Queue a confirmed trash / delete and take its entries out of both panels now.
+fn remove(app: &mut App, kind: Kind, paths: Vec<VPath>, side: usize) {
+    let gone: HashSet<VPath> = paths.iter().cloned().collect();
+    let r = app.state::<Removals>();
+    r.next_id += 1;
+    let id = r.next_id;
+    r.queue.push_back(Removal { id, kind, paths, side });
+    panel::panel_mut(app, side).set_all_marks(false);
+    for s in 0..2 {
+        let p = panel::panel_mut(app, s);
+        let before = p.cursor_target();
+        let location = p.location.clone();
+        if p.remove_entries(|name| gone.contains(&location.child(&[name]).resolved())) && p.cursor_target() != before {
+            main_window::cursor_moved(app, s);
+        }
+    }
+    start_next_removal(app);
+    update_removal_notes(app);
+}
+
+/// The work itself, on a worker. A panic (the OS trash failing in an
+/// unexpected way) becomes an error, so the queue goes on and the entries
+/// come back.
+fn remove_now(kind: Kind, paths: &[VPath]) -> oc_vfs::Result<()> {
+    let work = || match kind {
+        Kind::Delete => oc_vfs::ops::delete(paths),
+        // All paths of a file system in one call: one OS operation per job.
+        _ => oc_vfs::ops::trash(paths),
+    };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
+        .unwrap_or_else(|_| Err(VfsError::Operation(format!("{} failed unexpectedly", kind.title(paths)))))
+}
+
+fn start_next_removal(app: &mut App) {
+    let r = app.state::<Removals>();
+    if r.running.is_some() {
+        return;
+    }
+    let Some(job) = r.queue.pop_front() else { return };
+    let (id, kind, paths) = (job.id, job.kind, job.paths.clone());
+    r.running = Some(job);
+    r.noted = false;
+    let running = Arc::new(AtomicBool::new(true));
+    r.worker = Some(running.clone());
+    app.schedule(REMOVAL_NOTE_DELAY, move |app| {
+        let r = app.state::<Removals>();
+        if r.running.as_ref().is_some_and(|j| j.id == id) {
+            r.noted = true;
+            update_removal_notes(app);
+        }
+    });
+    app.tasks.spawn(
+        move || {
+            // Cleared however the worker ends: quitting waits for it.
+            let _running = RunningGuard(running);
+            remove_now(kind, &paths)
+        },
+        move |app, result| removed(app, id, result),
+    );
+}
+
+/// A job ended: report like any operation, start the next one, and reload
+/// both panels keeping their cursors (what failed comes back; what the
+/// other jobs remove stays hidden).
+fn removed(app: &mut App, id: u64, result: oc_vfs::Result<()>) {
+    let r = app.state::<Removals>();
+    let Some(job) = r.running.take_if(|j| j.id == id) else { return };
+    r.worker = None;
+    r.noted = false;
+    let title = job.kind.title(&job.paths);
+    match result {
+        Ok(()) => app.info(format!("{title} finished")),
+        Err(VfsError::Cancelled) => app.notify(format!("{title} cancelled"), Severity::Warning),
+        Err(e) => app.notify(e.to_string(), Severity::Error),
+    }
+    start_next_removal(app);
+    update_removal_notes(app);
+    for s in 0..2 {
+        panel::reload(app, s);
+    }
+    crate::commands::files_changed(app);
+}
+
+/// "moving 12 items to the trash…" on the bottom line of the panel the jobs
+/// came from, once the running one takes a while.
+fn update_removal_notes(app: &mut App) {
+    let r = app.state::<Removals>();
+    let notes: [Option<String>; 2] = std::array::from_fn(|side| {
+        let jobs: Vec<&Removal> = r.jobs().filter(|j| j.side == side).collect();
+        if !r.noted || jobs.is_empty() {
+            return None;
+        }
+        let n: usize = jobs.iter().map(|j| j.paths.len()).sum();
+        let items = format!("{n} item{}", if n == 1 { "" } else { "s" });
+        if jobs.iter().all(|j| j.kind == Kind::Delete) {
+            Some(format!("deleting {items}…"))
+        } else {
+            Some(format!("moving {items} to the trash…"))
+        }
+    });
+    for (side, note) in notes.into_iter().enumerate() {
+        panel::panel_mut(app, side).note = note;
+    }
+    app.redraw();
+}
+
+/// Quitting: wait for the running job like for a copy (bounded), and run
+/// the queued ones too: the user confirmed them, and their entries are gone
+/// from the panels already.
+fn finish_removals(app: &mut App) {
+    let mut r = app.take_state::<Removals>();
+    let mut workers: Vec<Arc<AtomicBool>> = r.worker.take().into_iter().collect();
+    let queued: Vec<Removal> = r.queue.drain(..).collect();
+    if !queued.is_empty() {
+        let running = Arc::new(AtomicBool::new(true));
+        workers.push(running.clone());
+        let spawned = std::thread::Builder::new().name("oc-trash".into()).spawn(move || {
+            let _running = RunningGuard(running);
+            for job in queued {
+                if let Err(e) = remove_now(job.kind, &job.paths) {
+                    log::warn!("{}: {e}", job.kind.title(&job.paths));
+                }
+            }
+        });
+        if spawned.is_err() {
+            log::error!("cannot start a worker thread");
+        }
+    }
+    let end = Instant::now() + crate::app::OPERATION_QUIT_WAIT;
+    while workers.iter().any(|w| w.load(Ordering::SeqCst)) && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

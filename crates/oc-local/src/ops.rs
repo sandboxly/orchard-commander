@@ -550,7 +550,14 @@ pub(crate) fn move_paths_tuned<P: AsRef<Path>>(
     Ok(())
 }
 
-/// Move `paths` to the OS recycle bin / trash.
+/// Move `paths` to the OS recycle bin / trash, all in one OS operation.
+///
+/// This can be slow, and nothing here can change that: on Windows it is the
+/// shell's file operation (one per call, set up on the calling thread),
+/// which visits every file inside a folder to make it restorable — big
+/// trees, folders kept in sync by cloud storage clients and network drives
+/// take seconds to minutes. The UI runs it in the background
+/// (`oc_ui::features::fileops::Removals`).
 pub fn trash_paths<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
     #[allow(unused_mut)]
     let mut ctx = trash::TrashContext::default();

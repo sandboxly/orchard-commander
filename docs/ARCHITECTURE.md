@@ -536,6 +536,13 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
 * Copy/move: `oc_local::copy` (native local-to-local, streaming otherwise);
   delete/trash/mkdir: `oc_vfs::ops`. `oc_vfs::ops::materialize` uses
   `FileSystem::materialize` first (archives extract into their own cache).
+* `app.operation` is the one copy/move at a time (its File exists dialogs).
+  F8 trash/delete doesn't take it: `fileops::Removals` (app state) queues
+  the jobs and runs them one after another in the background; their
+  entries leave both panels (and search results) when the user confirms,
+  and `panel::listed` keeps hiding their paths until their job has ended.
+  A slow job says so on its panel's bottom line (`FilePanel::note`);
+  quitting waits for the running job and runs the queued ones (bounded).
 * Folder watching: `panel/watch.rs` (notify), debounced 250 ms, reload keeps
   the cursor; never supersedes a listing still on its way. Watchers are
   started and stopped on a worker (FSEvents starts/joins a thread). A

@@ -286,10 +286,20 @@ fn trash_hits_on_another_file_system() {
     press(&mut app, Key::F(8));
     assert_eq!(app.modal_titles(), ["Move to trash"]);
     assert!(app.top_modal_text().unwrap().contains(&rel("'docs/two.md'")));
+    let gate = oc_vfs::testing::Gate::new();
+    mem.set_trash_gate(Some(gate.clone()));
     press(&mut app, Key::Enter);
+    // The hit leaves the results at once, and a reload meanwhile doesn't bring it back.
+    assert_eq!(names(&app, 0), ["top.md"]);
+    oc_ui::panel::reload(&mut app, 0);
+    wait_until(&mut app, "reload", Duration::from_secs(20), |app| !app.main.sides[0].panel.loading());
+    assert_eq!(names(&app, 0), ["top.md"]);
+    assert!(mem.trashed().is_empty(), "still held");
+    gate.open();
     wait_until(&mut app, "trash", Duration::from_secs(20), |app| {
-        app.operation.is_none() && app.main.sides[0].panel.entries.len() == 1 && !app.main.sides[0].panel.loading()
+        !oc_ui::features::fileops::removing(app) && !app.main.sides[0].panel.loading()
     });
+    settle(&mut app);
     assert_eq!(mem.trashed(), ["docs/two.md"]);
     assert_eq!(names(&app, 0), ["top.md"]);
     // ".." leads to the root of that file system.

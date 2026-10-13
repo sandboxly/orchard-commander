@@ -53,7 +53,9 @@ fn wait_dialog(app: &mut App, title: &str) {
 }
 
 fn wait_no_dialogs(app: &mut App) {
-    wait_until(app, "dialogs to close", Duration::from_secs(20), |app| app.modal_titles().is_empty() && app.operation.is_none());
+    wait_until(app, "dialogs to close", Duration::from_secs(20), |app| {
+        app.modal_titles().is_empty() && app.operation.is_none() && !oc_ui::features::fileops::removing(app)
+    });
     settle(app);
 }
 

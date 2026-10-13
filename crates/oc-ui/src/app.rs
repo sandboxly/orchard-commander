@@ -210,8 +210,9 @@ struct Clicks {
 
 const DOUBLE_CLICK: Duration = Duration::from_millis(450);
 
-/// How long quitting waits for a cancelled file operation to stop.
-const OPERATION_QUIT_WAIT: Duration = Duration::from_secs(3);
+/// How long quitting waits for a cancelled file operation (or a running
+/// trash job) to stop.
+pub(crate) const OPERATION_QUIT_WAIT: Duration = Duration::from_secs(3);
 
 pub struct App {
     pub settings: Settings,
