@@ -239,6 +239,102 @@ fn analyse(class: &str, text: &str) -> f32 {
             }
         }
         "PythonLexer" => python(text),
+        "XmlLexer" => {
+            if looks_like_xml(text) {
+                0.45
+            } else {
+                0.0
+            }
+        }
+        "HtmlLexer" => {
+            let html = regex!(r"(?i)^html").is_match(doctype(text).unwrap_or("").trim());
+            if html { 0.5 } else { 0.0 }
+        }
+        "SqlJinjaLexer" => {
+            // dbt's ref() and source(), Jinja macros.
+            let mut r = 0.0;
+            if regex!(r"\{\{\s*ref\(.*\)\s*\}\}").is_match(text) {
+                r += 0.4;
+            }
+            if regex!(r"\{\{\s*source\(.*\)\s*\}\}").is_match(text) {
+                r += 0.25;
+            }
+            if regex!(r"\{%-?\s*macro \w+\(.*\)\s*-?%\}").is_match(text) {
+                r += 0.15;
+            }
+            r
+        }
+        "SwigLexer" => {
+            let mut r = 0.0;
+            for c in regex!(r"(?m)^\s*(%[a-z_][a-z0-9_]*)").captures_iter(text) {
+                if SWIG_DIRECTIVES.contains(&&c[1][1..]) {
+                    r = 0.98;
+                    break;
+                }
+                r = 0.91;
+            }
+            r
+        }
+        // Only at the very start: Pygments searches without MULTILINE.
+        "VisualPrologLexer" => {
+            let re = regex!(r"^\s*(end\s+(interface|class|implement)|(clauses|predicates|domains|facts|constants|properties)\s*$)");
+            if re.is_match(text) { 0.98 } else { 0.0 }
+        }
+        "JasminLexer" => {
+            let mut r = 0.0;
+            if regex!(r"(?m)^\s*\.class\s").is_match(text) {
+                r += 0.5;
+                if regex!(r"(?m)^\s*[a-z]+_[a-z]+\b").is_match(text) {
+                    r += 0.3;
+                }
+            }
+            let directive = r"(?m)^\s*\.(attribute|bytecode|debug|deprecated|enclosing|inner|interface|limit|set|signature|stack)\b";
+            if regex!(directive).is_match(text) {
+                r += 0.6;
+            }
+            r
+        }
+        "ObjectiveJLexer" => {
+            if regex!(r#"(?m)^\s*@import\s+[<"]"#).is_match(text) { 1.0 } else { 0.0 }
+        }
+        "Lean3Lexer" => {
+            if regex!(r"(?m)^import [a-z]").is_match(text) { 0.1 } else { 0.0 }
+        }
+        "Lean4Lexer" => {
+            if regex!(r"(?m)^import [A-Z]").is_match(text) { 0.1 } else { 0.0 }
+        }
+        "MapleLexer" => {
+            if text.contains(":=") { 0.1 } else { 0.0 }
+        }
+        "SuperColliderLexer" => {
+            if text.contains("SinOsc") || text.contains("thisFunctionDef") { 0.1 } else { 0.0 }
+        }
+        "ScdocLexer" => {
+            let mut r = 0.01 * (text.contains('*') as u8 + text.contains('_') as u8) as f32;
+            if regex!(r#"^.*\([1-7]\)( "[^"]+"){0,2}$"#).is_match(text.split('\n').next().unwrap_or("")) {
+                r += 0.5;
+            }
+            r
+        }
+        "Modula2Lexer" => {
+            if !(text.contains("(*") && text.contains("*)") && text.contains(":=")) || regex!(r"\bFUNCTION\b").is_match(text) {
+                0.0
+            } else if regex!(r"\bPROCEDURE\b").is_match(text) {
+                0.6
+            } else {
+                0.0
+            }
+        }
+        "SingularityLexer" => {
+            let mut r = 0.0;
+            if regex!(r"(?i)\b(?:osversion|includecmd|mirrorurl)\b").is_match(text) {
+                r += 0.5;
+            }
+            if regex!(r"(%(?:pre|post|setup|environment|help|labels|test|runscript|files|startscript))(\s*)").is_match(text) {
+                r += 0.49;
+            }
+            r
+        }
         _ => 0.0,
     };
     rating.clamp(0.0, 1.0)
@@ -249,9 +345,44 @@ fn python(text: &str) -> f32 {
     if shebang_matches(text, r"pythonw?(3(\.\d)?)?") || head.contains("import ") { 1.0 } else { 0.0 }
 }
 
-/// Pygments' `looks_like_xml`, roughly: the text starts with a tag or a declaration.
+/// SWIG's directives (Pygments' `SwigLexer.swig_directives`, without the "%").
+const SWIG_DIRECTIVES: &[&str] = &[
+    "apply", "define", "director", "enddef", "exception", "extend", "feature", "fragment", "ignore", "immutable", "import",
+    "include", "inline", "insert", "module", "newobject", "nspace", "pragma", "rename", "shared_ptr", "template", "typecheck",
+    "typemap", "arg", "attribute", "bang", "begin", "callback", "catches", "clear", "constant", "copyctor", "csconst",
+    "csconstvalue", "csenum", "csmethodmodifiers", "csnothrowexception", "default", "defaultctor", "defaultdtor", "defined",
+    "delete", "delobject", "descriptor", "exceptionclass", "exceptionvar", "extend_smart_pointer", "fragments", "header",
+    "ifcplusplus", "ignorewarn", "implicit", "implicitconv", "init", "javaconst", "javaconstvalue", "javaenum",
+    "javaexception", "javamethodmodifiers", "kwargs", "luacode", "mutable", "naturalvar", "nestedworkaround", "perlcode",
+    "pythonabc", "pythonappend", "pythoncallback", "pythoncode", "pythondynamic", "pythonmaybecall", "pythonnondynamic",
+    "pythonprepend", "refobject", "shadow", "sizeof", "trackobjects", "types", "unrefobject", "varargs", "warn", "warnfilter",
+];
+
+/// The first part of the text's `<!DOCTYPE …>` (Pygments' `doctype_lookup_re`).
+fn doctype(text: &str) -> Option<&str> {
+    let re = regex!(r#"(?s)<!DOCTYPE\s+([a-zA-Z_][a-zA-Z0-9]*(?:\s+[a-zA-Z_][a-zA-Z0-9]*\s+"[^"]*")?)[^>]*>"#);
+    re.captures(text).map(|c| c.get(1).map_or("", |m| m.as_str()))
+}
+
+/// Pygments' `looks_like_xml`: an XML declaration first, a doctype, or in
+/// the first 1000 characters a tag with its closing tag.
 fn looks_like_xml(text: &str) -> bool {
-    text.trim_start().starts_with('<')
+    if regex!(r"(?i)^\s*<\?xml[^>]*\?>").is_match(text) || doctype(text).is_some() {
+        return true;
+    }
+    let head = match text.char_indices().nth(1000) {
+        Some((i, _)) => &text[..i],
+        None => text,
+    };
+    // `<(name)(\s[^>]*)?>.*?</\1\s*>` without the back reference.
+    let open = regex!(r"(?i)\A<([a-zA-Z][a-zA-Z0-9._:-]*)(\s[^>]*)?>");
+    let close = regex!(r"(?i)</([a-zA-Z][a-zA-Z0-9._:-]*)\s*>");
+    head.match_indices('<').any(|(i, _)| {
+        open.captures(&head[i..]).is_some_and(|c| {
+            let rest = &head[i + c[0].len()..];
+            close.captures_iter(rest).any(|e| e[1].eq_ignore_ascii_case(&c[1]))
+        })
+    })
 }
 
 fn perl6(text: &str) -> f32 {
@@ -317,10 +448,16 @@ fn guess(text: &str) -> Option<&'static str> {
         (r"ruby(1\.\d)?", "Ruby"),
         (r"(tcl)", "Tcl"),
     ];
-    if let Some((_, name)) = SHEBANGS.iter().find(|(re, _)| shebang_matches(text, re)) {
+    // Pygments tries the lexers by class name and takes the first sure one:
+    // Python's ("import ") comes after these and before Ruby's and Tcl's.
+    let (before, after) = SHEBANGS.split_at(9);
+    if let Some((_, name)) = before.iter().find(|(re, _)| shebang_matches(text, re)) {
         return Some(name);
     }
-    (python(text) > 0.0).then(|| if numpy() { "NumPy" } else { "Python" })
+    if python(text) > 0.0 {
+        return Some(if numpy() { "NumPy" } else { "Python" });
+    }
+    after.iter().find(|(re, _)| shebang_matches(text, re)).map(|(_, name)| *name)
 }
 
 /// The syntect syntax for a Pygments language: the same name, or the one
@@ -454,6 +591,22 @@ mod tests {
         assert_eq!(lang("a.s", ".text\nmov r0, r1\n"), "GAS");
         assert_eq!(lang("a.asm", "section .text\n"), "TASM");
         assert_eq!(lang("a.t", "use Test::More;\n"), "TADS 3");
+        // Checked against 1.x as well.
+        assert_eq!(lang("a.sql", "select * from {{ ref('orders') }}\n"), "SQL+Jinja", "dbt");
+        assert_eq!(lang("a.i", "%module example\n%{\n#include \"example.h\"\n%}\n"), "SWIG");
+        assert_eq!(lang("a.i", "class predicates\n  foo : ().\n"), "Visual Prolog");
+        assert_eq!(lang("a.xsl", "<?xml version=\"1.0\"?>\n<root><a>1</a></root>\n"), "XML");
+        assert_eq!(lang("a.xsl", "<?xml version=\"1.0\"?>\n<xsl:stylesheet></xsl:stylesheet>\n"), "XSLT");
+        assert_eq!(lang("a.xslt", "<!DOCTYPE html>\n<html><body></body></html>\n"), "HTML");
+        assert_eq!(lang("a.xslt", "<root><a>1</A></root>\n"), "XML", "a tag and its end tag");
+        assert_eq!(lang("a.j", ".class public Foo\n.super java/lang/Object\n"), "Jasmin");
+        assert_eq!(lang("a.j", "@import <Foundation/CPObject.j>\n"), "Objective-J");
+        assert_eq!(lang("a.lean", "import data.nat.basic\n"), "Lean");
+        assert_eq!(lang("a.lean", "import Mathlib\n"), "Lean4");
+        assert_eq!(lang("a.mi", "f := proc(x) x^2 end proc;\n"), "Maple");
+        assert_eq!(lang("a.scd", "foo(1)\n\n# NAME\n"), "scdoc");
+        assert_eq!(lang("a.def", "DEFINITION MODULE M;\n(* x *)\nPROCEDURE P(VAR a := 1);\nEND M.\n"), "Modula-2");
+        assert_eq!(lang("a.def", "Bootstrap: docker\n%post\n  apt-get update\n"), "Singularity");
     }
 
     #[test]
@@ -477,6 +630,8 @@ mod tests {
         }
         assert_eq!(lang("run", "#!/usr/bin/env node\nimport x from 'y'\n"), "Python", "as 1.x guessed");
         assert_eq!(lang("run", "#!/usr/bin/env python3\nimport numpy as np\n"), "NumPy");
+        assert_eq!(lang("run", "#!/usr/bin/env ruby\nimport x\n"), "Python", "Python's lexer is tried before Ruby's");
+        assert_eq!(lang("run", "#!/usr/bin/env perl\nimport x\n"), "Perl", "and after Perl's");
         assert_eq!(lang("run", "no shebang\n"), "Plain text");
     }
 

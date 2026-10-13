@@ -1118,13 +1118,20 @@ impl EditorWindow {
         let press = matches!(m.kind, MouseKind::Down(MouseButton::Left) | MouseKind::DoubleClick(MouseButton::Left));
         match m.kind {
             MouseKind::Scroll(lines) => {
-                let delta = (-lines * 3.0).round() as isize;
+                let (delta, before) = ((-lines * 3.0).round() as isize, self.top);
                 self.top = (self.top as isize + delta).max(0) as usize;
                 self.clamp_scroll(app.screen(id));
+                if self.top == before {
+                    return Outcome::Ignored;
+                }
             }
             MouseKind::HScroll(n) => {
                 let max = width.saturating_sub(cols);
-                self.left = (self.left as isize - (n * 3.0).round() as isize).clamp(0, max as isize) as usize;
+                let left = (self.left as isize - (n * 3.0).round() as isize).clamp(0, max as isize) as usize;
+                if left == self.left {
+                    return Outcome::Ignored;
+                }
+                self.left = left;
             }
             // The scrollbars: drag the thumb, click beside it for a page.
             _ if press && l.vbar.contains(m.col, m.row) => {
@@ -1154,12 +1161,20 @@ impl EditorWindow {
             MouseKind::Move if matches!(self.drag, Drag::VBar { .. }) => {
                 let Drag::VBar { grab } = self.drag else { return Outcome::Ignored };
                 let start = m.row as f32 - l.vbar.y as f32 - grab;
-                self.top = pos_for_thumb(lines, rows, start, l.vbar.h);
+                let top = pos_for_thumb(lines, rows, start, l.vbar.h);
+                if top == self.top {
+                    return Outcome::Ignored;
+                }
+                self.top = top;
             }
             MouseKind::Move if matches!(self.drag, Drag::HBar { .. }) => {
                 let (Drag::HBar { grab }, Some(track)) = (self.drag, l.hbar) else { return Outcome::Ignored };
                 let start = m.col as f32 - track.x as f32 - grab;
-                self.left = pos_for_thumb(width, cols, start, track.w);
+                let left = pos_for_thumb(width, cols, start, track.w);
+                if left == self.left {
+                    return Outcome::Ignored;
+                }
+                self.left = left;
             }
             MouseKind::Down(MouseButton::Left) if text_area.contains(m.col, m.row) => {
                 self.focus = Focus::Text;
@@ -1185,7 +1200,8 @@ impl EditorWindow {
                 self.buf.move_to(pos, true);
             }
             MouseKind::Up(MouseButton::Left) => self.drag = Drag::None,
-            MouseKind::Down(MouseButton::Right) | MouseKind::DoubleClick(MouseButton::Right) if text_area.contains(m.col, m.row) => {
+            // Not on the line numbers: 1.x's gutter had no menu.
+            MouseKind::Down(MouseButton::Right) | MouseKind::DoubleClick(MouseButton::Right) if l.code.contains(m.col, m.row) => {
                 // Like Qt, a right click doesn't move the cursor.
                 self.focus = Focus::Text;
                 self.context_menu(app, id, m.col, m.row);

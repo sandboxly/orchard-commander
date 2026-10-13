@@ -612,7 +612,6 @@ fn title_shortens_the_home_folder() {
     assert_eq!(shown, format!("~{}", Path::new("/src/a.txt").display()).replace('/', std::path::MAIN_SEPARATOR_STR));
 }
 
-/// A zip with one stored (uncompressed) file, so the test needs no zip crate.
 fn mouse(app: &mut App, id: WinId, kind: oc_ui::MouseKind, col: u16, row: u16) {
     app.handle_event(id, Event::Mouse(oc_ui::MouseEvent { kind, col, row, mods: Mods::NONE }));
 }
@@ -641,6 +640,9 @@ fn long_lines_scroll_sideways() {
     assert_eq!(ed(&app, id).left, max, "not past the longest line");
     mouse(&mut app, id, MouseKind::HScroll(1000.0), 10, 5);
     assert_eq!(ed(&app, id).left, 0);
+    app.take_redraw();
+    mouse(&mut app, id, MouseKind::HScroll(1.0), 10, 5);
+    assert!(!app.take_redraw(), "nothing moved: no redraw");
     assert_eq!(ed(&app, id).buf.cursor, 0, "scrolling doesn't move the cursor");
     // A click right of the thumb pages; dragging the thumb to the end.
     mouse(&mut app, id, MouseKind::Down(MouseButton::Left), bar.right() - 1, bar.y);
@@ -767,6 +769,10 @@ fn right_click_shows_the_text_menu() {
     settle(&mut app);
     assert_eq!(text(&app, id), "lo world\n");
     assert_eq!(app.clipboard.get_text().as_deref(), Some("he"));
+    // 1.x's line numbers had no menu.
+    let gutter = layout(&app, id).gutter;
+    mouse(&mut app, id, MouseKind::Down(MouseButton::Right), gutter.x + 1, gutter.y);
+    assert!(app.modal_titles().is_empty());
 }
 
 #[test]
@@ -862,6 +868,7 @@ fn mac_text_keys_match_qt() {
     assert_eq!(app.modal_titles(), ["Unsaved changes"]);
 }
 
+/// A zip with one stored (uncompressed) file, so the test needs no zip crate.
 fn write_zip(path: &Path, name: &str, body: &[u8]) {
     let mut crc = 0xffff_ffffu32;
     for &b in body {
