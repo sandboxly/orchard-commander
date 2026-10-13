@@ -1,0 +1,27 @@
+[package]
+name = "oc-remote-http"
+description = "WebDAV and S3 file systems over a small blocking HTTP(S) client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oc-vfs.workspace = true
+oc-provider = { path = "../oc-provider" }
+thiserror.workspace = true
+tempfile.workspace = true
+serde_json = "1.0.140"
+percent-encoding = "2.3.1"
+httparse = "1.10.1"
+roxmltree = "0.21.1"
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7.1"
+sha2 = "0.10.9"
+hmac = "0.12.1"
+md-5 = "0.10.6"
+base64 = "0.22.1"
+mime_guess = "2.0.5"
+
+[dev-dependencies]
+oc-archive = { path = "../oc-archive" }
+zip = { version = "9.0.2", default-features = false, features = ["deflate"] }

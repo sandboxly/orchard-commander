@@ -1,0 +1,345 @@
+{
+ "format": [
+  {
+   "scheme": "webdavs",
+   "params": {
+    "host": "cloud.example.com",
+    "username": "me",
+    "root": "/remote.php/dav/files/me",
+    "path": "Photos/2025"
+   },
+   "url": "webdavs://me@cloud.example.com/remote.php/dav/files/me/Photos/2025",
+   "account": "webdavs://me@cloud.example.com/remote.php/dav/files/me",
+   "describe": "me@cloud.example.com",
+   "validate": null
+  },
+  {
+   "scheme": "webdavs",
+   "params": {
+    "host": "nas.local",
+    "port": 5006,
+    "username": "Jürgen Ö",
+    "root": "/a b/ü+%/",
+    "path": "x"
+   },
+   "url": "webdavs://J%C3%BCrgen%20%C3%96@nas.local:5006/a%20b/%C3%BC%2B%25/x",
+   "account": "webdavs://J%C3%BCrgen%20%C3%96@nas.local:5006/a%20b/%C3%BC%2B%25",
+   "describe": "Jürgen Ö@nas.local",
+   "validate": null
+  },
+  {
+   "scheme": "webdavs",
+   "params": {
+    "host": "nas",
+    "port": "443",
+    "root": "",
+    "path": ""
+   },
+   "url": "webdavs://nas",
+   "account": "webdavs://nas",
+   "describe": "nas",
+   "validate": null
+  },
+  {
+   "scheme": "webdav",
+   "params": {
+    "host": "192.168.1.2",
+    "port": "8080",
+    "username": "a@b",
+    "root": "/dav"
+   },
+   "url": "webdav://a%40b@192.168.1.2:8080/dav",
+   "account": "webdav://a%40b@192.168.1.2:8080/dav",
+   "describe": "a@b@192.168.1.2",
+   "validate": null
+  },
+  {
+   "scheme": "webdav",
+   "params": {
+    "host": "nas",
+    "port": 80,
+    "path": "/deep/folder/"
+   },
+   "url": "webdav://nas/deep/folder",
+   "account": "webdav://nas",
+   "describe": "nas",
+   "validate": null
+  },
+  {
+   "scheme": "s3",
+   "params": {
+    "host": "",
+    "username": "AKIA",
+    "path": "bucket/x"
+   },
+   "url": "s3://AKIA@s3.amazonaws.com/bucket/x",
+   "account": "s3://AKIA@s3.amazonaws.com",
+   "describe": "AKIA@s3.amazonaws.com",
+   "validate": null
+  },
+  {
+   "scheme": "s3",
+   "params": {
+    "host": "minio.local",
+    "port": 9000,
+    "region": "eu west/1",
+    "username": "key+id",
+    "path": "b/ä"
+   },
+   "url": "s3://key%2Bid@minio.local:9000/b/%C3%A4?region=eu%20west/1",
+   "account": "s3://key%2Bid@minio.local:9000?region=eu%20west/1",
+   "describe": "key+id@minio.local",
+   "validate": null
+  },
+  {
+   "scheme": "s3",
+   "params": {
+    "host": "s3.eu-central-1.amazonaws.com",
+    "port": 443,
+    "region": "",
+    "path": ""
+   },
+   "url": "s3://s3.eu-central-1.amazonaws.com",
+   "account": "s3://s3.eu-central-1.amazonaws.com",
+   "describe": "s3.eu-central-1.amazonaws.com",
+   "validate": null
+  },
+  {
+   "scheme": "s3+http",
+   "params": {
+    "host": "minio",
+    "port": 9000,
+    "username": "minio",
+    "path": "media"
+   },
+   "url": "s3+http://minio@minio:9000/media",
+   "account": "s3+http://minio@minio:9000",
+   "describe": "minio@minio",
+   "validate": null
+  },
+  {
+   "scheme": "s3+http",
+   "params": {
+    "host": "nas",
+    "port": "80",
+    "region": "us-east-1"
+   },
+   "url": "s3+http://nas?region=us-east-1",
+   "account": "s3+http://nas?region=us-east-1",
+   "describe": "nas",
+   "validate": null
+  },
+  {
+   "scheme": "webdavs",
+   "params": {
+    "host": "fe80::1",
+    "port": 8443,
+    "username": "u",
+    "root": "/x"
+   },
+   "url": "webdavs://u@fe80::1:8443/x",
+   "account": "webdavs://u@fe80::1:8443/x",
+   "describe": "u@fe80::1",
+   "validate": null
+  },
+  {
+   "scheme": "webdavs",
+   "params": {
+    "host": "nas",
+    "username": "",
+    "root": "/",
+    "path": "/"
+   },
+   "url": "webdavs://nas",
+   "account": "webdavs://nas",
+   "describe": "nas",
+   "validate": null
+  },
+  {
+   "scheme": "webdav",
+   "params": {
+    "host": "NAS.Local",
+    "port": "8080",
+    "username": "ä:b",
+    "root": "a/b/c",
+    "path": "d e"
+   },
+   "url": "webdav://%C3%A4%3Ab@NAS.Local:8080/a/b/c/d%20e",
+   "account": "webdav://%C3%A4%3Ab@NAS.Local:8080/a/b/c",
+   "describe": "ä:b@NAS.Local",
+   "validate": null
+  },
+  {
+   "scheme": "s3",
+   "params": {
+    "host": "s3.amazonaws.com",
+    "username": "AK",
+    "region": "eu-central-1",
+    "path": "/b/"
+   },
+   "url": "s3://AK@s3.amazonaws.com/b?region=eu-central-1",
+   "account": "s3://AK@s3.amazonaws.com?region=eu-central-1",
+   "describe": "AK@s3.amazonaws.com",
+   "validate": null
+  },
+  {
+   "scheme": "s3",
+   "params": {
+    "host": "minio.local",
+    "port": "",
+    "username": "k/ey",
+    "region": "a&b=c"
+   },
+   "url": "s3://k/ey@minio.local?region=a%26b%3Dc",
+   "account": "s3://k/ey@minio.local?region=a%26b%3Dc",
+   "describe": "k/ey@minio.local",
+   "validate": null
+  },
+  {
+   "scheme": "s3+http",
+   "params": {
+    "host": "",
+    "port": 80
+   },
+   "url": "s3+http://s3.amazonaws.com",
+   "account": "s3+http://s3.amazonaws.com",
+   "describe": "s3.amazonaws.com",
+   "validate": null
+  },
+  {
+   "scheme": "s3+http",
+   "params": {
+    "host": "x",
+    "port": 9000,
+    "path": "a?b#c"
+   },
+   "url": "s3+http://x:9000/a%3Fb%23c",
+   "account": "s3+http://x:9000",
+   "describe": "x",
+   "validate": null
+  },
+  {
+   "scheme": "s3",
+   "params": {
+    "host": "minio.local",
+    "port": "70000"
+   },
+   "url": "s3://minio.local:70000",
+   "account": "s3://minio.local:70000",
+   "describe": "minio.local",
+   "validate": null
+  }
+ ],
+ "parse": [
+  {
+   "url": "webdavs://Me@Cloud.Example.com:8443/remote.php/dav/files/me%20x/",
+   "params": {
+    "host": "cloud.example.com",
+    "username": "Me",
+    "port": 8443,
+    "root": "/remote.php/dav/files/me x"
+   }
+  },
+  {
+   "url": "webdav://nas/",
+   "params": {
+    "host": "nas"
+   }
+  },
+  {
+   "url": "s3://bucket",
+   "params": {
+    "host": "s3.amazonaws.com",
+    "path": "bucket"
+   }
+  },
+  {
+   "url": "s3://AK@minio.local:9000/b/c?region=x%20y&other=1",
+   "params": {
+    "host": "minio.local",
+    "username": "AK",
+    "port": 9000,
+    "path": "b/c",
+    "region": "x y"
+   }
+  },
+  {
+   "url": "s3+http://10.0.0.5/b",
+   "params": {
+    "host": "10.0.0.5",
+    "path": "b"
+   }
+  },
+  {
+   "url": "s3://localhost/b",
+   "params": {
+    "host": "localhost",
+    "path": "b"
+   }
+  },
+  {
+   "url": "webdavs://[fe80::1]:8443/x",
+   "params": {
+    "host": "fe80::1",
+    "port": 8443,
+    "root": "/x"
+   }
+  },
+  {
+   "url": "webdav://u%40v:p@host/a%2Fb/c",
+   "params": {
+    "host": "host",
+    "username": "u@v",
+    "root": "/a/b/c"
+   }
+  },
+  {
+   "url": "s3://AK@[::1]:9000/b",
+   "params": {
+    "host": "::1",
+    "username": "AK",
+    "port": 9000,
+    "path": "b"
+   }
+  },
+  {
+   "url": "s3://mybucket?region=eu-west-1",
+   "params": {
+    "host": "s3.amazonaws.com",
+    "path": "mybucket",
+    "region": "eu-west-1"
+   }
+  },
+  {
+   "url": "s3+http://minio:9000/b/c/?region=&region=x",
+   "params": {
+    "host": "minio",
+    "port": 9000,
+    "path": "b/c",
+    "region": "x"
+   }
+  },
+  {
+   "url": "S3://Bucket/x",
+   "params": {
+    "host": "s3.amazonaws.com",
+    "path": "bucket/x"
+   }
+  },
+  {
+   "url": "s3://localhost:9000/b",
+   "params": {
+    "host": "localhost",
+    "port": 9000,
+    "path": "b"
+   }
+  },
+  {
+   "url": "webdavs://host:443/",
+   "params": {
+    "host": "host",
+    "port": 443
+   }
+  }
+ ]
+}
