@@ -162,6 +162,131 @@ fn unknown_and_unreadable() {
     assert_eq!(metadata::read(&local(&tmp.path().join("x.mp3")), true, false).unwrap(), Metadata::new());
 }
 
+fn fields(pairs: &[(&str, &str)]) -> Metadata {
+    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+/// Fixtures made with ffmpeg (and mutagen for the DSF) by `gen_media_fixtures.py`,
+/// which also recorded what the Python version read from them.
+const MEDIA_FIXTURES: &[&str] = &["clip.wmv", "clip.flv", "clip.mpg", "clip.ts", "clip.m2ts", "tone.wma", "tone.dsf"];
+
+#[test]
+fn media_fixtures_give_what_python_gave() {
+    let reference: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(data("python_media_reference.json")).unwrap()).unwrap();
+    let reference = reference.as_object().unwrap();
+    assert_eq!(reference.len(), MEDIA_FIXTURES.len());
+    for name in MEDIA_FIXTURES {
+        let meta = read(&data(name));
+        for (provider, values) in reference[*name].as_object().unwrap() {
+            for (field, value) in values.as_object().unwrap() {
+                assert_eq!(meta.get(field), Some(&value.as_str().unwrap().to_string()), "{name}: {provider} {field}");
+            }
+        }
+    }
+}
+
+#[test]
+fn video_containers() {
+    let wmv = fields(&[
+        ("width", "96"),
+        ("height", "64"),
+        ("resolution", "96x64"),
+        ("quality", "64p"),
+        ("duration", "3s"),
+        ("title", "My - Film"),
+    ]);
+    assert_eq!(read(&data("clip.wmv")), wmv);
+    let mut flv = fields(&[("width", "96"), ("height", "64"), ("resolution", "96x64"), ("quality", "64p")]);
+    flv.extend(fields(&[("duration", "3s"), ("fps", "10")]));
+    assert_eq!(read(&data("clip.flv")), flv);
+    // MPEG streams: nothing in Python (hachoir); ffprobe's values.
+    assert_eq!(read(&data("clip.mpg")), flv); // 10 fps = MPEG-2's 30 with a 1/3 frame rate extension
+    let mut ts = flv.clone();
+    ts.insert("fps".into(), "29.97".into());
+    assert_eq!(read(&data("clip.ts")), ts);
+    let m2ts = fields(&[
+        ("width", "100"), // H.264, cropped from 112x64
+        ("height", "58"),
+        ("resolution", "100x58"),
+        ("quality", "58p"),
+        ("duration", "3s"),
+        ("fps", "25"),
+    ]);
+    assert_eq!(read(&data("clip.m2ts")), m2ts);
+}
+
+#[test]
+fn wma_and_dsf_tags() {
+    // Python found only what mutagen happened to name like its "easy" keys
+    // (title, date); the standard WMA attributes and DSF's ID3 tag now count too.
+    let wma = fields(&[
+        ("title", "Tone - One"),
+        ("artist", "AC-DC"),
+        ("album", "Live"),
+        ("genre", "Rock"),
+        ("track", "03"),
+        ("tracktotal", "12"),
+        ("year", "1992"),
+        ("duration", "3s"),
+        ("bitrate", "24"),
+    ]);
+    assert_eq!(read(&data("tone.wma")), wma);
+    let dsf = fields(&[
+        ("title", "Tone - Two"),
+        ("artist", "AC-DC"),
+        ("albumartist", "Various"),
+        ("album", "Live"),
+        ("genre", "Rock"),
+        ("track", "07"),
+        ("tracktotal", "9"),
+        ("year", "1992"),
+        ("duration", "3s"),
+        ("bitrate", "5645"),
+    ]);
+    assert_eq!(read(&data("tone.dsf")), dsf);
+    let item = with_meta(&data("tone.wma"));
+    assert_eq!(oc_rename::new_name(&item, 0, &named("[=track] [=artist] - [=title]")).unwrap(), "03 AC-DC - Tone - One.wma");
+}
+
+#[test]
+fn damaged_media_files_have_no_metadata() {
+    let tmp = tempfile::tempdir().unwrap();
+    for name in MEDIA_FIXTURES {
+        let whole = std::fs::read(data(name)).unwrap();
+        // Cut short, or garbage in the middle: no panic, no hang, maybe fewer fields.
+        for keep in [0, 1, 4, 16, 30, 100, 200, 1000, whole.len() / 2] {
+            let path = tmp.path().join(name);
+            std::fs::write(&path, &whole[..keep.min(whole.len())]).unwrap();
+            let _ = read(&path);
+        }
+        let mut damaged = whole.clone();
+        for (i, byte) in damaged.iter_mut().enumerate().skip(24) {
+            if i % 7 == 0 {
+                *byte = byte.wrapping_mul(31).wrapping_add(17);
+            }
+        }
+        std::fs::write(tmp.path().join(name), &damaged).unwrap();
+        let _ = read(&tmp.path().join(name));
+    }
+    // The extension isn't trusted: TypeScript in a .ts file is just not a video.
+    std::fs::write(tmp.path().join("app.ts"), "export const x = 1;\n").unwrap();
+    assert_eq!(read(&tmp.path().join("app.ts")), Metadata::new());
+}
+
+#[test]
+fn media_files_elsewhere_are_streamed() {
+    let mem = MemFS::new();
+    for name in MEDIA_FIXTURES {
+        mem.add_file(&format!("media/{name}"), std::fs::read(data(name)).unwrap());
+    }
+    let root = mem.root();
+    for name in MEDIA_FIXTURES {
+        let streamed = metadata::read(&root.child(&["media", name]), false, false).unwrap();
+        assert_eq!(streamed, read(&data(name)), "{name}");
+    }
+}
+
 #[test]
 fn files_elsewhere_are_streamed() {
     let mem = MemFS::new();
