@@ -108,20 +108,25 @@ impl Action {
         }
     }
 
-    /// The platform's keys (Qt's standard keys plus 1.x's extras).
+    /// The platform's keys (Qt's standard keys plus 1.x's extras). On macOS
+    /// "Ctrl" is the Control key: ⌃K / ⌃Y are Cocoa's cut / yank.
     pub fn shortcuts(self) -> Vec<Shortcut> {
         let mac = cfg!(target_os = "macos");
+        let win = cfg!(target_os = "windows");
         let specs: Vec<&str> = match self {
             Action::Save => vec!["Primary+S"],
+            Action::Close if mac || win => vec!["Primary+W", "Primary+F4"],
             Action::Close => vec!["Primary+W"],
+            Action::Undo if win => vec!["Primary+Z", "Alt+Backspace"],
             Action::Undo => vec!["Primary+Z"],
             Action::Redo if mac => vec!["Primary+Shift+Z"],
+            Action::Redo if win => vec!["Primary+Y", "Primary+Shift+Z", "Alt+Shift+Backspace"],
             Action::Redo => vec!["Primary+Y", "Primary+Shift+Z"],
-            Action::Cut if mac => vec!["Primary+X"],
+            Action::Cut if mac => vec!["Primary+X", "Ctrl+K"],
             Action::Cut => vec!["Primary+X", "Shift+Delete"],
             Action::Copy if mac => vec!["Primary+C"],
             Action::Copy => vec!["Primary+C", "Primary+Insert"],
-            Action::Paste if mac => vec!["Primary+V"],
+            Action::Paste if mac => vec!["Primary+V", "Ctrl+Y"],
             Action::Paste => vec!["Primary+V", "Shift+Insert"],
             Action::SelectAll => vec!["Primary+A"],
             Action::Find => vec!["Primary+F"],
@@ -139,6 +144,44 @@ impl Action {
     pub fn for_key(k: &KeyEvent) -> Option<Action> {
         Action::ALL.into_iter().find(|a| a.shortcuts().iter().any(|s| s.matches(k)))
     }
+}
+
+/// macOS keys of 1.x's text field (Qt's Cocoa bindings) as the key
+/// `text_key` handles the same way: Home / End go to the start / end of the
+/// document (as ⌘↑ / ⌘↓), ⌃← / ⌃→, ⌃A / ⌃E and ⌥↑ / ⌥↓ to the start / end
+/// of the line (as ⌘← / ⌘→), and the emacs keys ⌃F ⌃B ⌃N ⌃P (arrows),
+/// ⌃V ⌃↑ ⌃↓ ⌃/⌥PgUp/PgDn (pages), ⌃H / ⌃D (backspace / delete). Shift
+/// still selects.
+fn mac_text_alias(k: &KeyEvent) -> Option<KeyEvent> {
+    use crate::input::Mods;
+    let shift = k.mods.shift;
+    let cmd = Mods { shift, logo: true, ..Mods::NONE };
+    let plain = Mods { shift, ..Mods::NONE };
+    let ctrl = k.mods.ctrl && !k.mods.alt && !k.mods.logo;
+    let alt = k.mods.alt && !k.mods.ctrl && !k.mods.logo;
+    let none = !k.mods.ctrl && !k.mods.alt && !k.mods.logo;
+    let (key, mods) = match k.key {
+        Key::Home if none => (Key::Up, cmd),
+        Key::End if none => (Key::Down, cmd),
+        Key::Left if ctrl => (Key::Left, cmd),
+        Key::Right if ctrl => (Key::Right, cmd),
+        Key::Char('a') if ctrl => (Key::Left, cmd),
+        Key::Char('e') if ctrl => (Key::Right, cmd),
+        Key::Up if alt => (Key::Left, cmd),
+        Key::Down if alt => (Key::Right, cmd),
+        Key::Char('f') if ctrl => (Key::Right, plain),
+        Key::Char('b') if ctrl => (Key::Left, plain),
+        Key::Char('n') if ctrl => (Key::Down, plain),
+        Key::Char('p') if ctrl => (Key::Up, plain),
+        Key::Char('v') | Key::Down | Key::PageDown if ctrl => (Key::PageDown, plain),
+        Key::Up | Key::PageUp if ctrl => (Key::PageUp, plain),
+        Key::PageDown if alt => (Key::PageDown, plain),
+        Key::PageUp if alt => (Key::PageUp, plain),
+        Key::Char('h') if ctrl => (Key::Backspace, plain),
+        Key::Char('d') if ctrl => (Key::Delete, plain),
+        _ => return None,
+    };
+    Some(KeyEvent::new(key, mods))
 }
 
 /// Where the keyboard focus is.
@@ -869,8 +912,10 @@ impl EditorWindow {
     }
 
     fn text_key(&mut self, app: &mut App, id: WinId, k: &KeyEvent) -> Outcome {
-        let m = k.mods;
         let mac = cfg!(target_os = "macos");
+        let alias = if mac { mac_text_alias(k) } else { None };
+        let k = alias.as_ref().unwrap_or(k);
+        let m = k.mods;
         let word = if mac { m.alt } else { m.ctrl };
         let line_mod = mac && m.logo;
         let doc_mod = if mac { m.logo } else { m.ctrl };
