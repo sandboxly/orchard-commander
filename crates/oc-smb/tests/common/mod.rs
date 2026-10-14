@@ -101,12 +101,12 @@ server.addCredential(user, 0, "aad3b435b51404eeaad3b435b51404ee", nthash)
 server.start()
 "#;
 
-/// OC_TEST_PYTHON, else the Python version's dev venv next to this
-/// repository, else `python3` — whichever has impacket.
+/// OC_TEST_PYTHON, else the repository's test venv (`.venv`), else
+/// `python3` — whichever has impacket.
 fn python() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = std::env::var_os("OC_TEST_PYTHON").map(PathBuf::from).into_iter().collect();
     for dir in Path::new(env!("CARGO_MANIFEST_DIR")).ancestors() {
-        candidates.push(dir.join("fcmd/.venv/bin/python"));
+        candidates.push(dir.join(".venv/bin/python"));
     }
     candidates.push(PathBuf::from("python3"));
     candidates.into_iter().find(|python| {

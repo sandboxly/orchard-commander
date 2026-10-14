@@ -34,14 +34,15 @@ macro_rules! require {
 // The Python version's test servers
 // ---------------------------------------------------------------------------
 
-/// The Python test venv: $OC_TEST_PYTHON, or `fcmd/.venv` next to any
-/// ancestor of this crate (the main checkout and its worktrees).
+/// The Python test venv: $OC_TEST_PYTHON, or the repository's `.venv` (the
+/// nearest ancestor of this crate that has one: worktrees find the main
+/// checkout's). See `tests/servers-requirements.txt`.
 pub fn python() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("OC_TEST_PYTHON") {
         return Some(PathBuf::from(p)).filter(|p| p.exists());
     }
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
-    here.ancestors().map(|a| a.join("fcmd/.venv/bin/python")).find(|p| p.exists())
+    here.ancestors().map(|a| a.join(".venv/bin/python")).find(|p| p.exists())
 }
 
 /// A server run by `tests/support/servers.py`; stopped when dropped.

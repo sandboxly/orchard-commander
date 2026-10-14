@@ -469,12 +469,12 @@ fn editor_switches_types_and_keeps_typed_values() {
 // WebDAV and S3 (the Python version's WsgiDAV and moto)
 // ---------------------------------------------------------------------------
 
-/// The Python test venv: $OC_TEST_PYTHON, or `fcmd/.venv` next to an ancestor.
+/// The Python test venv: $OC_TEST_PYTHON, or the repository's `.venv`.
 fn python() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("OC_TEST_PYTHON") {
         return Some(PathBuf::from(p)).filter(|p| p.exists());
     }
-    Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().map(|a| a.join("fcmd/.venv/bin/python")).find(|p| p.exists())
+    Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().map(|a| a.join(".venv/bin/python")).find(|p| p.exists())
 }
 
 /// A server from oc-remote-http's `tests/support/servers.py`; stopped when dropped.

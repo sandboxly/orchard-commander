@@ -1,0 +1,11 @@
+# Python packages for the server tests (WebDAV, S3, SMB, SFTP interop).
+# python3 -m venv .venv && .venv/bin/pip install -r tests/servers-requirements.txt
+# The tests look for .venv at the repository root, or use $OC_TEST_PYTHON.
+asyncssh==2.24.1
+boto3==1.43.111
+cheroot==11.1.2
+cryptography==50.0.2
+impacket==0.13.1
+moto[server]==5.2.4
+paramiko==5.0.0
+wsgidav==4.3.5

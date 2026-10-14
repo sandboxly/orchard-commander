@@ -2,8 +2,10 @@
 //! server (a different SSH/SFTP implementation than ours) and paramiko's
 //! known_hosts files, read and written both ways.
 //!
-//! Needs the Python checkout (`fcmd/` next to this repository, or
-//! `OC_FCMD_DIR`) with its `.venv`; skips otherwise.
+//! Opt-in: `OC_PYTHON1_CHECKOUT=<dir>` names a checkout of the 1.x code
+//! (`git worktree add <dir> python-1.x`) for its `tests/servers.py`; the
+//! Python is $OC_TEST_PYTHON or the repository's `.venv` (asyncssh and
+//! paramiko, see `tests/servers-requirements.txt`). Skips otherwise.
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -15,16 +17,18 @@ use std::time::Duration;
 use oc_sftp::{Agent, ConnectOptions, connect};
 use oc_vfs::{FileSystem, VPath};
 
-fn fcmd_dir() -> Option<PathBuf> {
-    let ok = |d: &Path| d.join("tests/servers.py").is_file() && python_in(d).is_file();
-    if let Some(d) = std::env::var_os("OC_FCMD_DIR").map(PathBuf::from) {
-        return ok(&d).then_some(d);
+/// The 1.x checkout and the Python to run its test servers with.
+fn python1() -> Option<(PathBuf, PathBuf)> {
+    let checkout = PathBuf::from(std::env::var_os("OC_PYTHON1_CHECKOUT")?);
+    if !checkout.join("tests/servers.py").is_file() {
+        return None;
     }
-    Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().map(|a| a.join("fcmd")).find(|d| ok(d))
-}
-
-fn python_in(fcmd: &Path) -> PathBuf {
-    if cfg!(windows) { fcmd.join(".venv/Scripts/python.exe") } else { fcmd.join(".venv/bin/python") }
+    let venv = if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" };
+    let python = match std::env::var_os("OC_TEST_PYTHON") {
+        Some(p) => Some(PathBuf::from(p)),
+        None => Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().map(|a| a.join(venv)).find(|p| p.is_file()),
+    };
+    Some((checkout, python.filter(|p| p.is_file())?))
 }
 
 const SERVER_SCRIPT: &str = r#"
@@ -69,11 +73,11 @@ impl Drop for PyServer {
     }
 }
 
-fn start(fcmd: &Path, root: &Path, known_hosts: &Path) -> PyServer {
-    let mut child = Command::new(python_in(fcmd))
+fn start(checkout: &Path, python: &Path, root: &Path, known_hosts: &Path) -> PyServer {
+    let mut child = Command::new(python)
         .arg("-c")
         .arg(SERVER_SCRIPT)
-        .arg(fcmd.join("tests"))
+        .arg(checkout.join("tests"))
         .arg(root)
         .arg(known_hosts)
         .stdin(Stdio::piped())
@@ -101,8 +105,8 @@ fn options(port: u16, known_hosts: &Path, home: &Path) -> ConnectOptions {
 
 #[test]
 fn asyncssh_server_and_paramiko_known_hosts() {
-    let Some(fcmd) = fcmd_dir() else {
-        eprintln!("skipped: no Python checkout with .venv (set OC_FCMD_DIR)");
+    let Some((checkout, python)) = python1() else {
+        eprintln!("skipped: set OC_PYTHON1_CHECKOUT to a 1.x checkout (git worktree add <dir> python-1.x) and have a test venv");
         return;
     };
     let dir = tempfile::tempdir().unwrap();
@@ -110,7 +114,7 @@ fn asyncssh_server_and_paramiko_known_hosts() {
     let root = tmp.join("remote");
     fs::create_dir_all(root.join("contract")).unwrap();
     let paramiko_hosts = tmp.join("paramiko_known_hosts");
-    let server = start(&fcmd, &root, &paramiko_hosts);
+    let server = start(&checkout, &python, &root, &paramiko_hosts);
 
     // A known_hosts written by paramiko (1.x) is trusted as is.
     let remote: Arc<dyn FileSystem> =
@@ -127,7 +131,7 @@ fn asyncssh_server_and_paramiko_known_hosts() {
     })
     .unwrap();
     fs2.close();
-    let out = Command::new(python_in(&fcmd))
+    let out = Command::new(&python)
         .arg("-c")
         .arg(CHECK_SCRIPT)
         .arg(&ours)

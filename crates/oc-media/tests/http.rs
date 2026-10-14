@@ -19,10 +19,13 @@ use common::*;
 use oc_media::{AudioOutput, Event, MediaSource, Player, PlayerOptions, WaveformAnalyzer, WaveformOptions, probe_stream};
 use oc_vfs::ReadStream;
 
-const PYTHON_VENV_WSGIDAV: &str = "/Users/stephan.lengl/.private/dev/src/fcmd/.venv/bin/wsgidav";
-
+/// $OC_WSGIDAV, the one in $OC_TEST_PYTHON's venv or the repository's
+/// `.venv`, else one on the PATH.
 fn wsgidav() -> Option<PathBuf> {
-    let candidates = [std::env::var_os("OC_WSGIDAV").map(PathBuf::from), Some(PathBuf::from(PYTHON_VENV_WSGIDAV))];
+    let in_venv = |python: PathBuf| python.parent().map(|bin| bin.join("wsgidav"));
+    let repo_venv = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().map(|a| a.join(".venv/bin/wsgidav")).find(|p| p.is_file());
+    let candidates =
+        [std::env::var_os("OC_WSGIDAV").map(PathBuf::from), std::env::var_os("OC_TEST_PYTHON").map(PathBuf::from).and_then(in_venv), repo_venv];
     if let Some(p) = candidates.into_iter().flatten().find(|p| p.is_file()) {
         return Some(p);
     }

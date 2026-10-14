@@ -20,8 +20,8 @@
 //! `ConnectError` for providers.
 //!
 //! Testing: `tests/` runs against real servers — WsgiDAV (Basic, Digest,
-//! HTTPS with a self-signed certificate) and moto from the Python version's
-//! test venv (`../fcmd/.venv`, or `$OC_TEST_PYTHON`), MinIO in Docker (real
+//! HTTPS with a self-signed certificate) and moto from the repository's test
+//! venv (`.venv`, or `$OC_TEST_PYTHON`), MinIO in Docker (real
 //! signature checks), a tiny in-process server for edge cases, and, with
 //! `--ignored`, Amazon itself. Tests whose server isn't available are skipped.
 
