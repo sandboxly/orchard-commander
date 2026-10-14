@@ -1,4 +1,5 @@
-//! Multi-rename (Ctrl+M) on `oc_rename`: ⌘M opens the
+//! F2 renames the entry under the cursor in place; multi-rename (Ctrl+M)
+//! on `oc_rename`: ⌘M opens the
 //! dialog for the marked items (or the one under the cursor), the batch runs
 //! on a worker, ⌘Z gives the last batch its old names back. Port of the
 //! multi-rename half of `main_window.py` plus `ui/rename_ui.py`.
@@ -25,7 +26,7 @@ pub use dialog::{Field, RenameDialog, RenameModal};
 
 use crate::app::App;
 use crate::commands::{self, Command, Registry};
-use crate::dialogs::{self, dialog_rects, draw_bar, draw_box};
+use crate::dialogs::{self, InputBox, dialog_rects, draw_bar, draw_box};
 use crate::geom::Rect;
 use crate::input::Event;
 use crate::menus::Menu;
@@ -40,6 +41,12 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
 
 pub fn register(reg: &mut Registry) {
     reg.add(
+        Command::new("files.rename", "Rename", rename_in_place)
+            .help("Rename the file under the cursor in its folder")
+            .keys(&["F2", "Shift+F6"])
+            .menu(Menu::Files, "ops"),
+    );
+    reg.add(
         Command::new("files.multi_rename", "Multi-rename", multi_rename)
             .help("Rename marked files with a pattern: [N], [C], dates, search & replace")
             .keys(&["Primary+M"])
@@ -47,7 +54,7 @@ pub fn register(reg: &mut Registry) {
     );
     reg.add(
         Command::new("files.undo_rename", "Undo rename", undo_rename)
-            .help("Undo the last multi-rename")
+            .help("Undo the last rename or multi-rename")
             .keys(&["Primary+Z"])
             .menu(Menu::Files, "ops"),
     );
@@ -153,8 +160,80 @@ pub fn undo_rename(app: &mut App) {
     }
     let n = done.renames.len();
     let side = app.main.files_side();
-    let message = format!("Give {n} item{} their old names back?", if n == 1 { "" } else { "s" });
+    let message = if n == 1 { "Give the item its old name back?".to_owned() } else { format!("Give {n} items their old names back?") };
     dialogs::confirm(app, "Undo rename", &message, "Undo", move |app| run(app, side, Job::Undo(done)));
+}
+
+/// F2 / ⇧F6: rename the entry under the cursor (not the marked ones) in its
+/// folder, through a one-item plan: a taken name is refused, a change of
+/// letter case only works, and ⌘Z undoes it like a batch. Marks stay.
+pub fn rename_in_place(app: &mut App) {
+    let side = app.main.files_side();
+    let p = &app.main.sides[side].panel;
+    let Some(entry) = p.cursor_entry() else { return }; // ".." or nothing
+    let row = entry.name.clone();
+    // Search results: the real file (the row's name is its relative path).
+    let location = p.target(&row);
+    let item = item_for(&location, entry);
+    if !oc_rename::rename_supported(&location) {
+        app.warn(format!("Can't rename here: {}", location.fs.read_only_reason()));
+        return;
+    }
+    if app.state::<RenameState>().running {
+        app.warn("The last multi-rename is still running");
+        return;
+    }
+    let old = item.name.clone();
+    let stem = oc_rename::split_name(&old, item.is_dir).0.len();
+    let message = format!("Rename '{old}' to:");
+    let ask = InputBox::new("Rename", &message, &item.name.clone(), "Rename", move |app, value| {
+        let Some(new) = value.filter(|v| *v != old) else { return };
+        if let Some(problem) = oc_rename::name_problem(&new) {
+            app.error(format!("Can't rename to '{new}': {problem}"));
+            return;
+        }
+        app.state::<RenameState>().running = true;
+        app.tasks.run_in_background(
+            move |_| {
+                let plan = oc_rename::plan_one(&item, &new, &|l: &VPath| l.exists());
+                match plan.problems().next() {
+                    Some(c) => Err(format!("'{}': {}", c.new, c.error)),
+                    None => Ok(oc_rename::execute(&plan, None)),
+                }
+            },
+            move |app, result| renamed_in_place(app, side, row, result),
+        );
+    });
+    app.show(ask.select_to(stem));
+}
+
+fn renamed_in_place(app: &mut App, side: usize, row: String, result: Result<Done, String>) {
+    app.state::<RenameState>().running = false;
+    let done = match result {
+        Ok(done) => done,
+        Err(e) => return app.error(format!("Can't rename to {e}")),
+    };
+    let Some(r) = done.renames.first().cloned() else {
+        app.error(format!("Can't rename {}", done.errors.first().map_or("", String::as_str)));
+        for s in 0..2 {
+            panel::reload(app, s);
+        }
+        return;
+    };
+    let moved = renamed_locations(&done);
+    commands::files_moved(app, &moved);
+    app.state::<RenameState>().last = Some(done);
+    // The row's new name (search results: the relative path's last part).
+    let new_row = format!("{}{}", row.strip_suffix(r.old_name.as_str()).unwrap_or(""), r.new_name);
+    let p = &mut app.main.sides[side].panel;
+    if p.marked.remove(&row) {
+        p.marked.insert(new_row.clone());
+    }
+    let here = p.location.clone();
+    panel::load(app, side, here, LoadOptions { select: Some(new_row), walk_up: true, ..Default::default() });
+    refresh(app, 1 - side, &moved);
+    let key = if cfg!(target_os = "macos") { "⌘Z" } else { "Ctrl+Z" };
+    app.info(format!("Renamed to '{}' · {key} to undo", r.new_name));
 }
 
 enum Job {

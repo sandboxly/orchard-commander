@@ -28,7 +28,7 @@ mod search;
 
 pub use mask::{MaskError, NameError, Renamer, expand, needs_metadata, new_name};
 pub use plan::{
-    Change, Done, ExistingNames, Plan, Renamed, execute, existing_names, name_problem, plan, plan_with,
+    Change, Done, ExistingNames, Plan, Renamed, execute, existing_names, name_problem, plan, plan_one, plan_with,
     rename_supported, renamed_locations, undo,
 };
 pub use rule::{CASES, Case, Item, Rule, item_for, split_name};

@@ -195,8 +195,8 @@ fn command_palette_lists_like_1x() {
     let text = app.top_modal_text().unwrap();
     let titles: Vec<&str> = text.lines().collect();
     assert_eq!(titles[..4], ["Toggle preview", "Next preview view", "Edit", "New file"]);
-    // 1.x's 40 plus About (1.x had only macOS's native About panel).
-    assert_eq!(titles.len(), 41, "{titles:?}");
+    // 1.x's 40 plus About (1.x had only macOS's native About panel) and F2's Rename.
+    assert_eq!(titles.len(), 42, "{titles:?}");
     for t in ["Menu", "Stop search", "Zoom in", "Right drive / location", "About Orchard Commander"] {
         assert!(titles.contains(&t), "{t}");
     }
@@ -233,6 +233,7 @@ fn menus_are_grouped_like_1x() {
             None,
             Some("files.copy"),
             Some("files.move"),
+            Some("files.rename"),
             Some("files.multi_rename"),
             Some("files.undo_rename"),
             Some("files.mkdir"),
@@ -540,7 +541,7 @@ fn files_and_commands_menus_group_like_1x() {
             .collect::<Vec<_>>()
     };
     let files = labels(oc_ui::Menu::Files);
-    let ops = ["Copy", "Move / rename", "Multi-rename", "Undo rename", "Make directory", "Move to trash"];
+    let ops = ["Copy", "Move / rename", "Rename", "Multi-rename", "Undo rename", "Make directory", "Move to trash"];
     let start = files.iter().position(|l| l == "Copy").unwrap();
     assert_eq!(files[start - 1], "-");
     assert_eq!(files[start..start + ops.len()], ops, "{files:?}");

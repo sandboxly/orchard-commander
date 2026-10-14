@@ -51,7 +51,8 @@ fn names(app: &App, side: usize) -> Vec<String> {
 #[test]
 fn files_menu_keeps_the_1x_order() {
     // 1.x main_window.py: Multi-rename and Undo rename sit between Move / rename
-    // and Make directory, in one group with the other file operations.
+    // and Make directory, in one group with the other file operations (F2's
+    // Rename, new in 2.0.1, next to Move / rename).
     let e = env();
     let app = app(&e);
     let labels: Vec<&str> = oc_ui::menus::menu_items(&app, oc_ui::menus::Menu::Files)
@@ -61,7 +62,7 @@ fn files_menu_keeps_the_1x_order() {
     assert_eq!(
         labels,
         [
-            "Select all", "Clear selection", "-", "Copy", "Move / rename", "Multi-rename", "Undo rename",
+            "Select all", "Clear selection", "-", "Copy", "Move / rename", "Rename", "Multi-rename", "Undo rename",
             "Make directory", "Move to trash", "-", "Find files", "Last search results", "-", "Quit",
         ]
     );
@@ -494,4 +495,132 @@ fn the_dialog_draws_in_any_window_size() {
         open(&mut app);
     }
     press(&mut app, Key::Escape);
+}
+
+// -- F2: rename in place ----------------------------------------------------------------
+
+fn f2(app: &mut App, name: &str) {
+    put_cursor_on(app, 0, name);
+    press(app, Key::F(2));
+    assert_eq!(app.modal_titles(), ["Rename"]);
+    let shown = name.rsplit(MAIN_SEPARATOR).next().unwrap(); // search results: the file's own name
+    assert!(app.top_modal_text().unwrap().ends_with(&format!("\n{shown}")));
+}
+
+fn on_disk(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn f2_renames_the_cursor_entry_and_keeps_the_marks() {
+    let e = env();
+    for f in ["a.txt", "b.txt", "report.pdf"] {
+        fs::write(e.left.join(f), f).unwrap();
+    }
+    let mut app = app(&e);
+    press_with(&mut app, Key::Char('e'), Mods::primary()); // the other panel on the same folder
+    settle(&mut app);
+    mark(&mut app, 0, &["a.txt", "report.pdf"]);
+    // The name without its extension is selected: typing replaces it, spaces included.
+    f2(&mut app, "report.pdf");
+    type_text(&mut app, "summary 2024");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert_eq!(on_disk(&e.left), ["a.txt", "b.txt", "summary 2024.pdf"]);
+    let p = &app.main.sides[0].panel;
+    assert_eq!(p.cursor_name(), Some("summary 2024.pdf"));
+    let mut marked: Vec<&str> = p.marked.iter().map(String::as_str).collect();
+    marked.sort();
+    assert_eq!(marked, ["a.txt", "summary 2024.pdf"], "only the cursor's entry is renamed; marks stay");
+    assert!(names(&app, 1).contains(&"summary 2024.pdf".to_owned()), "the other panel shows it too");
+    assert!(toast(&app).starts_with("Renamed to 'summary 2024.pdf'"));
+
+    // ⌘Z gives it its old name back.
+    press_with(&mut app, Key::Char('z'), Mods::primary());
+    assert_eq!(app.modal_titles(), ["Undo rename"]);
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert_eq!(on_disk(&e.left), ["a.txt", "b.txt", "report.pdf"]);
+}
+
+#[test]
+fn f2_case_only_changes_work_and_taken_names_are_refused() {
+    let e = env();
+    for f in ["a.txt", "b.txt"] {
+        fs::write(e.left.join(f), f).unwrap();
+    }
+    let mut app = app(&e);
+    f2(&mut app, "a.txt");
+    type_text(&mut app, "A");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert_eq!(on_disk(&e.left), ["A.txt", "b.txt"]);
+    assert_eq!(app.main.sides[0].panel.cursor_name(), Some("A.txt"));
+
+    f2(&mut app, "A.txt");
+    type_text(&mut app, "b");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert!(toast(&app).contains("already exists"), "{}", toast(&app));
+    assert_eq!(on_disk(&e.left), ["A.txt", "b.txt"]);
+    assert_eq!(fs::read_to_string(e.left.join("b.txt")).unwrap(), "b.txt", "nothing overwritten");
+
+    // Unchanged, empty and invalid names do nothing.
+    f2(&mut app, "A.txt");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    f2(&mut app, "A.txt");
+    type_text(&mut app, "x/y");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert!(toast(&app).starts_with("Can't rename to 'x/y.txt'"), "{}", toast(&app));
+    assert_eq!(on_disk(&e.left), ["A.txt", "b.txt"]);
+}
+
+#[test]
+fn f2_on_folders_selects_the_whole_name_and_ignores_the_parent_row() {
+    let e = env();
+    fs::create_dir_all(e.left.join("my.folder/inner")).unwrap();
+    let mut app = app(&e);
+    f2(&mut app, "my.folder");
+    type_text(&mut app, "photos");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert_eq!(on_disk(&e.left), ["photos"]);
+
+    panel::load(&mut app, 0, oc_local::local(e.left.join("photos")), LoadOptions::default());
+    settle(&mut app);
+    app.main.sides[0].panel.set_cursor(0);
+    assert_eq!(app.main.sides[0].panel.cursor_name(), Some(".."));
+    press(&mut app, Key::F(2));
+    assert!(app.modal_titles().is_empty(), "nothing to rename on ..");
+    // ⇧F6 is the other key for it.
+    put_cursor_on(&mut app, 0, "inner");
+    press_with(&mut app, Key::F(6), Mods::SHIFT);
+    assert_eq!(app.modal_titles(), ["Rename"]);
+}
+
+#[test]
+fn f2_in_search_results_renames_the_real_file() {
+    let e = env();
+    fs::create_dir_all(e.left.join("sub")).unwrap();
+    for f in ["a.txt", "sub/c.txt"] {
+        fs::write(e.left.join(f), f).unwrap();
+    }
+    let mut app = app(&e);
+    let query = Query { names: "*.txt".into(), ..Query::new(vec![oc_local::local(&e.left)]) };
+    let results = oc_ui::features::search::start_search(&mut app, query, 0);
+    wait_until(&mut app, "the search", Duration::from_secs(10), |app| {
+        !results.is_running() && names(app, 0).len() == 2
+    });
+    let row = format!("sub{MAIN_SEPARATOR}c.txt");
+    f2(&mut app, &row);
+    type_text(&mut app, "d");
+    press(&mut app, Key::Enter);
+    wait_idle(&mut app);
+    assert!(e.left.join("sub/d.txt").exists() && !e.left.join("sub/c.txt").exists());
+    assert_eq!(names(&app, 0), ["a.txt", "sub/d.txt"]);
+    assert_eq!(app.main.sides[0].panel.cursor_name(), Some(format!("sub{MAIN_SEPARATOR}d.txt").as_str()));
 }

@@ -163,6 +163,17 @@ pub fn plan_with(renamer: &Renamer, items: &[Item], exists: &dyn Fn(&VPath) -> b
         }
     }
 
+    check(changes, exists)
+}
+
+/// One item to one new name, checked like a batch (invalid name, name taken;
+/// a change of letter case only is fine): F2's in-place rename.
+pub fn plan_one(item: &Item, new: &str, exists: &dyn Fn(&VPath) -> bool) -> Plan {
+    check(vec![Change::new(item.clone(), new)], exists)
+}
+
+/// Mark the changes that can't be made.
+fn check(mut changes: Vec<Change>, exists: &dyn Fn(&VPath) -> bool) -> Plan {
     // Names that are freed by this batch (unchanged items keep theirs).
     let old_names: HashSet<Key> =
         changes.iter().filter(|c| c.changed()).map(|c| key(&c.item.location, &c.item.name)).collect();

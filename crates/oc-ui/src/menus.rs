@@ -53,10 +53,10 @@ impl Menu {
 
 /// Commands whose place in their section is not registration order
 /// (features registered apart but listed together, as in 1.x's Files menu:
-/// Copy, Move / rename, Multi-rename, Undo rename, Make directory, Move to
+/// Copy, Move / rename, Rename, Multi-rename, Undo rename, Make directory, Move to
 /// trash). They come first, in this order; the rest follow as registered.
 const SECTION_ORDER: &[CommandId] =
-    &["files.copy", "files.move", "files.multi_rename", "files.undo_rename", "files.mkdir", "files.trash"];
+    &["files.copy", "files.move", "files.rename", "files.multi_rename", "files.undo_rename", "files.mkdir", "files.trash"];
 
 /// One menu's items: command ids, `None` = separator.
 pub fn menu_items(app: &App, menu: Menu) -> Vec<Option<CommandId>> {

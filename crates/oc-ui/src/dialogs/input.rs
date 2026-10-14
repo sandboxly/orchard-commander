@@ -41,6 +41,15 @@ impl InputBox {
         self
     }
 
+    /// Select only `value[..end]` instead of all of it (a name without its extension).
+    pub fn select_to(mut self, end: usize) -> Self {
+        if self.input.text.is_char_boundary(end) {
+            self.input.anchor = Some(0);
+            self.input.cursor = end;
+        }
+        self
+    }
+
     fn rects(&self, screen: Rect) -> (Rect, Vec<String>, Rect, Rect) {
         let inner_w = self.width.min(screen.w.saturating_sub(2)).saturating_sub(4) as usize;
         let lines = wrap(&self.message, inner_w.max(1));
