@@ -1,4 +1,6 @@
 /target
+/.venv
+/build
 /.claude
 /dist
 /_site
