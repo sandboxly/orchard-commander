@@ -30,6 +30,10 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
 
 /// A trash / delete job running this long says so on its panel's bottom line.
 const REMOVAL_NOTE_DELAY: Duration = Duration::from_millis(500);
+/// A trash / delete job's entries stay hidden at most this long; then they
+/// are listed again until it ends (an OS trash that hangs mustn't make
+/// files look gone that are still there).
+const REMOVAL_HIDE_LIMIT: Duration = Duration::from_secs(5);
 
 pub fn register(reg: &mut Registry) {
     reg.add(
@@ -418,7 +422,10 @@ pub fn finished(app: &mut App, origin: Origin, title: &str, dialog: Option<crate
 /// a copy runs or another trash job is still busy, and a copy can start
 /// meanwhile. Their paths stay hidden from every listing until their job
 /// has ended ([`hide_removed`]), so a reload in between doesn't bring them
-/// back and they can't be chosen again.
+/// back and they can't be chosen again — but for [`REMOVAL_HIDE_LIMIT`] at
+/// most: a job still waiting or running by then lists its entries again
+/// (the bottom line says it's still deleting), so a stuck OS trash can't
+/// make files look gone that are still there.
 ///
 /// Why this can take long at all: local files go through `oc_local`'s
 /// `trash_paths` to the OS trash. On Windows that is the shell's file
@@ -435,6 +442,8 @@ pub struct Removals {
     next_id: u64,
     /// The running job takes long enough to say so on the bottom line.
     noted: bool,
+    /// [`REMOVAL_HIDE_LIMIT`], unless a test shortens it.
+    hide_limit: Option<Duration>,
 }
 
 struct Removal {
@@ -442,12 +451,20 @@ struct Removal {
     kind: Kind,
     paths: Vec<VPath>,
     side: usize,
+    /// Hidden from listings (until [`REMOVAL_HIDE_LIMIT`] has passed).
+    hidden: bool,
 }
 
 impl Removals {
     fn jobs(&self) -> impl Iterator<Item = &Removal> {
         self.running.iter().chain(&self.queue)
     }
+}
+
+/// Tests: how long a trash / delete job's entries stay hidden.
+#[doc(hidden)]
+pub fn set_removal_hide_limit(app: &mut App, limit: Duration) {
+    app.state::<Removals>().hide_limit = Some(limit);
 }
 
 /// A trash or delete job is running or waiting.
@@ -459,7 +476,7 @@ pub fn removing(app: &App) -> bool {
 /// removing (search results: by the files they stand for).
 pub(crate) fn hide_removed(app: &App, location: &VPath, entries: &mut Vec<Entry>) {
     let Some(removals) = app.try_state::<Removals>() else { return };
-    let pending: HashSet<&VPath> = removals.jobs().flat_map(|j| &j.paths).collect();
+    let pending: HashSet<&VPath> = removals.jobs().filter(|j| j.hidden).flat_map(|j| &j.paths).collect();
     if !pending.is_empty() {
         entries.retain(|e| !pending.contains(&location.child(&[&e.name]).resolved()));
     }
@@ -471,7 +488,16 @@ fn remove(app: &mut App, kind: Kind, paths: Vec<VPath>, side: usize) {
     let r = app.state::<Removals>();
     r.next_id += 1;
     let id = r.next_id;
-    r.queue.push_back(Removal { id, kind, paths, side });
+    r.queue.push_back(Removal { id, kind, paths, side, hidden: true });
+    let limit = r.hide_limit.unwrap_or(REMOVAL_HIDE_LIMIT);
+    app.schedule(limit, move |app| {
+        let r = app.state::<Removals>();
+        let Some(job) = r.running.iter_mut().chain(r.queue.iter_mut()).find(|j| j.id == id) else { return };
+        job.hidden = false;
+        for s in 0..2 {
+            panel::reload(app, s);
+        }
+    });
     panel::panel_mut(app, side).set_all_marks(false);
     for s in 0..2 {
         let p = panel::panel_mut(app, s);
@@ -574,8 +600,8 @@ fn removed(app: &mut App, id: u64, result: oc_vfs::Result<()>) {
     crate::commands::files_changed(app);
 }
 
-/// "moving 12 items to the trash…" on the bottom line of the panel the jobs
-/// came from, once the running one takes a while.
+/// "Deleting 12 items…" on the bottom line of the panel the jobs came
+/// from, once the running one takes a while.
 fn update_removal_notes(app: &mut App) {
     let r = app.state::<Removals>();
     let notes: [Option<String>; 2] = std::array::from_fn(|side| {
@@ -586,9 +612,9 @@ fn update_removal_notes(app: &mut App) {
         let n: usize = jobs.iter().map(|j| j.paths.len()).sum();
         let items = format!("{n} item{}", if n == 1 { "" } else { "s" });
         if jobs.iter().all(|j| j.kind == Kind::Delete) {
-            Some(format!("deleting {items}…"))
+            Some(format!("Permanently deleting {items}…"))
         } else {
-            Some(format!("moving {items} to the trash…"))
+            Some(format!("Deleting {items}…"))
         }
     });
     for (side, note) in notes.into_iter().enumerate() {

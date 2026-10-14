@@ -100,7 +100,7 @@ fn trashed_entries_leave_both_panels_at_once() {
     wait_until(&mut app, "reload", WAIT, |app| !app.main.sides[1].panel.loading());
     assert_eq!(names(&app, 1), ["a", "d", "e"]);
     // A job that takes a while says so on its panel's bottom line.
-    wait_until(&mut app, "the note", WAIT, |app| app.main.sides[0].panel.subtitle() == "moving 2 items to the trash…");
+    wait_until(&mut app, "the note", WAIT, |app| app.main.sides[0].panel.subtitle() == "Deleting 2 items…");
     assert_eq!(app.main.sides[1].panel.subtitle(), "0 dirs, 3 files · memory");
     gate.open();
     wait_done(&mut app);
@@ -134,7 +134,7 @@ fn a_second_trash_waits_for_the_running_one() {
     assert_eq!(names(&app, 0), ["a", "c", "e"]);
     assert_eq!(cursor(&app, 0).as_deref(), Some("e"));
     wait_until(&mut app, "the first job at the gate", WAIT, |_| gate.waiting() == 1);
-    wait_until(&mut app, "the note", WAIT, |app| app.main.sides[0].panel.subtitle() == "moving 2 items to the trash…");
+    wait_until(&mut app, "the note", WAIT, |app| app.main.sides[0].panel.subtitle() == "Deleting 2 items…");
     // A job that has started holds the first gate; one that starts later meets the second.
     let second = Gate::new();
     mem.set_trash_gate(Some(second.clone()));
@@ -152,6 +152,31 @@ fn a_second_trash_waits_for_the_running_one() {
     wait_done(&mut app);
     assert_eq!(mem.trash_calls(), [["b"], ["d"]]);
     assert_eq!(names(&app, 0), ["a", "c", "e"]);
+}
+
+/// An OS trash that hangs mustn't make files look gone that are still
+/// there: after the hide limit they are listed again, the bottom line still
+/// says they're being deleted, and they go when the job finally ends.
+#[test]
+fn a_stuck_trash_lists_its_entries_again() {
+    let Env { mut app, mem, gate, .. } = env();
+    fileops::set_removal_hide_limit(&mut app, Duration::from_millis(300));
+    put_cursor_on(&mut app, 0, "c");
+    trash(&mut app);
+    assert_eq!(names(&app, 0), ["a", "b", "d", "e"]);
+    wait_until(&mut app, "the entry listed again", WAIT, |app| {
+        names(app, 0).contains(&"c".to_owned()) && names(app, 1).contains(&"c".to_owned())
+    });
+    // Re-entering the folder lists it too.
+    panel::load(&mut app, 0, VPath::new(mem.clone(), ""), LoadOptions::default());
+    wait_until(&mut app, "the listing", WAIT, |app| !app.main.sides[0].panel.loading());
+    assert_eq!(names(&app, 0), ["a", "b", "c", "d", "e"]);
+    assert!(fileops::removing(&app));
+    wait_until(&mut app, "the note", WAIT, |app| app.main.sides[0].panel.subtitle() == "Deleting 1 item…");
+    gate.open();
+    wait_done(&mut app);
+    assert_eq!(names(&app, 0), ["a", "b", "d", "e"]);
+    assert_eq!(names(&app, 1), ["a", "b", "d", "e"]);
 }
 
 #[test]

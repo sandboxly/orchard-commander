@@ -543,7 +543,9 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
   the jobs and runs them one after another in the background; their
   entries leave both panels (and search results) when the user confirms,
   and `panel::listed` keeps hiding their paths until their job has ended
-  (a panel inside a folder being removed goes to where it was). When a job
+  (a panel inside a folder being removed goes to where it was), for 5 s at
+  most: a job still waiting or running by then lists its entries again, so
+  a stuck OS trash can't make files look gone that are still there. When a job
   succeeds, `commands::files_removed` tells features before the panels
   reload (search results forget the hits at once).
   A slow job says so on its panel's bottom line (`FilePanel::note`);

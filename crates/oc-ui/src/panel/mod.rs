@@ -71,7 +71,7 @@ pub struct FilePanel {
     /// Replaces the status line while `jobs` run ("opening x.zip…").
     pub busy_text: Option<String>,
     /// Replaces the status line while work this panel started runs on in
-    /// the background, the panel staying usable ("moving 3 items to the trash…").
+    /// the background, the panel staying usable ("Deleting 3 items…").
     pub note: Option<String>,
     quick: Option<(String, Instant)>,
     ndirs: usize,
