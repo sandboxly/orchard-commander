@@ -1,0 +1,41 @@
+# Maintainer: Stephan Lengl <lengl.stephan@gmail.com>
+# AUR: orchard-commander-bin. Repackages the release tarball (it bundles its own
+# LGPL FFmpeg and PDFium, so system ffmpeg versions don't matter).
+#
+# Update for a new release:  edit pkgver, run `updpkgsums`, then
+#   makepkg --printsrcinfo > .SRCINFO
+# Build and install locally: makepkg -si
+pkgname=orchard-commander-bin
+pkgver=2.1.0
+pkgrel=1
+pkgdesc='Two-panel file manager with previews, archives, SFTP/SMB/WebDAV/S3 and a terminal'
+arch=('x86_64')
+url='https://sandboxly.github.io/orchard-commander/'
+license=('MIT' 'LGPL-3.0-or-later' 'BSD-3-Clause' 'LicenseRef-UnRAR')
+depends=('glibc' 'gcc-libs' 'alsa-lib' 'fontconfig' 'libxkbcommon' 'libx11' 'libxcursor' 'libxi'
+         'vulkan-icd-loader' 'ca-certificates')
+optdepends=('wayland: native Wayland window'
+            'vulkan-radeon: GPU drawing on AMD'
+            'vulkan-intel: GPU drawing on Intel'
+            'nvidia-utils: GPU drawing on NVIDIA')
+provides=('orchard-commander')
+conflicts=('orchard-commander')
+options=('!strip' '!debug')
+source=("Orchard-Commander-Linux-$pkgver.tar.gz::https://github.com/sandboxly/orchard-commander/releases/download/v$pkgver/Orchard-Commander-Linux.tar.gz"
+        "orchard-commander-$pkgver.desktop::https://raw.githubusercontent.com/sandboxly/orchard-commander/v$pkgver/packaging/linux/orchard-commander.desktop"
+        "orchard-commander-$pkgver.png::https://raw.githubusercontent.com/sandboxly/orchard-commander/v$pkgver/packaging/linux/orchard-commander.png")
+noextract=("Orchard-Commander-Linux-$pkgver.tar.gz")
+sha256sums=('98562a2e618e08ec5b2a2b61bcdc670c8e114ca6854773f9a693b5be3cbb74ee'
+            '6bbcf79c52af929d48ba0b682fbdb0827a1d333b8a2210473b08b81e1634ba99'
+            '38bc07cb75f48e216a3b98409e8766de37ed6fbe1073c8c24a5e62523d602436')
+
+package() {
+  install -d "$pkgdir/opt"
+  tar xzf "$srcdir/Orchard-Commander-Linux-$pkgver.tar.gz" -C "$pkgdir/opt" --no-same-owner
+  install -d "$pkgdir/usr/bin"
+  ln -s /opt/orchard-commander/orchard-commander "$pkgdir/usr/bin/orchard-commander"
+  install -Dm644 "orchard-commander-$pkgver.desktop" "$pkgdir/usr/share/applications/orchard-commander.desktop"
+  install -Dm644 "orchard-commander-$pkgver.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/orchard-commander.png"
+  install -d "$pkgdir/usr/share/licenses/$pkgname"
+  cp -r "$pkgdir/opt/orchard-commander/licenses/." "$pkgdir/usr/share/licenses/$pkgname/"
+}

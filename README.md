@@ -20,6 +20,16 @@ Website: https://sandboxly.github.io/orchard-commander/
 | Windows 10 and 11, 64-bit | [Installer](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Setup.exe), [portable zip](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Windows.zip) | |
 | Linux, x86-64 | [AppImage](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.AppImage), [.deb](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.deb), [.rpm](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux-x86_64.rpm), [.tar.gz](https://github.com/sandboxly/orchard-commander/releases/latest/download/Orchard-Commander-Linux.tar.gz) | |
 
+**Omarchy and other Arch-based systems** — one command, no root except for runtime libraries:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sandboxly/orchard-commander/main/packaging/omarchy/install.sh | bash
+```
+
+Add `-s -- --bind --default` after `bash` to bind Super+Ctrl+Shift+F and open folders in
+Orchard Commander; `-s -- --uninstall` removes it. Rerun the command to update.
+A `PKGBUILD` for the AUR package `orchard-commander-bin` is in `packaging/omarchy/`.
+
 All versions are on the [releases page](https://github.com/sandboxly/orchard-commander/releases).
 
 If you enjoy Orchard Commander, you can [buy me a coffee](https://ko-fi.com/sandboxly).
