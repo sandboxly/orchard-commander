@@ -103,7 +103,9 @@ impl Modal for InputBox {
                         _ => ModalOutcome::Consumed,
                     };
                 }
-                if let RowOutcome::Activated(i) = self.buttons.handle_key(k, false) {
+                // The field owns Space and the arrows; only Alt+hotkeys reach the buttons.
+                let hotkey = matches!(k.key, Key::Char(_)) && k.mods.alt && !k.mods.ctrl && !k.mods.logo;
+                if hotkey && let RowOutcome::Activated(i) = self.buttons.handle_key(k, false) {
                     return self.finish(app, i == 0);
                 }
                 self.input.handle_key(k, app.clipboard.as_mut());

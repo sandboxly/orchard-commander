@@ -449,6 +449,32 @@ fn f6_renames_in_the_same_folder_and_f7_makes_folders() {
 }
 
 #[test]
+fn text_prompts_keep_space_and_arrows_for_the_field() {
+    let e = env();
+    let mut app = app(&e);
+    // Space types a space instead of pressing "Create".
+    press(&mut app, Key::F(7));
+    type_text(&mut app, "Movies & More");
+    assert_eq!(app.modal_titles(), ["Make directory"]);
+    assert!(app.top_modal_text().unwrap().ends_with("\nMovies & More"));
+    press(&mut app, Key::Enter);
+    wait_until(&mut app, "mkdir", Duration::from_secs(10), |app| app.main.sides[0].panel.row_of("Movies & More").is_some());
+    assert!(e.left.join("Movies & More").is_dir() && !e.left.join("Movies").exists());
+
+    // Left/Right move the text cursor, not the button focus: Tab then Enter still creates.
+    press(&mut app, Key::F(7));
+    type_text(&mut app, "x");
+    press(&mut app, Key::Left);
+    type_text(&mut app, "y");
+    press(&mut app, Key::Right);
+    assert!(app.top_modal_text().unwrap().ends_with("\nyx"));
+    press(&mut app, Key::Tab);
+    press(&mut app, Key::Enter);
+    wait_until(&mut app, "mkdir", Duration::from_secs(10), |app| app.main.sides[0].panel.row_of("yx").is_some());
+    assert!(e.left.join("yx").is_dir());
+}
+
+#[test]
 fn operation_errors_show_in_a_toast() {
     let e = env();
     fs::create_dir(e.left.join("d")).unwrap();
