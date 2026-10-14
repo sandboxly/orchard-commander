@@ -90,11 +90,17 @@ fn video_follows_the_audio_clock() {
     wait_loaded(&p);
     std::thread::sleep(Duration::from_millis(300));
     let mut checked = 0;
+    let mut clock = Vec::new();
+    // Until enough checks or the clip's end, not a fixed time: slow CI runners.
     let start = Instant::now();
-    while start.elapsed() < Duration::from_millis(1200) {
+    while checked <= 10 && start.elapsed() < Duration::from_secs(5) {
         if let Some(f) = p.video_frame() {
             let pos = secs(p.position());
-            if pos > 0.2 && pos < 1.7 {
+            clock.push(pos);
+            if pos >= 1.7 {
+                break;
+            }
+            if pos > 0.2 {
                 let drift = pos - secs(f.pts);
                 // The frame on screen is the one for now (10 fps: ≤ 0.1 s old).
                 assert!((-0.01..0.25).contains(&drift), "frame at {:?}, clock at {pos}", f.pts);
@@ -103,7 +109,7 @@ fn video_follows_the_audio_clock() {
         }
         std::thread::sleep(Duration::from_millis(30));
     }
-    assert!(checked > 10);
+    assert!(checked > 10, "{checked} checks, clock at {clock:?}");
 }
 
 #[test]
