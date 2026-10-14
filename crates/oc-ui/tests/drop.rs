@@ -1,12 +1,12 @@
 //! Files dropped from the system file manager: the panel or folder row under
-//! the pointer, copy or move (the volume rule or the held keys), through the
-//! F5 / F6 prompt.
+//! the pointer, copy or move (the volume rule or the held keys), started at
+//! once without a prompt.
 
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use oc_ui::testing::{headless_app, press, settle, type_text, wait_until};
+use oc_ui::testing::{headless_app, press, settle, wait_until};
 use oc_ui::{App, DropAction, Key, MAIN_WINDOW};
 
 struct Env {
@@ -45,14 +45,17 @@ fn cell(app: &App, side: usize, row: u16) -> (u16, u16) {
     (rows.x + 2, rows.y + row)
 }
 
-fn wait_dialog(app: &mut App, title: &str) {
-    let t = title.to_owned();
-    wait_until(app, &format!("dialog {title}"), Duration::from_secs(10), move |app| app.modal_titles().last().is_some_and(|x| *x == t));
-}
-
-fn wait_done(app: &mut App) {
-    wait_until(app, "the operation", Duration::from_secs(20), |app| app.modal_titles().is_empty() && app.operation.is_none());
+/// Drop, then wait for the operation without touching a key: only its
+/// progress dialog may show, never a prompt.
+fn drop_and_wait(app: &mut App, paths: Vec<PathBuf>, at: Option<(u16, u16)>, action: DropAction) {
+    app.drop_files(MAIN_WINDOW, paths, at, action);
+    let mut seen = Vec::new();
+    wait_until(app, "the operation", Duration::from_secs(20), |app| {
+        seen.extend(app.modal_titles());
+        app.modal_titles().is_empty() && app.operation.is_none() && app.tasks.pending() == 0
+    });
     settle(app);
+    assert!(seen.iter().all(|t| t == "Copying" || t == "Moving"), "no prompt: {seen:?}");
 }
 
 fn toast(app: &App) -> String {
@@ -60,22 +63,17 @@ fn toast(app: &App) -> String {
 }
 
 #[test]
-fn a_drop_on_a_panel_moves_within_the_volume_after_the_prompt() {
+fn a_drop_on_a_panel_moves_within_the_volume_at_once() {
     let e = env();
     let mut app = app(&e);
     assert_eq!(app.main.active, 0);
     let paths = vec![e.outside.join("a.txt"), e.outside.join("photos")];
     let below_the_files = cell(&app, 1, 10);
-    app.drop_files(MAIN_WINDOW, paths, Some(below_the_files), DropAction::Auto);
-    wait_dialog(&mut app, "Move");
-    let text = app.top_modal_text().unwrap();
-    assert!(text.starts_with("Move 1 file and 1 directory to:"), "{text}");
-    assert!(text.ends_with(&format!("\n{}", e.right.display())), "the right panel's folder: {text}");
-    press(&mut app, Key::Enter);
-    wait_done(&mut app);
+    drop_and_wait(&mut app, paths, Some(below_the_files), DropAction::Auto);
     assert!(e.right.join("a.txt").exists() && e.right.join("photos/p.jpg").exists());
     assert!(!e.outside.join("a.txt").exists(), "moved, not copied");
     assert_eq!(app.main.active, 1, "the panel dropped on is active");
+    assert!(app.main.sides[1].panel.row_of("a.txt").is_some(), "listed");
 }
 
 #[test]
@@ -86,27 +84,25 @@ fn held_keys_choose_copy_and_folder_rows_take_the_drop() {
     // Row 0 is "..", row 1 the folder.
     assert_eq!(app.main.sides[0].panel.name_at(1), Some("inbox"));
     app.main.sides[0].panel.marked.insert("inbox".into());
-    app.drop_files(MAIN_WINDOW, vec![e.outside.join("a.txt")], Some(cell(&app, 0, 1)), DropAction::Copy);
-    wait_dialog(&mut app, "Copy");
-    assert!(app.top_modal_text().unwrap().ends_with(&format!("\n{}", e.left.join("inbox").display())));
-    press(&mut app, Key::Enter);
-    wait_done(&mut app);
+    let inbox_row = cell(&app, 0, 1);
+    drop_and_wait(&mut app, vec![e.outside.join("a.txt")], Some(inbox_row), DropAction::Copy);
     assert!(e.left.join("inbox/a.txt").exists() && e.outside.join("a.txt").exists(), "copied");
     assert!(app.main.sides[0].panel.marked.contains("inbox"), "a drop leaves the panel's marks alone");
 }
 
 #[test]
-fn without_a_position_the_active_panel_takes_it_and_the_prompt_can_change_the_target() {
+fn without_a_position_the_active_panel_takes_it_and_conflicts_still_ask() {
     let e = env();
+    fs::write(e.left.join("a.txt"), "old").unwrap();
     let mut app = app(&e);
     app.drop_files(MAIN_WINDOW, vec![e.outside.join("a.txt")], None, DropAction::Move);
-    wait_dialog(&mut app, "Move");
-    assert!(app.top_modal_text().unwrap().ends_with(&format!("\n{}", e.left.display())));
-    // A relative name: next to where the file came from (a rename there).
-    type_text(&mut app, "b.txt");
-    press(&mut app, Key::Enter);
-    wait_done(&mut app);
-    assert!(e.outside.join("b.txt").exists() && !e.outside.join("a.txt").exists());
+    wait_until(&mut app, "the File exists dialog", Duration::from_secs(10), |app| {
+        app.modal_titles().last().is_some_and(|t| t == "File exists")
+    });
+    press(&mut app, Key::Char('o')); // Overwrite
+    wait_until(&mut app, "the move", Duration::from_secs(20), |app| app.modal_titles().is_empty() && app.operation.is_none());
+    assert_eq!(fs::read_to_string(e.left.join("a.txt")).unwrap(), "a");
+    assert!(!e.outside.join("a.txt").exists());
 }
 
 #[test]

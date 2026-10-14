@@ -2,7 +2,7 @@
 //! File exists dialog (asked from the worker through `ask_ui`), a progress
 //! dialog with Cancel, and errors in a toast (port of the file
 //! operation half of `main_window.py` and `ui/operations.py`). Files
-//! dropped from the system file manager go through the same prompt
+//! dropped from the system file manager are copied or moved at once
 //! ([`dropped`]).
 //!
 //! Trash and delete don't wait for the disk: the entries leave the panels at
@@ -203,8 +203,8 @@ pub enum DropAction {
 
 /// Files dropped on the main window from the system file manager: into the
 /// folder row under the pointer, else that panel's folder (`at`: the cell;
-/// None: the active panel). The F5 / F6 prompt confirms the target, then
-/// the usual copy / move runs (File exists dialog, progress, Cancel).
+/// None: the active panel). No prompt, like the system file manager: the
+/// copy / move starts at once (File exists dialog, progress, Cancel).
 pub fn dropped(app: &mut App, paths: Vec<std::path::PathBuf>, at: Option<(u16, u16)>, action: DropAction) {
     if paths.is_empty() {
         return;
@@ -218,14 +218,13 @@ pub fn dropped(app: &mut App, paths: Vec<std::path::PathBuf>, at: Option<(u16, u
         return;
     }
     let local_target = target.is_local().then(|| std::path::PathBuf::from(&target.path));
-    // Stat on a worker: the files may be on a slow network drive.
+    // The volume check on a worker: the files may be on a slow network drive.
     app.tasks.run_in_background(
         move |_| {
-            let dirs: Vec<bool> = paths.iter().map(|p| p.is_dir()).collect();
             let same = local_target.as_ref().is_some_and(|t| paths.iter().all(|p| oc_local::same_volume(p, t)));
-            (paths, dirs, same)
+            (paths, same)
         },
-        move |app, (paths, dirs, same)| {
+        move |app, (paths, same)| {
             let parent = paths[0].parent().map(oc_local::local);
             if paths.iter().all(|p| p.parent().map(oc_local::local) == parent) && parent.as_ref() == Some(&target) {
                 return; // dropped where they already are
@@ -236,19 +235,8 @@ pub fn dropped(app: &mut App, paths: Vec<std::path::PathBuf>, at: Option<(u16, u
                 DropAction::Auto if same => Kind::Move,
                 DropAction::Auto => Kind::Copy,
             };
-            let entries: Vec<Entry> = paths
-                .iter()
-                .zip(&dirs)
-                .map(|(p, &d)| {
-                    let name = p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned());
-                    if d { Entry::dir(name, 0.0) } else { Entry::file(name, 0, 0.0) }
-                })
-                .collect();
-            let what = describe(&entries.iter().collect::<Vec<_>>());
             let sources: Vec<VPath> = paths.iter().map(oc_local::local).collect();
-            let source_loc = parent.unwrap_or_else(|| target.clone());
-            let default = target.display();
-            ask_target(app, kind, &what, &default, sources, source_loc, target, Origin::Dropped(side));
+            start(app, kind, sources, Some(target), Origin::Dropped(side));
         },
     );
 }
