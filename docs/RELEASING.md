@@ -55,7 +55,7 @@ Commander shows the version and opens that folder.
 
 ## Windows and Linux: CI
 
-`.github/workflows/ci.yml` runs on every push to `main` and `rust-2.0` (and
+`.github/workflows/ci.yml` runs on every push to `main` (and
 by hand, workflow_dispatch):
 
 - **Tests** (ubuntu-22.04, windows-latest, macos-latest): clippy with

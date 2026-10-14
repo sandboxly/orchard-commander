@@ -4,7 +4,7 @@ name: CI
 # Release wiring is added when 2.0 replaces 1.x on main (docs/RELEASING.md).
 on:
   push:
-    branches: [main, rust-2.0]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
