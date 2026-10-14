@@ -95,7 +95,7 @@ fn start() -> Result<Handle, String> {
             log::warn!("PDF previews disabled: {e}");
             Err(e)
         }
-        Err(_) => Err("PDFium didn't start in time".into()),
+        Err(_) => Err("PDF support didn't start in time".into()),
     }
 }
 

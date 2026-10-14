@@ -30,7 +30,7 @@ pub fn resolve_target(sources: &[VPath], target: &VPath) -> Result<Vec<(VPath, V
     if let [only] = sources {
         return Ok(vec![(only.clone(), target.clone())]);
     }
-    Err(VfsError::Operation(format!("Target directory does not exist: {}", target.display())))
+    Err(VfsError::Operation(format!("Destination folder {} doesn't exist", target.display())))
 }
 
 /// Copy `sources` to `target` across any file systems.
@@ -96,7 +96,7 @@ pub fn copy_or_move(sources: &[VPath], target: &VPath, mv: bool, callbacks: Tran
 /// themselves are compared too, so two handles on the same disk, symlinked
 /// folders or a case-only rename on a case-insensitive disk are caught.
 fn check_not_into_self(src: &VPath, dst: &VPath, mv: bool) -> Result<()> {
-    let into_self = || VfsError::Operation(format!("Cannot copy or move '{}' into itself", src.name()));
+    let into_self = || VfsError::Operation(format!("Can't copy or move '{}' into itself", src.name()));
     let same = |exact: bool| {
         let what = if mv && exact { "Source and destination are the same" } else { "Source and destination are the same file" };
         VfsError::Operation(format!("{what}: {}", dst.display()))
@@ -378,7 +378,7 @@ pub fn materialize_cancellable(vpath: &VPath, cache_root: &Path, is_cancelled: &
     let entry = vpath.stat()?;
     if entry.is_dir {
         // Checked before creating the cache folder, so a failure leaves nothing.
-        return Err(VfsError::Io(io::Error::new(io::ErrorKind::IsADirectory, format!("is a directory: {}", vpath.display()))));
+        return Err(crate::io_error_at(io::ErrorKind::IsADirectory.into(), &vpath.display()));
     }
     let target = cache_root.join("vfs").join(cache_key(vpath, &entry)).join(cache_name(vpath));
     if target.exists() {

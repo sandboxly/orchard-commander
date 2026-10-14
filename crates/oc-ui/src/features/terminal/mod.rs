@@ -460,7 +460,7 @@ fn start(app: &mut App, side: usize) {
     let notify = notifier(app, side, generation);
     let (session, failed) = match oc_term::shell_command(&configured) {
         Ok(argv) => (Session::new(argv, cwd, columns, lines, notify), None),
-        Err(e) => (Session::new(vec![configured.clone()], cwd, columns, lines, notify), Some(format!("Cannot start {configured}: {e}\r\n"))),
+        Err(e) => (Session::new(vec![configured.clone()], cwd, columns, lines, notify), Some(format!("Can't start {configured}: {e}\r\n"))),
     };
     let session = Arc::new(session);
     let t = app.state::<Terminal>();

@@ -64,7 +64,7 @@ fn data_start(file: &std::fs::File, header_start: u64) -> io::Result<u64> {
     if h[..4] != [0x50, 0x4b, 0x03, 0x04] {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Bad magic number for file header",
+            "the archive is damaged (invalid file header)",
         ));
     }
     let name_len = u64::from(u16::from_le_bytes([h[26], h[27]]));
@@ -83,7 +83,7 @@ impl Format for ZipFormat {
             .map_err(|e| VfsError::Operation(e.to_string()))?;
         if e.encrypted() {
             return Err(VfsError::Operation(
-                "Encrypted zip entries are not supported yet".into(),
+                "Password-protected ZIP files aren't supported yet".into(),
             ));
         }
         let (size, compressed, crc) = (e.size(), e.compressed_size(), e.crc32());
@@ -141,7 +141,7 @@ impl Format for ZipFormat {
         let mut zip = self.zip.clone();
         let mut src = zip.by_index(i).map_err(|e| match e {
             ::zip::result::ZipError::UnsupportedArchive(m) if m.contains("assword") => {
-                VfsError::Operation("Encrypted zip entries are not supported yet".into())
+                VfsError::Operation("Password-protected ZIP files aren't supported yet".into())
             }
             e => VfsError::Operation(e.to_string()),
         })?;
@@ -190,7 +190,7 @@ impl<R: Read> Read for CrcCheck<R> {
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Bad CRC-32 for file '{}'", self.name),
+                format!("{} is damaged in the archive", self.name),
             ));
         }
         Ok(n)

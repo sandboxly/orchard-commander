@@ -307,6 +307,10 @@ impl FileSystem for SearchResultsFS {
         "search results".to_string()
     }
 
+    fn read_only_reason(&self) -> String {
+        "search results are read-only — open a folder in this panel first".to_string()
+    }
+
     fn list_dir(&self, path: &str, opts: ListOptions) -> Result<Vec<Entry>> {
         if !path.is_empty() {
             return Err(VfsError::Io(io::Error::new(io::ErrorKind::NotADirectory, path.to_string())));

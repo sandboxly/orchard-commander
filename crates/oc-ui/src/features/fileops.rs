@@ -85,6 +85,39 @@ impl Kind {
             Kind::Delete => "Deleting",
         }
     }
+
+    /// For "Can't copy: …".
+    fn verb(self, sources: &[VPath]) -> &'static str {
+        match self {
+            Kind::Copy if sources.iter().any(|s| !s.is_local()) => "extract",
+            Kind::Copy => "copy",
+            Kind::Move => "move",
+            Kind::Trash => "move to the trash",
+            Kind::Delete => "delete",
+        }
+    }
+}
+
+/// "1 item", "3 items".
+fn items(n: usize) -> String {
+    format!("{n} item{}", if n == 1 { "" } else { "s" })
+}
+
+/// "Can't move 3 items to the trash", "Can't delete 1 item".
+fn cant_remove(kind: Kind, paths: &[VPath]) -> String {
+    match kind {
+        Kind::Delete => format!("Can't delete {}", items(paths.len())),
+        _ => format!("Can't move {} to the trash", items(paths.len())),
+    }
+}
+
+/// An operation's error for a toast: whole messages written for the user as
+/// they are, others after "Can't <verb>: ".
+fn failure(verb: &str, e: &VfsError) -> String {
+    match e {
+        VfsError::Operation(_) => e.to_string(),
+        _ => format!("Can't {verb}: {e}"),
+    }
 }
 
 /// "'name'", "'dir' (directory)", "3 files and 1 directory".
@@ -253,7 +286,7 @@ pub fn mkdir(app: &mut App) {
         return;
     }
     let message = format!("Create in {}:", here.display());
-    dialogs::ask_text(app, "Make directory", &message, "", "Create", move |app, name| {
+    dialogs::ask_text(app, "Make directory", &message, "", "Create directory", move |app, name| {
         let Some(name) = name else { return };
         let first = name.replace('\\', "/").split('/').next().unwrap_or_default().to_owned();
         let at = here.clone();
@@ -261,7 +294,7 @@ pub fn mkdir(app: &mut App) {
             move |_| oc_vfs::ops::mkdir(&at, &name),
             move |app, result| match result {
                 Ok(_) => panel::load(app, side, here, LoadOptions { select: Some(first), ..Default::default() }),
-                Err(e) => app.error(format!("Cannot create directory: {}", panel::error_reason(&e))),
+                Err(e) => app.error(format!("Can't create directory: {}", panel::error_reason(&e))),
             },
         );
     });
@@ -276,6 +309,7 @@ pub fn trash(app: &mut App) {
         return;
     }
     let what = describe(&entries);
+    let them = if entries.len() == 1 { "it" } else { "them" };
     let paths = p.selected_paths();
     if let Some(blocked) = paths.iter().find(|p| !(p.fs.capabilities().can_trash || p.fs.capabilities().writable)).cloned()
         && refuse(app, &blocked, "delete here", false)
@@ -283,12 +317,12 @@ pub fn trash(app: &mut App) {
         return;
     }
     if paths.iter().all(|p| p.fs.capabilities().can_trash) {
-        let msg = format!("Move {what} to the trash?");
-        dialogs::confirm(app, "Move to trash", &msg, "Trash", move |app| run(app, Kind::Trash, paths, None, side));
+        let msg = format!("Move {what} to the trash?\n\nYou can restore {them} from the trash.");
+        dialogs::confirm(app, "Move to trash", &msg, "Move to trash", move |app| run(app, Kind::Trash, paths, None, side));
     } else {
         let fs_name = paths.iter().find(|p| !p.fs.capabilities().can_trash).map(|p| p.fs.type_name()).unwrap_or_default();
-        let msg = format!("{fs_name} has no trash.\n\nDelete {what} permanently? This can't be undone.");
-        dialogs::confirm(app, "Delete permanently", &msg, "Delete", move |app| run(app, Kind::Delete, paths, None, side));
+        let msg = format!("{fs_name} has no trash.\n\nPermanently delete {what}? You can't undo this.");
+        dialogs::confirm(app, "Delete permanently", &msg, "Delete permanently", move |app| run(app, Kind::Delete, paths, None, side));
     }
 }
 
@@ -345,10 +379,11 @@ fn start(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>, 
     // (1.x: `isRunning()`); `finished` clears it. One copy/move at a time:
     // its File exists dialogs need the user's undivided attention.
     if app.operation.is_some() {
-        app.warn("Another file operation is still running");
+        app.warn("Another copy or move is still running: wait for it to finish");
         return;
     }
     let title = kind.title(&sources);
+    let verb = kind.verb(&sources);
     let token = CancelToken::new();
     app.operation = Some(token.clone());
     let state = Arc::new(Mutex::new(ProgressState::default()));
@@ -375,7 +410,7 @@ fn start(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>, 
             let callbacks = TransferCallbacks { on_conflict: &mut ask, on_progress: Some(&mut report), is_cancelled: &cancelled };
             oc_local::copy(&sources, &target, kind == Kind::Move, callbacks)
         },
-        move |app, result| finished(app, origin, title, progress_dialog, result),
+        move |app, result| finished(app, origin, title, verb, progress_dialog, result),
     );
 }
 
@@ -389,7 +424,15 @@ impl Drop for RunningGuard {
 
 /// After an operation: close the progress dialog, report (errors too as a
 /// toast, like 1.x), refresh, and make the source panel the active one.
-pub fn finished(app: &mut App, origin: Origin, title: &str, dialog: Option<crate::modal::ModalId>, result: oc_vfs::Result<()>) {
+/// `title`: "Copying"; `verb`: "copy".
+pub fn finished(
+    app: &mut App,
+    origin: Origin,
+    title: &str,
+    verb: &str,
+    dialog: Option<crate::modal::ModalId>,
+    result: oc_vfs::Result<()>,
+) {
     let side = origin.side();
     app.operation = None;
     app.operation_running = None;
@@ -399,7 +442,7 @@ pub fn finished(app: &mut App, origin: Origin, title: &str, dialog: Option<crate
     match result {
         Ok(()) => app.info(format!("{title} finished")),
         Err(VfsError::Cancelled) => app.notify(format!("{title} cancelled"), Severity::Warning),
-        Err(e) => app.notify(e.to_string(), Severity::Error),
+        Err(e) => app.notify(failure(verb, &e), Severity::Error),
     }
     if let Origin::Panel(s) = origin {
         app.main.sides[s].panel.set_all_marks(false);
@@ -541,7 +584,7 @@ fn remove_now(kind: Kind, paths: &[VPath]) -> oc_vfs::Result<()> {
         _ => oc_vfs::ops::trash(paths),
     };
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(work))
-        .unwrap_or_else(|_| Err(VfsError::Operation(format!("{} failed unexpectedly", kind.title(paths)))))
+        .unwrap_or_else(|_| Err(VfsError::Operation(format!("{}: unexpected error", cant_remove(kind, paths)))))
 }
 
 fn start_next_removal(app: &mut App) {
@@ -580,7 +623,7 @@ fn removed(app: &mut App, id: u64, result: oc_vfs::Result<()>) {
     let Some(job) = r.running.take_if(|j| j.id == id) else { return };
     r.worker = None;
     r.noted = false;
-    let title = job.kind.title(&job.paths);
+    let n = items(job.paths.len());
     if result.is_ok() {
         // Before the reloads: search results would otherwise list them again
         // until their prune has run.
@@ -588,9 +631,11 @@ fn removed(app: &mut App, id: u64, result: oc_vfs::Result<()>) {
         crate::commands::files_removed(app, &gone);
     }
     match result {
-        Ok(()) => app.info(format!("{title} finished")),
-        Err(VfsError::Cancelled) => app.notify(format!("{title} cancelled"), Severity::Warning),
-        Err(e) => app.notify(e.to_string(), Severity::Error),
+        Ok(()) if job.kind == Kind::Delete => app.info(format!("Permanently deleted {n}")),
+        Ok(()) => app.info(format!("Moved {n} to the trash")),
+        Err(VfsError::Cancelled) => app.notify(format!("{} cancelled", job.kind.title(&job.paths)), Severity::Warning),
+        Err(e @ VfsError::Operation(_)) => app.notify(e.to_string(), Severity::Error),
+        Err(e) => app.notify(format!("{}: {e}", cant_remove(job.kind, &job.paths)), Severity::Error),
     }
     start_next_removal(app);
     update_removal_notes(app);
@@ -609,8 +654,7 @@ fn update_removal_notes(app: &mut App) {
         if !r.noted || jobs.is_empty() {
             return None;
         }
-        let n: usize = jobs.iter().map(|j| j.paths.len()).sum();
-        let items = format!("{n} item{}", if n == 1 { "" } else { "s" });
+        let items = items(jobs.iter().map(|j| j.paths.len()).sum());
         if jobs.iter().all(|j| j.kind == Kind::Delete) {
             Some(format!("Permanently deleting {items}…"))
         } else {

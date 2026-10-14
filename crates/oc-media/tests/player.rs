@@ -317,7 +317,7 @@ fn errors_are_reported() {
     let seen = wait_for_event(&p, Duration::from_secs(5), |e| matches!(e, Event::Error(_))).expect("no error");
     let Some(Event::Error(msg)) = seen.last() else { panic!() };
     assert!(!msg.is_empty());
-    assert!(oc_media::error_message(msg).starts_with("Cannot play this file:\n"));
+    assert!(oc_media::error_message(msg).starts_with("Can't play this file:\n"));
     assert_eq!((p.status(), p.state()), (MediaStatus::Invalid, PlaybackState::Stopped));
     p.play(); // nothing happens
     assert_eq!(p.state(), PlaybackState::Stopped);

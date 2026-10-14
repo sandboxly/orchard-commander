@@ -240,7 +240,7 @@ pub enum SearchError {
     NamePattern(PatternError),
     #[error("invalid text pattern: {0}")]
     TextPattern(PatternError),
-    #[error("could not start the search: {0}")]
+    #[error("{0}")]
     Thread(std::io::Error),
 }
 

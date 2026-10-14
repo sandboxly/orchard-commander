@@ -53,7 +53,7 @@ while its window is in front. They list every editor command with its shortcut.
 | Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y |
 
 If you close a window with unsaved changes, the editor asks whether to save
-them. Choose **Save**, **Don't save** or **Cancel**. Quitting Orchard Commander
+them. Choose **Save changes**, **Discard changes** or **Cancel**. Quitting Orchard Commander
 asks the same question for every editor window with unsaved changes.
 
 Files on your disk are saved safely: the editor writes the new contents to a

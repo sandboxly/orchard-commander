@@ -296,7 +296,7 @@ fn corrupt_archives_raise_archive_error() {
         .unwrap();
         let err = Archive::open(&bad).expect_err(name);
         assert!(
-            err.0.starts_with(&format!("Cannot read {name}: ")),
+            err.0.starts_with(&format!("Can't read {name}: ")),
             "{name}: {}",
             err.0
         );
@@ -387,10 +387,10 @@ fn archive_fs_basics() {
     let (tmp, root) = zip_fs();
     let fs = &root.fs;
     assert_eq!(fs.type_name(), "zip archive");
-    assert_eq!(fs.read_only_reason(), "a.zip is an archive (read-only)");
+    assert_eq!(fs.read_only_reason(), "archives are read-only — extract the files first (F5)");
     assert_eq!(fs.capabilities(), oc_vfs::Capabilities::default());
     assert!(
-        matches!(fs.mkdir("x", true), Err(VfsError::ReadOnly(m)) if m == "a.zip is an archive (read-only)")
+        matches!(fs.mkdir("x", true), Err(VfsError::ReadOnly(m)) if m == "archives are read-only — extract the files first (F5)")
     );
     assert!(fs.open_write("x").is_err());
 
@@ -438,7 +438,7 @@ fn archive_fs_basics() {
         matches!(&err, VfsError::Io(e) if e.kind() == std::io::ErrorKind::NotADirectory),
         "{err:?}"
     );
-    assert_eq!(err.to_string(), "Not a directory in a.zip: top.txt");
+    assert_eq!(err.to_string(), "top.txt in a.zip isn't a folder");
 }
 
 #[test]
@@ -655,7 +655,7 @@ fn corrupt_deflate_data_fails_the_crc_check() {
         .unwrap()
         .read_to_end(&mut out)
         .unwrap_err();
-    assert_eq!(err.to_string(), "Bad CRC-32 for file 'f.txt'");
+    assert_eq!(err.to_string(), "f.txt is damaged in the archive");
 }
 
 #[test]
@@ -976,11 +976,11 @@ fn corrupt_stored_data_fails_the_crc_check() {
 
     let mut r = archive.open_member("f.bin").unwrap();
     let err = r.read_to_end(&mut Vec::new()).unwrap_err();
-    assert_eq!(err.to_string(), "Bad CRC-32 for file 'f.bin'");
+    assert_eq!(err.to_string(), "f.bin is damaged in the archive");
     let err = archive
         .extract_file("f.bin", &tmp.path().join("out.bin"), None)
         .unwrap_err();
-    assert!(err.to_string().contains("Bad CRC-32"), "{err}");
+    assert!(err.to_string().contains("is damaged in the archive"), "{err}");
     assert!(!tmp.path().join("out.bin").exists());
 
     // Like zipfile, seeking elsewhere turns the check off; back to 0 restarts it.
@@ -1019,13 +1019,13 @@ fn encrypted_zip_entries_are_refused() {
     let err = archive.open_member("f.bin").err().unwrap();
     assert_eq!(
         err.to_string(),
-        "Encrypted zip entries are not supported yet"
+        "Password-protected ZIP files aren't supported yet"
     );
     let err = archive
         .extract_file("f.bin", &tmp.path().join("o"), None)
         .unwrap_err();
     assert_eq!(
         err.to_string(),
-        "Encrypted zip entries are not supported yet"
+        "Password-protected ZIP files aren't supported yet"
     );
 }

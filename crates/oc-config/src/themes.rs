@@ -419,18 +419,18 @@ pub fn save_user_scheme(
 ) -> Result<PathBuf, ConfigError> {
     let name = scheme.name.trim();
     if name.is_empty() {
-        return Err(ConfigError::Invalid("A color scheme needs a name".into()));
+        return Err(ConfigError::Invalid("Enter a name for the color scheme".into()));
     }
     if is_builtin(name) {
         return Err(ConfigError::Invalid(format!(
-            "'{name}' is a built-in color scheme"
+            "'{name}' is a built-in color scheme — choose another name"
         )));
     }
     let existing = user_schemes(dir);
     let find = |n: &str| existing.iter().find(|(s, _)| s.name == n).map(|(_, p)| p);
     if find(name).is_some() && Some(name) != replaces {
         return Err(ConfigError::Invalid(format!(
-            "A color scheme named '{name}' already exists"
+            "A color scheme named '{name}' already exists — choose another name"
         )));
     }
     // A renamed scheme's old file. Python deletes it first and then picks a
@@ -753,13 +753,13 @@ mod tests {
         let (_tmp, dir) = dir();
         let base = get_scheme(&dir, "monokai");
         let err = save_user_scheme(&dir, &base, None).unwrap_err();
-        assert_eq!(err.to_string(), "'monokai' is a built-in color scheme");
+        assert_eq!(err.to_string(), "'monokai' is a built-in color scheme — choose another name");
         let err = save_user_scheme(&dir, &base.renamed("  "), None).unwrap_err();
-        assert_eq!(err.to_string(), "A color scheme needs a name");
+        assert_eq!(err.to_string(), "Enter a name for the color scheme");
         save_user_scheme(&dir, &base.renamed("One"), None).unwrap();
         save_user_scheme(&dir, &base.renamed("Two"), None).unwrap();
         let err = save_user_scheme(&dir, &base.renamed("Two"), Some("One")).unwrap_err();
-        assert_eq!(err.to_string(), "A color scheme named 'Two' already exists");
+        assert_eq!(err.to_string(), "A color scheme named 'Two' already exists — choose another name");
         save_user_scheme(&dir, &base.renamed("Uno"), Some("One")).unwrap();
         let names: Vec<_> = all_schemes(&dir).into_iter().map(|s| s.name).collect();
         assert!(

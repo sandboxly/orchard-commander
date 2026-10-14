@@ -312,8 +312,8 @@ fn split_posix(s: &str) -> Result<Vec<String>, String> {
         };
     }
     match state {
-        State::Single | State::Double => Err("No closing quotation".into()),
-        State::Escape(_) => Err("No escaped character".into()),
+        State::Single | State::Double => Err("a quote isn't closed".into()),
+        State::Escape(_) => Err("it ends with a lone backslash".into()),
         State::Word => {
             words.push(token);
             Ok(words)
@@ -381,7 +381,7 @@ mod tests {
         let ok = |parts: &[&str]| Ok(argv(parts));
         assert_eq!(split("zsh #x"), ok(&["zsh", "#x"])); // no comments
         assert_eq!(split(r#"a"\$b""#), ok(&[r"a\$b"]));
-        assert_eq!(split(r"a\"), Err("No escaped character".into()));
+        assert_eq!(split(r"a\"), Err("it ends with a lone backslash".into()));
         assert_eq!(split(r#""""#), ok(&[""]));
         assert_eq!(split("a'b'c d"), ok(&["abc", "d"]));
         assert_eq!(split(r#"x "a\"b" y"#), ok(&["x", r#"a"b"#, "y"]));
@@ -393,8 +393,8 @@ mod tests {
         assert_eq!(split(r#""a\\b""#), ok(&[r"a\b"]));
         assert_eq!(split(r"a\ b"), ok(&["a b"]));
         assert_eq!(split(" \tx\n "), ok(&["x"]));
-        assert_eq!(split("'oops"), Err("No closing quotation".into()));
-        assert_eq!(split("\"oops"), Err("No closing quotation".into()));
+        assert_eq!(split("'oops"), Err("a quote isn't closed".into()));
+        assert_eq!(split("\"oops"), Err("a quote isn't closed".into()));
         assert_eq!(split("ä 'ö ü'"), ok(&["ä", "ö ü"]));
     }
 

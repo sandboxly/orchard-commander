@@ -31,21 +31,23 @@ pub const CHUNK: usize = 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VfsError {
-    #[error("not found: {0}")]
+    #[error("{0} not found")]
     NotFound(String),
-    #[error("already exists: {0}")]
+    #[error("{0} already exists")]
     AlreadyExists(String),
     #[error("{0}")]
     ReadOnly(String),
-    #[error("cancelled")]
+    #[error("Cancelled")]
     Cancelled,
     /// An online-only (cloud placeholder) file wasn't delivered in time.
-    #[error("timed out waiting for {0}")]
+    #[error("{0} didn't download from the cloud in time — try again")]
     FetchTimeout(String),
-    /// A user-facing operation error (e.g. "Target directory does not exist").
+    /// A user-facing operation error (e.g. "Destination folder … doesn't exist").
     #[error("{0}")]
     Operation(String),
-    #[error(transparent)]
+    /// Bare OS errors read as words ([`io_reason`]); errors with their own
+    /// message (the path they happened on) show that message.
+    #[error("{}", io_display(.0))]
     Io(#[from] io::Error),
 }
 
@@ -60,6 +62,74 @@ impl VfsError {
 }
 
 pub type Result<T> = std::result::Result<T, VfsError>;
+
+/// An I/O error as the user sees it: its own message if it has one, else
+/// [`io_reason`] (no "(os error 13)").
+pub fn io_display(err: &io::Error) -> String {
+    if err.get_ref().is_some() { err.to_string() } else { io_reason(err) }
+}
+
+/// The OS's description of an error without std's " (os error N)" suffix.
+pub fn os_text(err: &io::Error) -> String {
+    let text = err.to_string();
+    match text.rfind(" (os error ") {
+        Some(i) if text.ends_with(')') => text[..i].to_string(),
+        _ => text,
+    }
+}
+
+/// Why an I/O operation failed, in words for the user and without a path:
+/// "You don't have permission", "Not enough space on the disk". Errors
+/// without a plain-words version keep the OS's description.
+pub fn io_reason(err: &io::Error) -> String {
+    use io::ErrorKind as K;
+    match err.kind() {
+        K::PermissionDenied => "You don't have permission".into(),
+        K::NotFound => "Not found".into(),
+        K::AlreadyExists => "Already exists".into(),
+        K::IsADirectory => "It's a folder".into(),
+        K::NotADirectory => "Not a folder".into(),
+        K::DirectoryNotEmpty => "The folder isn't empty".into(),
+        K::StorageFull => "Not enough space on the disk".into(),
+        K::ReadOnlyFilesystem => "The disk is read-only".into(),
+        K::ResourceBusy => "In use by another program".into(),
+        K::FileTooLarge => "Too large for this disk".into(),
+        _ => capitalized(&os_text(err)),
+    }
+}
+
+/// [`io_reason`] for an error on `path`: "You don't have permission to
+/// access /x", "/x not found", "Input/output error: /x".
+pub fn io_message(err: &io::Error, path: &str) -> String {
+    use io::ErrorKind as K;
+    match err.kind() {
+        K::PermissionDenied => format!("You don't have permission to access {path}"),
+        K::NotFound => format!("{path} not found"),
+        K::AlreadyExists => format!("{path} already exists"),
+        K::IsADirectory => format!("{path} is a folder"),
+        K::NotADirectory => format!("{path} isn't a folder"),
+        K::DirectoryNotEmpty => format!("{path} isn't empty"),
+        K::StorageFull => format!("Not enough space on the disk for {path}"),
+        K::ReadOnlyFilesystem => format!("{path} is on a read-only disk"),
+        K::ResourceBusy => format!("{path} is in use by another program"),
+        K::FileTooLarge => format!("{path} is too large for this disk"),
+        _ => format!("{}: {path}", io_reason(err)),
+    }
+}
+
+/// `err` as a [`VfsError::Io`] whose message names `path` ([`io_message`]);
+/// the error kind is kept, so [`VfsError::is_not_found`] and friends work.
+pub fn io_error_at(err: io::Error, path: &str) -> VfsError {
+    VfsError::Io(io::Error::new(err.kind(), io_message(&err, path)))
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Entries and sorting

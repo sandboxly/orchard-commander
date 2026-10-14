@@ -128,7 +128,7 @@ impl PdfView {
             move || {
                 let (tx, rx) = std::sync::mpsc::sync_channel(1);
                 pages.render_async(index, w, hgt, Box::new(move |r| drop(tx.send(r))));
-                rx.recv().unwrap_or_else(|_| Err(PreviewError::cannot("render dropped")))
+                rx.recv().unwrap_or_else(|_| Err(PreviewError::cannot("the page couldn't be drawn")))
             },
             move |app, result| {
                 h.with::<PdfView, _>(app, |v, app, _| v.rendered(app, serial, (index, w, hgt), result));

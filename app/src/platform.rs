@@ -115,7 +115,7 @@ pub fn run(args: Args, started: Instant) -> ExitCode {
     let event_loop = match builder.build() {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("cannot start the event loop: {e}");
+            eprintln!("can't start: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -140,7 +140,7 @@ pub fn run(args: Args, started: Instant) -> ExitCode {
         dropped: HashMap::new(),
     };
     if let Err(e) = event_loop.run_app(&mut platform) {
-        eprintln!("event loop error: {e}");
+        eprintln!("stopped unexpectedly: {e}");
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
@@ -196,7 +196,7 @@ impl Platform {
         let window = match el.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => {
-                eprintln!("cannot open a window: {e}");
+                eprintln!("can't open a window: {e}");
                 el.exit();
                 return;
             }
@@ -206,7 +206,7 @@ impl Platform {
         let gpu = match WindowRenderer::new(window.clone(), font.clone()) {
             Ok(g) => g,
             Err(e) => {
-                eprintln!("cannot draw into the window: {e}");
+                eprintln!("can't draw into the window: {e}");
                 el.exit();
                 return;
             }

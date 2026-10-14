@@ -130,7 +130,7 @@ pub enum PreviewError {
     /// An online-only file didn't arrive in time; its download goes on in the
     /// background (the UI offers "Try again").
     #[error(
-        "{name} hasn't arrived from the cloud yet (waited {:.0} s).\n\nCheck that the cloud app (Dropbox, iCloud Drive, OneDrive) is running, signed in and online. The download continues in the background.",
+        "{name} hasn't arrived from the cloud yet (waited {:.0} s).\n\nCheck that your cloud storage app is running, signed in and online. The download continues in the background.",
         waited.as_secs_f64()
     )]
     CloudNotDelivered { name: String, waited: Duration },

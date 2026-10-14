@@ -225,7 +225,7 @@ fn nothing_fits_and_missing_files() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("x"), "a").unwrap();
     let o = reg.preview(&LocalFs::vpath(&dir.path().join("x")), &LoadContext::default(), None);
-    assert_eq!(o.error.unwrap().to_string(), "No previewer can show this file");
+    assert_eq!(o.error.unwrap().to_string(), "Can't preview this kind of file");
     let o = reg.preview(&LocalFs::vpath(&dir.path().join("gone")), &LoadContext::default(), None);
     assert!(matches!(o.error, Some(PreviewError::Vfs(ref e)) if e.is_not_found()));
 }
@@ -361,7 +361,7 @@ fn fetch_timeout_grows_with_size() {
     let msg = PreviewError::CloudNotDelivered { name: "a".into(), waited: Duration::from_secs(25) }.to_string();
     assert_eq!(
         msg,
-        "a hasn't arrived from the cloud yet (waited 25 s).\n\nCheck that the cloud app (Dropbox, iCloud Drive, \
-         OneDrive) is running, signed in and online. The download continues in the background."
+        "a hasn't arrived from the cloud yet (waited 25 s).\n\nCheck that your cloud storage app is running, \
+         signed in and online. The download continues in the background."
     );
 }

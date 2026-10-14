@@ -4,13 +4,13 @@ use pdfium_render::prelude::{PdfiumError, PdfiumInternalError};
 #[derive(Debug, thiserror::Error)]
 pub enum PdfError {
     /// The PDFium library couldn't be found or loaded.
-    #[error("PDFium is not available: {0}")]
+    #[error("PDF support isn't available: {0}")]
     Unavailable(String),
     /// The document needs a password to open.
-    #[error("This PDF is password-protected.")]
+    #[error("This PDF is password-protected")]
     Password,
-    /// Not a PDF, or a damaged one. The text is PDFium's reason, worded like
-    /// pypdfium2: "Failed to load document (PDFium: Data format error)."
+    /// Not a PDF, or a damaged one. The text is PDFium's reason in plain
+    /// words: "the file is damaged or isn't a PDF".
     #[error("{0}")]
     Unreadable(String),
     #[error("page {index} doesn't exist (the document has {count})")]
@@ -25,27 +25,27 @@ pub enum PdfError {
     #[error("superseded by a newer request")]
     Cancelled,
     /// PDFium didn't answer in time (a stalled network stream, say).
-    #[error("PDFium didn't answer within {0} s")]
+    #[error("the PDF took longer than {0} s to draw")]
     Timeout(u64),
     /// A blocking call from inside a render callback (it would wait for itself).
     #[error("blocking PDF call from a render callback")]
     Reentrant,
     /// The PDFium thread panicked while working on this request.
-    #[error("the PDF renderer failed: {0}")]
+    #[error("the PDF couldn't be drawn")]
     Crashed(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
-/// pypdfium2's names for PDFium's error codes (`ErrorToStr`).
+/// PDFium's error codes in plain words (shown to the user).
 fn describe(e: &PdfiumInternalError) -> &'static str {
     match e {
-        PdfiumInternalError::FileError => "File access error",
-        PdfiumInternalError::FormatError => "Data format error",
-        PdfiumInternalError::PasswordError => "Incorrect password error",
-        PdfiumInternalError::SecurityError => "Unsupported security scheme error",
-        PdfiumInternalError::PageError => "Page not found or content error",
-        PdfiumInternalError::Unknown => "Unknown error",
+        PdfiumInternalError::FileError => "the file can't be read",
+        PdfiumInternalError::FormatError => "the file is damaged or isn't a PDF",
+        PdfiumInternalError::PasswordError => "the password is wrong",
+        PdfiumInternalError::SecurityError => "its encryption isn't supported",
+        PdfiumInternalError::PageError => "the page is missing or damaged",
+        PdfiumInternalError::Unknown => "the reason is unknown",
     }
 }
 
@@ -55,10 +55,13 @@ impl PdfError {
         match e {
             PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError) => PdfError::Password,
             PdfiumError::PdfiumLibraryInternalError(code) => {
-                PdfError::Unreadable(format!("Failed to load document (PDFium: {}).", describe(&code)))
+                PdfError::Unreadable(describe(&code).to_owned())
             }
             PdfiumError::IoError(io) => PdfError::Io(io),
-            other => PdfError::Unreadable(format!("Failed to load document ({other:?}).")),
+            other => {
+                log::warn!("PDF load failed: {other:?}");
+                PdfError::Unreadable(describe(&PdfiumInternalError::Unknown).to_owned())
+            }
         }
     }
 
@@ -66,9 +69,12 @@ impl PdfError {
     pub(crate) fn from_page(index: usize, e: PdfiumError) -> Self {
         match e {
             PdfiumError::PdfiumLibraryInternalError(code) => {
-                PdfError::Render(format!("Failed to load page {} (PDFium: {}).", index + 1, describe(&code)))
+                PdfError::Render(format!("page {} can't be drawn: {}", index + 1, describe(&code)))
             }
-            other => PdfError::Render(format!("Failed to render page {} ({other:?}).", index + 1)),
+            other => {
+                log::warn!("PDF page {} failed: {other:?}", index + 1);
+                PdfError::Render(format!("page {} can't be drawn", index + 1))
+            }
         }
     }
 }

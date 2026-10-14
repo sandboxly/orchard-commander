@@ -99,7 +99,7 @@ fn wrong_or_missing_password() {
     let s = setup();
     let server = require!(PyServer::webdav(&s.folder, false, None));
     let err = connect(&server, s.tmp.path(), |o| o.password = Some("nope".into())).err().unwrap();
-    assert!(matches!(&err, Error::AuthenticationRequired(m) if m.contains("didn't accept the user name and password")), "{err}");
+    assert!(matches!(&err, Error::AuthenticationRequired(m) if m.contains("didn't accept the user name or password")), "{err}");
     let err = connect(&server, s.tmp.path(), |o| o.password = None).err().unwrap();
     assert!(matches!(err, Error::AuthenticationRequired(_)), "{err}");
 }

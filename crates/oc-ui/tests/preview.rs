@@ -300,7 +300,7 @@ fn mouse(app: &mut App, kind: MouseKind, col: u16, row: u16) {
 }
 
 /// 1.x's QTextBrowser: drag to select, double-click a word, ⌘C, and the
-/// right-click menu Copy / Copy Link Location / Select All.
+/// right-click menu Copy / Copy link location / Select all.
 #[test]
 fn preview_text_can_be_selected_and_copied() {
     let e = env();
@@ -324,9 +324,9 @@ fn preview_text_can_be_selected_and_copied() {
     press_with(&mut app, Key::Char('c'), Mods::primary());
     assert_eq!(app.clipboard.get_text().as_deref(), Some("line"));
 
-    // Right-click → Select All, then Copy from the menu.
+    // Right-click → Select all, then Copy from the menu.
     click(&mut app, area.x + 2, area.y + 3, MouseButton::Right);
-    assert_eq!(app.top_modal_text().unwrap(), "Copy\nCopy Link Location\nSelect All");
+    assert_eq!(app.top_modal_text().unwrap(), "Copy\nCopy link location\nSelect all");
     press(&mut app, Key::Up);
     press(&mut app, Key::Enter);
     settle(&mut app);

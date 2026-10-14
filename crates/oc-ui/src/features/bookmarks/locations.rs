@@ -52,7 +52,7 @@ pub fn resolve(app: &mut App, spec: &Spec, on_done: Resolved) {
 
 fn resolve_ref(app: &mut App, spec: SpecRef<'_>, on_done: Resolved) {
     match spec.target() {
-        None => on_done(app, Err("This bookmark is damaged and can't be opened".into())),
+        None => on_done(app, Err("Can't open this bookmark: its saved folder is damaged. Fix it with Edit… in Organize bookmarks.".into())),
         Some(Target::Local { path }) => on_done(app, Ok(oc_local::local(path))),
         Some(Target::Server { account, path }) => {
             // `None`: the connections feature has already told the user why.
@@ -77,8 +77,8 @@ fn resolve_ref(app: &mut App, spec: SpecRef<'_>, on_done: Resolved) {
                         move |app, opened| {
                             let result = match opened {
                                 Some(Ok(root)) => Ok(VPath::new(root.fs, inner)),
-                                Some(Err(e)) => Err(format!("Cannot open {name}: {e}")),
-                                None => Err(format!("Cannot open {name}: not an archive")),
+                                Some(Err(e)) => Err(format!("Can't open {name}: {e}")),
+                                None => Err(format!("Can't open {name}: not an archive")),
                             };
                             on_done(app, result);
                         },

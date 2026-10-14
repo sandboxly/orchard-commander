@@ -82,10 +82,7 @@ impl SmbReader {
         .map_err(|f| shared.vfs_error(f, path))?;
         if reader.info().is_directory {
             let _ = run(CLOSE_TIMEOUT, reader.close());
-            return Err(VfsError::Io(io::Error::new(
-                io::ErrorKind::IsADirectory,
-                format!("[Errno 21] Is a directory: '{}'", shared.unc(path)),
-            )));
+            return Err(oc_vfs::io_error_at(io::ErrorKind::IsADirectory.into(), &shared.unc(path)));
         }
         Ok(SmbReader {
             size: reader.size(),

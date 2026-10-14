@@ -13,7 +13,7 @@ use oc_grid::{Frame, Style};
 use oc_provider::{Field, FieldKind, FileSystemProvider, Params, Value, param_str};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{connect_in_panel, delete_connection, description, has_password, label, provider_of, save_connection, sorted_saved, url};
+use super::{account, connect_in_panel, delete_connection, description, has_password, label, provider_of, save_connection, sorted_saved, url};
 use crate::app::App;
 use crate::dialogs::{MessageBox, dialog_rects, draw_box, wrap};
 use crate::geom::Rect;
@@ -32,6 +32,7 @@ pub struct Credentials {
 
 const REMEMBER: &str = "Remember in the system keychain";
 pub(crate) const MANAGER_TITLE: &str = "Connect to server";
+const EMPTY: &str = "No saved connections yet — choose New… to add one";
 
 // ---------------------------------------------------------------------------
 // Secret fields: a TextInput shown as dots, never copied out
@@ -278,13 +279,13 @@ impl ConnectionEditor {
             title: if conn.is_some() { "Edit connection" } else { "New connection" }.to_string(),
             providers,
             kind,
-            name: TextInput { placeholder: "optional".into(), ..TextInput::new(conn.as_ref().map_or("", |c| c.name.as_str())) },
+            name: TextInput { placeholder: "optional, e.g. Work server".into(), ..TextInput::new(conn.as_ref().map_or("", |c| c.name.as_str())) },
             values,
             fields: Vec::new(),
             password: TextInput::default(),
             remember: Checkbox::new(REMEMBER, has_password),
             error: String::new(),
-            buttons: ButtonRow::new(&["Save", "Cancel"], 0),
+            buttons: ButtonRow::new(&["Save connection", "Cancel"], 0),
             focus: 0,
             menu: None,
             original: conn,
@@ -612,8 +613,8 @@ impl Modal for ConnectionEditor {
 pub(super) fn show_manager(app: &mut App) {
     let me = Rc::new(Cell::new(None));
     let has = !sorted_saved(app).is_empty();
-    // 1.x's literal "Ctrl+G" on every platform (like the bookmarks' "Ctrl+D").
-    let hint = format!("Saved connections — or use Go to (Ctrl+G) with an address: {}", oc_provider::address_examples());
+    let key = if cfg!(target_os = "macos") { "⌘G" } else { "Ctrl+G" };
+    let hint = format!("Saved connections — or press {key} and type an address: {}", oc_provider::address_examples());
     let manager = ConnectionManager {
         me: me.clone(),
         hint,
@@ -726,8 +727,12 @@ impl ConnectionManager {
                 });
             }
             (DELETE, Some(conn)) => {
-                let text = format!("Delete '{}'?", label(&conn));
-                crate::dialogs::confirm(app, "Delete connection", &text, "Delete", move |app| delete_connection(app, conn));
+                // The password goes too, unless another saved connection shares it.
+                let acc = account(&conn);
+                let shared = items.iter().any(|c| c.id != conn.id && account(c) == acc);
+                let password = if shared { "" } else { " Its saved password, if any, is deleted too." };
+                let text = format!("Delete '{}'?{password} You can't undo this.", label(&conn));
+                crate::dialogs::confirm(app, "Delete connection", &text, "Delete connection", move |app| delete_connection(app, conn));
             }
             (CLOSE, _) => return ModalOutcome::Close,
             _ => {}
@@ -764,6 +769,9 @@ impl Modal for ConnectionManager {
             fill(f, r, style.bg);
             put_elided(f, r.x + 1, r.y, &item_text(&items[i]), style, r.w.saturating_sub(2));
         });
+        if items.is_empty() {
+            put(f, list.x + 1, list.y, EMPTY, Style::new(c.muted, c.surface), list.w.saturating_sub(2));
+        }
         self.enabled_buttons(!items.is_empty()).draw(f, buttons, ctx, !self.list_focused);
     }
 

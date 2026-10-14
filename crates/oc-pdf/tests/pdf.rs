@@ -151,7 +151,7 @@ fn missing_page() {
     assert!(matches!(doc.page_size(7), Err(PdfError::NoSuchPage { .. })));
 }
 
-/// Python: "Not a readable PDF: Failed to load document (PDFium: Data format error)."
+/// "Can't open this PDF: the file is damaged or isn't a PDF"
 #[test]
 fn corrupt_files_say_why() {
     if !pdfium() {
@@ -159,7 +159,7 @@ fn corrupt_files_say_why() {
     }
     for bytes in [b"%PDF-1.7\nthis is not really a pdf".to_vec(), b"plain text".to_vec(), Vec::new()] {
         match open(bytes) {
-            Err(PdfError::Unreadable(msg)) => assert_eq!(msg, "Failed to load document (PDFium: Data format error)."),
+            Err(PdfError::Unreadable(msg)) => assert_eq!(msg, "the file is damaged or isn't a PDF"),
             other => panic!("{other:?}"),
         }
     }
@@ -174,7 +174,7 @@ fn password_protected() {
     }
     let err = open(TestPdf::with_pages(1).encrypted("secret", "owner").build()).unwrap_err();
     assert!(matches!(err, PdfError::Password));
-    assert_eq!(err.to_string(), "This PDF is password-protected.");
+    assert_eq!(err.to_string(), "This PDF is password-protected");
     // Only an owner password (restrictions, no prompt): opens and decrypts.
     let pdf = TestPdf::with_pages(1)
         .title("Locked down")

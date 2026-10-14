@@ -87,11 +87,11 @@ pub enum MediaError {
     #[error("{0}")]
     Io(#[from] std::io::Error),
     /// Built without the `ffmpeg` feature.
-    #[error("media support is not built in")]
+    #[error("audio and video playback isn't part of this build")]
     Unsupported,
 }
 
 /// The message the player shows when a file can't be played (as 1.x did).
 pub fn error_message(detail: &str) -> String {
-    format!("Cannot play this file:\n{detail}")
+    format!("Can't play this file:\n{detail}")
 }

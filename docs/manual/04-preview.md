@@ -105,7 +105,7 @@ they are 100 MB or smaller.
 
 ## Cloud files
 
-Files in Dropbox, iCloud Drive, OneDrive and similar folders can be stored
+Files in folders synced by a cloud storage app can be stored
 online only (marked ☁ in the panel). Previewing such a file downloads it.
 
 - Files up to 25 MB are downloaded automatically. While this happens, the

@@ -106,8 +106,8 @@ fn gives_up_when_the_source_stalls() {
     let a = WaveformAnalyzer::start(MediaSource::stream(Box::new(nothing), None, "a.wav"), options());
     assert!(a.wait_complete(Duration::from_secs(5)));
     assert!(t.elapsed() < Duration::from_secs(3));
-    assert_eq!(a.snapshot().error, "the decoder stopped responding");
-    assert_eq!(a.snapshot().status_text(""), "No waveform: the decoder stopped responding");
+    assert_eq!(a.snapshot().error, "reading the audio stopped");
+    assert_eq!(a.snapshot().status_text(""), "No waveform: reading the audio stopped");
     let watch = a.shutdown_watch();
     drop(a);
     release.store(true, Ordering::Release);

@@ -214,8 +214,8 @@ fn missing_folder_starts_at_home_and_bad_shell_fails() {
     s.close();
     let bad = Session::new(vec!["/no/such/shell".into()], Path::new("/"), 40, 5, notify);
     let err = bad.start().unwrap_err();
-    bad.feed(format!("Cannot start /no/such/shell: {err}\r\n").as_bytes());
-    assert!(bad.lock().text().starts_with("Cannot start"));
+    bad.feed(format!("Can't start /no/such/shell: {err}\r\n").as_bytes());
+    assert!(bad.lock().text().starts_with("Can't start"));
     assert!(!bad.alive());
 }
 
@@ -293,6 +293,6 @@ fn panel_messages() {
     let err = oc_term::StartError::Pty("No such file or directory".into());
     assert_eq!(
         oc_term::start_failed_message(&["/no/sh".into(), "-l".into()], &err),
-        "Cannot start /no/sh -l: No such file or directory\r\n"
+        "Can't start /no/sh -l: No such file or directory\r\n"
     );
 }

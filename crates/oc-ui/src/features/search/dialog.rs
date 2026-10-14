@@ -156,7 +156,7 @@ pub fn build_query(form: &Form, roots: Vec<VPath>, now: f64) -> Result<Query, St
         return Err(format!("Containing: {}", regex_problem(&e.to_string())));
     }
     if roots.is_empty() {
-        return Err("Enter a folder to search in.".into());
+        return Err("Enter a folder to search in".into());
     }
     let (_, newer_days, older_days) = DATES[form.date.min(DATES.len() - 1)];
     Ok(Query {
@@ -358,22 +358,22 @@ impl FindFilesDialog {
             here,
             side,
             names,
-            name_regex: Checkbox::new("RegEx", form.name_regex),
+            name_regex: Checkbox::new("Regex", form.name_regex),
             name_case: Checkbox::new("Case sensitive", form.name_case),
             depth: Choice::new(DEPTHS.iter().map(|d| d.0).collect(), form.depth),
             kinds: Choice::new(KINDS.iter().map(|k| k.0).collect(), form.kinds),
             include_hidden: Checkbox::new("Hidden files", form.include_hidden),
             search_archives: Checkbox::new("Inside archives", form.search_archives),
-            text: input(&form.text, "optional: text the files must contain"),
-            text_regex: Checkbox::new("RegEx", form.text_regex),
+            text: input(&form.text, "optional, e.g. invoice"),
+            text_regex: Checkbox::new("Regex", form.text_regex),
             text_case: Checkbox::new("Case sensitive", form.text_case),
             whole_words: Checkbox::new("Whole words", form.whole_words),
-            not_containing: Checkbox::new("NOT containing", form.not_containing),
+            not_containing: Checkbox::new("Not containing", form.not_containing),
             include_online_only: Checkbox::new("Also cloud-only files (downloads them)", form.include_online_only),
             min_size: input(&form.min_size, "e.g. 10M"),
             max_size: input(&form.max_size, "e.g. 1.5G"),
             date: Choice::new(DATES.iter().map(|d| d.0).collect(), form.date),
-            buttons: ButtonRow::new(&["Search", "Cancel"], 0),
+            buttons: ButtonRow::new(&["Find files", "Cancel"], 0),
             focus: Field::Names,
             popup: None,
             pending: Arc::new(Mutex::new(Pending::default())),
@@ -861,7 +861,7 @@ mod tests {
         // Python `re` features (1.x): look-around and back-references.
         let python = Form { names: "^(?!report).*pdf".into(), name_regex: true, text: r"(\w)\1".into(), text_regex: true, ..Form::default() };
         assert!(build_query(&python, vec![root.clone()], 0.0).is_ok());
-        assert_eq!(build_query(&Form::default(), vec![], 0.0).unwrap_err(), "Enter a folder to search in.");
+        assert_eq!(build_query(&Form::default(), vec![], 0.0).unwrap_err(), "Enter a folder to search in");
     }
 
     #[test]

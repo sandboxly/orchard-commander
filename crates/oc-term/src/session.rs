@@ -355,7 +355,7 @@ pub fn ended_message(title: &str, status: Option<i32>) -> String {
 
 /// What the panel prints when the shell couldn't be started.
 pub fn start_failed_message(argv: &[String], error: &StartError) -> String {
-    format!("Cannot start {}: {error}\r\n", argv.join(" "))
+    format!("Can't start {}: {error}\r\n", argv.join(" "))
 }
 
 impl Drop for Session {

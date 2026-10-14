@@ -91,8 +91,8 @@ To re-read both folders manually, for example on a server, press **⌘R** /
 
 ## Online-only files
 
-Files in cloud folders such as Dropbox, iCloud Drive and OneDrive can be
-stored online only. The panel marks these files with ☁ next to the size.
+Files in folders kept in sync by a cloud storage app can be stored online
+only. The panel marks these files with ☁ next to the size.
 They are listed normally but downloaded only when you open, copy or preview
 them. See [Cloud files](04-preview.md#cloud-files).
 

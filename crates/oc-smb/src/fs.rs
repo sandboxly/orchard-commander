@@ -119,7 +119,7 @@ pub fn connect(
     match result {
         Ok(session) => Ok(SmbFileSystem::new(server, &share, opts.port, session)),
         Err(f) if f.is_auth() => Err(SmbConnectError::AuthenticationRequired(format!(
-            "Authentication failed for {} on {server}",
+            "The server {server} didn't accept the user name or password for {}",
             username.as_deref().unwrap_or("guest")
         ))),
         Err(f) => Err(SmbConnectError::Connection(describe_connect_error(server, opts.port, &f))),
@@ -149,7 +149,7 @@ pub fn list_shares(server: &str, opts: &ConnectOptions) -> std::result::Result<V
     result.map_err(|f| {
         if f.is_auth() {
             SmbConnectError::AuthenticationRequired(format!(
-                "Authentication failed for {} on {server}",
+                "The server {server} didn't accept the user name or password for {}",
                 username.as_deref().unwrap_or("guest")
             ))
         } else {
@@ -528,7 +528,7 @@ impl FileSystem for SmbFileSystem {
         let Some(t) = file_time(mtime) else {
             return Err(VfsError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid modification time {mtime}: '{}'", self.shared.unc(path)),
+                format!("Can't set the modification time of {}: {mtime} is out of range", self.shared.unc(path)),
             )));
         };
         exec(async move {

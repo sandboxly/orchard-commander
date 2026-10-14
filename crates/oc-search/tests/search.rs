@@ -405,7 +405,7 @@ fn cloud_only_files_skipped_for_content() {
     assert_eq!(progress.hits(), 0);
     assert_eq!(progress.skipped_online_only(), 1);
     assert_eq!(cloud.bytes_read.load(Ordering::Relaxed), 0);
-    // Also with NOT containing: unknown contents are no hit either.
+    // Also with Not containing: unknown contents are no hit either.
     let q = Query { text: "needle".into(), not_containing: true, ..Query::new(vec![root.clone()]) };
     assert!(collect(&q).0.is_empty());
     assert_eq!(

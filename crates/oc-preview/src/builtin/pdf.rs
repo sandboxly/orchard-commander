@@ -80,7 +80,7 @@ impl Previewer for PdfPreviewer {
         // Dropping `doc` on an error below closes it.
         let page_count = doc.page_count();
         if page_count == 0 {
-            return Err(PreviewError::cannot("PDF without pages"));
+            return Err(PreviewError::cannot("Can't preview: this PDF has no pages"));
         }
         let first_page = doc.render_width(0, PDF_FIRST_PAGE_WIDTH).map_err(preview_error)?;
         let title = doc.title().to_string();
@@ -105,10 +105,11 @@ fn one_line(s: &str) -> String {
 /// `ShowMessage` / `CannotPreview`).
 fn preview_error(e: PdfError) -> PreviewError {
     match e {
-        PdfError::Password => PreviewError::message(e.to_string()),
-        PdfError::Unreadable(msg) | PdfError::Render(msg) => PreviewError::cannot(format!("Not a readable PDF: {msg}")),
+        PdfError::Password => PreviewError::message("Can't preview: this PDF is password-protected"),
+        PdfError::Unreadable(msg) | PdfError::Render(msg) => PreviewError::cannot(format!("Can't open this PDF: {msg}")),
         PdfError::Io(io) => io.into(),
-        PdfError::Unavailable(_) | PdfError::Closed | PdfError::Cancelled | PdfError::NoSuchPage { .. } => {
+        PdfError::Unavailable(_) => PreviewError::cannot("Can't preview PDFs: PDF support is missing from this installation"),
+        PdfError::Closed | PdfError::Cancelled | PdfError::NoSuchPage { .. } => {
             PreviewError::cannot(e.to_string())
         }
         PdfError::Timeout(_) | PdfError::Reentrant | PdfError::Crashed(_) => PreviewError::Failed(e.to_string()),
@@ -160,9 +161,9 @@ mod tests {
     #[test]
     fn errors_map_like_python() {
         let e = preview_error(PdfError::Password);
-        assert!(matches!(&e, PreviewError::ShowMessage(m) if m == "This PDF is password-protected."));
-        let e = preview_error(PdfError::Unreadable("Failed to load document (PDFium: Data format error).".into()));
-        assert_eq!(e.to_string(), "Not a readable PDF: Failed to load document (PDFium: Data format error).");
+        assert!(matches!(&e, PreviewError::ShowMessage(m) if m == "Can't preview: this PDF is password-protected"));
+        let e = preview_error(PdfError::Unreadable("the file is damaged or isn't a PDF".into()));
+        assert_eq!(e.to_string(), "Can't open this PDF: the file is damaged or isn't a PDF");
         assert!(matches!(e, PreviewError::CannotPreview(_)));
         assert!(matches!(preview_error(PdfError::Closed), PreviewError::CannotPreview(m) if m == "document closed"));
         assert!(matches!(preview_error(PdfError::Timeout(120)), PreviewError::Failed(_)));

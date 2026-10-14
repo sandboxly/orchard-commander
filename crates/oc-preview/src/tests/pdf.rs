@@ -76,7 +76,7 @@ fn corrupt_pdf_falls_back_to_hex() {
         let err = PdfPreviewer.load(&PreviewSource::new(LocalFs::vpath(&path)).unwrap(), &LoadContext::default());
         assert_eq!(
             err.unwrap_err().to_string(),
-            "Not a readable PDF: Failed to load document (PDFium: Data format error)."
+            "Can't open this PDF: the file is damaged or isn't a PDF"
         );
     }
 }
@@ -96,7 +96,7 @@ fn password_protected_pdf_shows_a_message() {
     assert!(o.loaded.is_none());
     let err = o.error.unwrap();
     assert!(err.is_message(), "{err:?}");
-    assert_eq!(err.to_string(), "This PDF is password-protected.");
+    assert_eq!(err.to_string(), "Can't preview: this PDF is password-protected");
     // An owner password alone (printing/copying restrictions) doesn't lock it.
     let (_dir, o) = preview_local("restricted.pdf", &TestPdf::with_pages(2).encrypted("", "boss").build());
     assert_eq!(pdf_data(&o).page_count, 2);

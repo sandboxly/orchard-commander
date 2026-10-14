@@ -209,7 +209,7 @@ impl PooledMember {
         if skipped < want {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "unexpected end of data",
+                "the archive is incomplete or damaged",
             ));
         }
         Ok(PooledMember {
@@ -290,7 +290,7 @@ impl TarFormat {
                     .and_then(|t| archive.index_of(t))
                     .filter(|_| depth < MAX_LINK_DEPTH)
                     .ok_or_else(|| {
-                        VfsError::NotFound(format!("{name}: link target not found in archive"))
+                        crate::archive::missing_link_target(name)
                     })?;
                 if archive.member_at(target_idx).is_dir {
                     return Ok(empty_stream());

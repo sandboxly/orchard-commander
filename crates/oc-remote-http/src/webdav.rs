@@ -375,7 +375,7 @@ impl Dav {
 
     fn check_auth(&self, response: &Response) -> Result<()> {
         if response.status == 401 {
-            return Err(Error::AuthenticationRequired(format!("{} didn't accept the user name and password", self.type_name)));
+            return Err(Error::AuthenticationRequired(format!("{} didn't accept the user name or password", self.type_name)));
         }
         Ok(())
     }
@@ -394,7 +394,7 @@ impl Dav {
             }
         }
         if !ok.contains(&response.status) {
-            return Err(dav_error(response.status, &response.reason, &format!("{method} {}", self.display(path))));
+            return Err(dav_error(response.status, &response.reason, &self.display(path)));
         }
         Ok(data)
     }
@@ -403,7 +403,7 @@ impl Dav {
 
     fn check_root(&self) -> Result<()> {
         if !self.stat("/")?.is_dir {
-            return Err(Error::Connection(format!("{} is not a folder", self.display("/"))));
+            return Err(Error::Connection(format!("{} isn't a folder", self.display("/"))));
         }
         Ok(())
     }
@@ -475,7 +475,7 @@ impl Dav {
     fn stat(&self, path: &str) -> Result<Entry> {
         let responses = self.propfind(path, "0")?;
         let Some((_, props)) = responses.first() else {
-            return Err(Error::os(io::ErrorKind::NotFound, format!("Not found: {}", self.display(path))));
+            return Err(Error::os(io::ErrorKind::NotFound, format!("{} not found", self.display(path))));
         };
         Ok(Self::entry(&self.basename(path), props))
     }
@@ -517,7 +517,7 @@ impl Dav {
             if exist_ok && self.try_is_dir(path)? {
                 return Ok(());
             }
-            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(path))));
+            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("{} already exists", self.display(path))));
         }
         for p in missing.iter().rev() {
             if let Err(e) = self.request("MKCOL", p, &[200, 201, 204], true, &Headers::new(), None) {
@@ -525,7 +525,7 @@ impl Dav {
                     return Err(e); // 405: something is in the way (or a race)
                 }
                 if !exist_ok && *p == missing[0] {
-                    return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(p))));
+                    return Err(Error::os(io::ErrorKind::AlreadyExists, format!("{} already exists", self.display(p))));
                 }
             }
         }
@@ -600,14 +600,23 @@ const MTIME_PROPERTIES: [(&str, MtimeBody); 3] = [
     ("win32", |t| proppatch("urn:schemas-microsoft-com:", "z", "Win32LastModifiedTime", &format_http_date(t))),
 ];
 
-fn dav_error(status: u16, reason: &str, what: &str) -> Error {
-    let message = format!("{what}: {status} {reason}");
-    let kind = match status {
-        404 | 409 => io::ErrorKind::NotFound, // 409: e.g. the parent folder doesn't exist
-        403 | 405 => io::ErrorKind::PermissionDenied,
-        412 => io::ErrorKind::AlreadyExists,
-        507 => io::ErrorKind::StorageFull,
-        _ => io::ErrorKind::Other,
+/// A failed request on `path` (a display path), in words.
+fn dav_error(status: u16, reason: &str, path: &str) -> Error {
+    use io::ErrorKind as K;
+    let (kind, message) = match status {
+        404 => (K::NotFound, format!("{path} not found")),
+        // e.g. the parent folder doesn't exist
+        409 => (K::NotFound, format!("The folder for {path} doesn't exist")),
+        403 => (K::PermissionDenied, format!("You don't have permission to access {path}")),
+        405 => (K::PermissionDenied, format!("The server doesn't allow this for {path}")),
+        412 => (K::AlreadyExists, format!("{path} already exists")),
+        507 => (K::StorageFull, format!("Not enough space on the server for {path}")),
+        500..=599 => (K::Other, format!("The server ran into a problem with {path} — try again later")),
+        _ => {
+            let reason = reason.trim();
+            let code = if reason.is_empty() { status.to_string() } else { format!("{status} {reason}") };
+            (K::Other, format!("The server refused the request for {path} (error {code})"))
+        }
     };
     Error::os(kind, message)
 }
@@ -642,7 +651,7 @@ impl WriteStream for Upload {
         let len = self.len;
         let (response, _) = self.fs.send("PUT", &url, &headers, Body::Stream(&mut self.spool, len))?;
         if !matches!(response.status, 200 | 201 | 204) {
-            return Err(dav_error(response.status, &response.reason, &format!("PUT {}", self.fs.display(&self.path))).into());
+            return Err(dav_error(response.status, &response.reason, &self.fs.display(&self.path)).into());
         }
         Ok(())
     }
@@ -737,7 +746,7 @@ impl FileSystem for WebDavFileSystem {
             let (response, payload) = fs.http.request_stream("GET", &url, headers, Body::None)?;
             fs.check_auth(&response)?;
             if !matches!(response.status, 200 | 206 | 416) {
-                return Err(dav_error(response.status, &response.reason, &format!("GET {}", fs.display(&path))));
+                return Err(dav_error(response.status, &response.reason, &fs.display(&path)));
             }
             Ok((response, payload))
         });

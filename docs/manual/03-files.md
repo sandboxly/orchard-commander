@@ -67,7 +67,7 @@ dialog shows both files with their size and date. Choose:
 | Button | Key | Result |
 | --- | --- | --- |
 | Overwrite | O | Replace this file |
-| All | A | Replace this file and all further existing files |
+| Overwrite all | A | Replace this file and all further existing files |
 | Skip | S | Keep the existing file and continue with the next one |
 | Skip all | K | Skip this and all further existing files |
 | Cancel | | Stop the operation |
@@ -93,7 +93,7 @@ cursor is placed on the new folder.
 
 1. Mark the files and folders you want to delete.
 2. Press **F8**, **Delete**, or **⌘⌫** / **Ctrl+Backspace**.
-3. Confirm with **Trash**.
+3. Confirm with **Move to trash**.
 
 The files are moved to the macOS Trash, the Windows Recycle Bin or the Linux
 trash, from where you can restore them.
@@ -119,4 +119,4 @@ are not written back.
 Some locations can't be changed: archives, the results of a search (as a
 folder; the files themselves can be changed), and servers or folders where
 you lack permission. Commands that would change them show a message such as
-"Can't create a directory here: photos.zip is an archive (read-only)".
+"Can't create a directory here: archives are read-only — extract the files first (F5)".

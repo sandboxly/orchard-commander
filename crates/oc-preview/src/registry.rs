@@ -177,7 +177,7 @@ impl Registry {
             }
         }
         outcome.error = Some(PreviewError::CannotPreview(
-            first_failure.unwrap_or_else(|| "No previewer can show this file".to_string()),
+            first_failure.unwrap_or_else(|| "Can't preview this kind of file".to_string()),
         ));
         outcome
     }

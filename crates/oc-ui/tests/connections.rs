@@ -185,7 +185,7 @@ fn declining_the_host_key_connects_nothing() {
     go_to(&mut app, &sftp_url(&server, "/pub"));
     wait_dialog(&mut app, "Unknown server");
     press(&mut app, Key::Enter); // Cancel is the default
-    wait_until(&mut app, "the warning", Duration::from_secs(10), |app| app.toast.as_ref().is_some_and(|t| t.text.contains("was not trusted")));
+    wait_until(&mut app, "the warning", Duration::from_secs(10), |app| app.toast.as_ref().is_some_and(|t| t.text.contains("wasn't trusted")));
     settle(&mut app);
     assert!(app.main.sides[0].panel.location.is_local());
     let trusted = fs::read_to_string(e.config.join("known_hosts")).unwrap_or_default();
@@ -305,10 +305,10 @@ fn connection_manager_new_edit_delete() {
     let (mut app, store) = app(&e);
     press_with(&mut app, Key::Char('k'), Mods::primary());
     wait_dialog(&mut app, "Connect to server");
-    // 1.x's hint and palette help, "Ctrl+G" on every platform.
+    // The hint and palette help.
     let hint = app.top_modal_text().unwrap();
-    assert!(hint.starts_with("Saved connections — or use Go to (Ctrl+G) with an address: ") && hint.contains("sftp://"), "{hint}");
-    assert_eq!(app.registry.get("conn.manager").unwrap().help, "Saved SFTP and SMB connections");
+    assert!(hint.starts_with("Saved connections — or press ") && hint.contains(" and type an address: ") && hint.contains("sftp://"), "{hint}");
+    assert_eq!(app.registry.get("conn.manager").unwrap().help, "Connect to a saved server or add one");
     // Nothing saved: the focus is on New….
     press(&mut app, Key::Enter);
     wait_dialog(&mut app, "New connection");
@@ -317,7 +317,7 @@ fn connection_manager_new_edit_delete() {
     press(&mut app, Key::Backspace); // …and removed
     press(&mut app, Key::Enter);
     assert_eq!(top(&app).as_deref(), Some("New connection"));
-    assert!(app.top_modal_text().unwrap().ends_with("Enter server."));
+    assert!(app.top_modal_text().unwrap().ends_with("Enter the server"));
     // Fill in the form: Server, Port, User, Key file, Start folder, Password.
     type_text(&mut app, &server.host);
     press(&mut app, Key::Down);
@@ -404,7 +404,7 @@ fn connection_manager_new_edit_delete() {
     // Delete the selected one (the copy), after confirming.
     press(&mut app, Key::Delete);
     wait_dialog(&mut app, "Delete connection");
-    assert_eq!(app.top_modal_text().unwrap(), "Delete 'test2 (copy)'?");
+    assert_eq!(app.top_modal_text().unwrap(), "Delete 'test2 (copy)'? You can't undo this.", "its password is shared with test2: it stays");
     press(&mut app, Key::Enter);
     wait_saved(&mut app, &e, "the deletion", |v| v.as_array().is_some_and(|a| a.len() == 1));
     assert_eq!(saved_json(&e)[0]["name"], "test2");
@@ -456,7 +456,7 @@ fn editor_switches_types_and_keeps_typed_values() {
     }
     press(&mut app, Key::Enter);
     let form = app.top_modal_text().unwrap();
-    assert!(form.starts_with("Type: S3 (Amazon S3 and compatible)") && form.contains("Secret key: "), "{form}");
+    assert!(form.starts_with("Type: S3 (HTTPS)") && form.contains("Secret key: "), "{form}");
     assert!(form.contains("Server: nas.local"));
     press(&mut app, Key::Escape);
     assert_eq!(top(&app).as_deref(), Some("Connect to server"));
@@ -548,7 +548,7 @@ fn webdav_asks_again_after_a_wrong_password_and_remembers() {
     type_text(&mut app, "wrong");
     press(&mut app, Key::Enter);
     wait_until(&mut app, "the second prompt", Duration::from_secs(20), |app| {
-        top(app).as_deref() == Some("Password") && app.top_modal_text().is_some_and(|t| t.starts_with("The server didn't accept the password."))
+        top(app).as_deref() == Some("Password") && app.top_modal_text().is_some_and(|t| t.starts_with("The server didn't accept the password\n"))
     });
     type_text(&mut app, PASSWORD);
     press(&mut app, Key::Tab);

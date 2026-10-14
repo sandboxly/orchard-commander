@@ -20,7 +20,7 @@ messages. The app needs a graphical desktop session and draws its window
 with Vulkan or OpenGL (EGL). On computers without a GPU, such as virtual
 machines, the Mesa drivers draw in software.
 
-If the message is "cannot draw into the window: no GPU adapter", install
+If the message is "can't draw into the window: no GPU adapter", install
 the Mesa drivers, for example `mesa-vulkan-drivers` and `libegl-mesa0` on
 Debian and Ubuntu, or `mesa-vulkan-drivers` and `mesa-libEGL` on Fedora.
 To try the other graphics interface, start the app with
@@ -30,8 +30,8 @@ To try the other graphics interface, start the app with
 
 ### A server on my network can't be reached (macOS)
 
-Symptom: connecting to a server on your local network fails with
-"No route to host", while servers on the internet work.
+Symptom: connecting to a server on your local network fails with "the
+server can't be reached", while servers on the internet work.
 
 macOS requires permission for apps to connect to devices on the local
 network.
@@ -66,7 +66,7 @@ in the connection or address, for example `smb://anna@nas/media`.
 
 ## Files and previews
 
-### A file in Dropbox, iCloud Drive or OneDrive doesn't preview
+### A file in a cloud storage folder doesn't preview
 
 Files marked ☁ are online-only and must be downloaded first.
 

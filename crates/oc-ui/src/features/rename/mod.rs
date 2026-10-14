@@ -109,7 +109,7 @@ pub fn multi_rename(app: &mut App) {
         }
     }
     if app.state::<RenameState>().running {
-        app.warn("The last multi-rename is still running");
+        app.warn("The last multi-rename is still running: wait for it to finish");
         return;
     }
     let items: Vec<Item> = paths.iter().zip(&entries).map(|(p, e)| item_for(p, e)).collect();
@@ -151,17 +151,17 @@ pub(crate) fn finish_dialog(app: &mut App, mut d: RenameDialog, accept: bool) {
 pub fn undo_rename(app: &mut App) {
     let last = app.state::<RenameState>().last.clone().filter(|d| !d.renames.is_empty());
     let Some(done) = last else {
-        app.warn("Nothing to undo");
+        app.warn("No rename to undo");
         return;
     };
     if app.state::<RenameState>().running {
-        app.warn("The last multi-rename is still running");
+        app.warn("The last multi-rename is still running: wait for it to finish");
         return;
     }
     let n = done.renames.len();
     let side = app.main.files_side();
     let message = if n == 1 { "Give the item its old name back?".to_owned() } else { format!("Give {n} items their old names back?") };
-    dialogs::confirm(app, "Undo rename", &message, "Undo", move |app| run(app, side, Job::Undo(done)));
+    dialogs::confirm(app, "Undo rename", &message, "Undo rename", move |app| run(app, side, Job::Undo(done)));
 }
 
 /// F2 / ⇧F6: rename the entry under the cursor (not the marked ones) in its
@@ -180,7 +180,7 @@ pub fn rename_in_place(app: &mut App) {
         return;
     }
     if app.state::<RenameState>().running {
-        app.warn("The last multi-rename is still running");
+        app.warn("The last multi-rename is still running: wait for it to finish");
         return;
     }
     let old = item.name.clone();

@@ -14,7 +14,7 @@ use crate::archive::{Archive, Format, ListError, Listing, Member, OnChunk, Sourc
 use crate::io::{HandleSlot, Window};
 use crate::normalize;
 
-const ENCRYPTED: &str = "Encrypted 7z archives are not supported yet";
+const ENCRYPTED: &str = "Password-protected 7z archives aren't supported yet";
 const AES_METHOD_ID: &[u8] = &[0x06, 0xF1, 0x07, 0x01];
 /// 100 ns ticks between 1601-01-01 and the Unix epoch.
 const NT_UNIX_EPOCH: u64 = 116_444_736_000_000_000;
@@ -133,13 +133,13 @@ impl Format for SevenZFormat {
         }
         result.map_err(|e| {
             VfsError::Operation(format!(
-                "Could not extract {}: {e}",
+                "Can't extract {}: {e}",
                 archive.member_name(idx)
             ))
         })?;
         if !found {
             return Err(VfsError::Operation(format!(
-                "Could not extract {}",
+                "Can't extract {}",
                 archive.member_name(idx)
             )));
         }

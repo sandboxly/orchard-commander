@@ -73,8 +73,8 @@ fn fields_and_validation() {
     let keys: Vec<_> = p.fields().iter().map(|f| f.key).collect();
     assert_eq!(keys, ["host", "port", "username", "key_file", "path"]);
     assert_eq!(p.secret_hint(), "empty: use SSH agent/keys, or ask");
-    assert_eq!(p.validate(&params(json!({"host": "h", "port": "22a"}))).as_deref(), Some("Port must be a number."));
-    assert_eq!(p.validate(&params(json!({}))).as_deref(), Some("Enter server."));
+    assert_eq!(p.validate(&params(json!({"host": "h", "port": "22a"}))).as_deref(), Some("Port must be a number"));
+    assert_eq!(p.validate(&params(json!({}))).as_deref(), Some("Enter the server"));
     assert_eq!(p.validate(&params(json!({"host": "h"}))), None);
 }
 

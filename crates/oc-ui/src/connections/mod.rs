@@ -130,7 +130,7 @@ fn passwords(store: &Arc<dyn CredentialStore>) -> Passwords<SharedStore> {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn provider_of(conn: &Connection) -> Result<Arc<dyn FileSystemProvider>, String> {
-    oc_provider::get(&conn.kind).ok_or_else(|| format!("No support for {}:// connections (add-on not installed?)", conn.kind))
+    oc_provider::get(&conn.kind).ok_or_else(|| format!("Can't open {}:// connections: this version of Orchard Commander doesn't support them", conn.kind))
 }
 
 /// Identifies the server account: shared sessions, the keychain user name.
@@ -161,7 +161,7 @@ pub fn is_url(text: &str) -> bool {
 /// Parse an address of any registered connection type.
 pub fn from_url(url: &str) -> Result<Connection, String> {
     let Some(scheme) = oc_provider::scheme_of(url) else {
-        return Err(format!("Unsupported address (use {}): {url}", oc_provider::address_examples()));
+        return Err(format!("Unsupported address: {url} — use {}", oc_provider::address_examples()));
     };
     let provider = oc_provider::get(&scheme).ok_or_else(|| format!("Unsupported address: {url}"))?;
     Ok(Connection::new(scheme, provider.parse_url(url)?, ""))
@@ -172,8 +172,8 @@ fn with_path(conn: &Connection, path: &str) -> Connection {
     conn.with_params([("path".to_string(), serde_json::Value::String(path.to_string()))])
 }
 
-/// A declined host key / certificate, worded like 1.x's exceptions: an SSH
-/// host off port 22 is named "[host]:port" (as paramiko passed it), an S3
+/// A declined host key / certificate: an SSH host off port 22 is named
+/// "[host]:port" (like 1.x's messages), an S3
 /// connection without a server is Amazon's.
 fn not_trusted(conn: &Connection) -> String {
     let host = conn.get_str("host");
@@ -182,14 +182,14 @@ fn not_trusted(conn: &Connection) -> String {
             Some(port) if port != 0 && port != 22 => format!("[{host}]:{port}"),
             _ => host.to_string(),
         };
-        return format!("Host key for {host} was not trusted");
+        return format!("Not connected: the host key of {host} wasn't trusted");
     }
     let host = match host {
         "" if conn.kind == "s3" => "s3.amazonaws.com",
         "" => "the server",
         host => host,
     };
-    format!("The certificate of {host} was not trusted")
+    format!("Not connected: the certificate of {host} wasn't trusted")
 }
 
 // ---------------------------------------------------------------------------
@@ -199,14 +199,14 @@ fn not_trusted(conn: &Connection) -> String {
 pub fn register(reg: &mut Registry) {
     reg.add(
         Command::new("conn.manager", "Connect to server", show_manager)
-            .help("Saved SFTP and SMB connections")
+            .help("Connect to a saved server or add one")
             .keys(&["Primary+K"])
             .footer_right("Connect")
             .menu(Menu::Commands, "servers"),
     );
     reg.add(
         Command::new("conn.disconnect", "Disconnect", disconnect)
-            .help("Close the connection of the active panel's server")
+            .help("Close the active panel's server connection")
             .keys(&["Primary+Shift+K"])
             .menu(Menu::Commands, "servers"),
     );
@@ -309,7 +309,7 @@ pub(crate) fn save_connection(app: &mut App, conn: Connection, creds: Option<Cre
         },
         |app, (result, items)| {
             if let Err(e) = result {
-                app.error(format!("Could not save connections: {e}"));
+                app.error(format!("Can't save connections: {e}"));
             }
             set_saved(app, items);
         },
@@ -336,7 +336,7 @@ pub(crate) fn delete_connection(app: &mut App, conn: Connection) {
         },
         |app, (result, items)| {
             if let Err(e) = result {
-                app.error(format!("Could not save connections: {e}"));
+                app.error(format!("Can't save connections: {e}"));
             }
             set_saved(app, items);
         },
@@ -444,7 +444,7 @@ fn connected(app: &mut App, id: u64, conn: Connection, text: &str, result: Resul
     match result {
         Ok(location) => arrive(app, target, Some(location)),
         Err(ConnectError::AuthenticationRequired(_)) => {
-            let reason = if had_password { "The server didn't accept the password." } else { "" };
+            let reason = if had_password { "The server didn't accept the password" } else { "" };
             dialogs::ask_password(app, &conn.clone(), reason, move |app, creds| match creds {
                 Some(Credentials { password: Some(p), remember }) if !p.is_empty() => {
                     open_connection(app, conn, target, Some(p), remember);

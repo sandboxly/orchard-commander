@@ -27,7 +27,7 @@ The dialog keeps your last settings until you quit the app.
 | Extension | The pattern for the new extension. Default: `[E]` (the old extension). Leave empty to remove extensions. |
 | Insert… | Inserts a placeholder at the cursor position in the field next to it |
 | Search / Replace | Text to replace in the new name (see [Search and replace](#search-and-replace)) |
-| RegEx | Treat **Search** as a regular expression |
+| Regex | Treat **Search** as a regular expression |
 | Case sensitive | Distinguish upper and lower case when searching |
 | Case | Changes the case of the whole new name: **Unchanged**, **lowercase**, **UPPERCASE**, **First letter uppercase**, **Every Word Uppercase** |
 | Counter [C]: start, step, digits | Settings for the `[C]` placeholder |
@@ -208,8 +208,8 @@ Search and replace is applied to the new name, including the extension.
 
 - Separate several search terms with `|`. With one replacement, all of them
   are replaced by it; with several, they are paired in order.
-- Without **RegEx**, characters such as `.` and `*` are matched literally.
-- With **RegEx**, use `$1`, `$2` (or `\1`, `\2`) in the replacement for the
+- Without **Regex**, characters such as `.` and `*` are matched literally.
+- With **Regex**, use `$1`, `$2` (or `\1`, `\2`) in the replacement for the
   groups of the expression. For example, search `(\d+)-(\d+)-(\d+)` and
   replace with `$3.$2.$1` to turn `2026-03-07` into `07.03.2026`.
 
@@ -240,7 +240,7 @@ and `2.txt` → `3.txt`, and names can differ in case only, such as
 
 ## Undoing a rename
 
-Press **⌘Z** / **Ctrl+Z** and confirm with **Undo** to give the files of the
+Press **⌘Z** / **Ctrl+Z** and confirm with **Undo rename** to give the files of the
 last multi-rename their old names back. Only the last multi-rename can be
 undone.
 

@@ -44,7 +44,7 @@ connections.
 | Connect | Open the selected connection in the active panel |
 | New… | Create a connection |
 | Edit… | Change the selected connection |
-| Delete | Remove the selected connection |
+| Delete | Remove the selected connection and its saved password (unless another saved connection uses the same account) |
 
 Saved connections also appear in the drive list (**⌥F1** / **Alt+F1** and
 **⌥F2** / **Alt+F2**), marked ⇄.
@@ -57,7 +57,7 @@ Saved connections also appear in the drive list (**⌥F1** / **Alt+F1** and
 4. Fill in the fields for the connection type (see below).
 5. Enter the password or secret key, if needed. Select
    **Remember in the system keychain** to save it.
-6. Click **Save**.
+6. Click **Save connection**.
 
 ### Connection fields
 
@@ -74,7 +74,7 @@ Saved connections also appear in the drive list (**⌥F1** / **Alt+F1** and
 Without a password or key file, Orchard Commander uses your SSH agent and
 your default SSH keys.
 
-**SMB (Windows / Samba share)**
+**SMB (network share)**
 
 | Field | Description |
 | --- | --- |
@@ -100,7 +100,7 @@ a server.
 Tip: For Nextcloud, create an app password in your Nextcloud security
 settings and use it instead of your account password.
 
-**S3 (Amazon S3 and compatible) and S3 (HTTP, unencrypted)**
+**S3 (HTTPS) and S3 (HTTP, unencrypted)**
 
 | Field | Description |
 | --- | --- |

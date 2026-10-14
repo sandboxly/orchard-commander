@@ -26,7 +26,7 @@ pub const PARENT: &str = "..";
 /// `QApplication::keyboardInputInterval`, which 1.x used).
 pub const QUICK_SEARCH_TIMEOUT: Duration = Duration::from_millis(400);
 
-/// After this long without a listing, the status line says "loading…".
+/// After this long without a listing, the status line says "Loading…".
 const LOADING_HINT: Duration = Duration::from_millis(200);
 
 /// Folder change notifications are collected this long before reloading.
@@ -68,7 +68,7 @@ pub struct FilePanel {
     pub loading_hint: bool,
     /// Other background work for this panel (opening an archive…).
     pub jobs: usize,
-    /// Replaces the status line while `jobs` run ("opening x.zip…").
+    /// Replaces the status line while `jobs` run ("Opening x.zip…").
     pub busy_text: Option<String>,
     /// Replaces the status line while work this panel started runs on in
     /// the background, the panel staying usable ("Deleting 3 items…").
@@ -417,7 +417,7 @@ impl FilePanel {
             return busy.clone();
         }
         if self.loading_hint && self.completed != self.request {
-            return "loading…".into();
+            return "Loading…".into();
         }
         if let Some(note) = &self.note {
             return note.clone();
@@ -464,28 +464,23 @@ pub fn local_anchor(v: &VPath) -> Option<PathBuf> {
     v.fs.exit_to().and_then(|p| local_anchor(&p))
 }
 
-/// Just the OS's reason for an error, like 1.x's `exc.strerror`: "Permission
-/// denied" from "[Errno 13] Permission denied: '/x'". "Not found" and
-/// "already exists" are 1.x's `FileNotFoundError` / `FileExistsError`
-/// (e.g. an SFTP mkdir). Other errors keep their whole text.
+/// Why an operation failed, without the path, to follow "Can't open /x: "
+/// or "Can't create directory: ": "you don't have permission", "not
+/// found", "already exists". Errors without a plain-words reason keep
+/// their whole text.
 pub fn error_reason(e: &oc_vfs::VfsError) -> String {
     use oc_vfs::VfsError;
-    let text = e.to_string();
-    match e {
-        VfsError::NotFound(_) => return "No such file or directory".into(),
-        VfsError::AlreadyExists(_) => return "File exists".into(),
-        VfsError::Io(_) => {}
-        _ => return text,
-    }
-    if let Some(rest) = text.strip_prefix("[Errno ")
-        && let Some((_, reason)) = rest.split_once("] ")
-    {
-        return reason.split_once(": '").map_or(reason, |(r, _)| r).to_owned();
-    }
-    // A bare std error: "Permission denied (os error 13)".
-    match text.rfind(" (os error ") {
-        Some(i) => text[..i].to_owned(),
-        None => text,
+    let reason = match e {
+        VfsError::NotFound(_) => "not found".to_owned(),
+        VfsError::AlreadyExists(_) => "already exists".to_owned(),
+        VfsError::Io(err) => oc_vfs::io_reason(err),
+        _ => return e.to_string(),
+    };
+    // Mid-sentence after the colon, but "SMB …" stays as it is.
+    let mut chars = reason.chars();
+    match (chars.next(), chars.next()) {
+        (Some(first), Some(second)) if second.is_lowercase() || second == ' ' => first.to_lowercase().chain(reason.chars().skip(1)).collect(),
+        _ => reason,
     }
 }
 
@@ -570,7 +565,7 @@ pub fn load(app: &mut App, side: usize, location: VPath, opts: LoadOptions) {
                     }
                 }
             }
-            let loc = loc.ok_or_else(|| (format!("{shown} no longer exists"), None))?;
+            let loc = loc.ok_or_else(|| ("it no longer exists".to_owned(), None))?;
             let entries = loc.list_dir(list_opts).map_err(|e| (error_reason(&e), Some(e)))?;
             let has_parent = loc.parent().is_some();
             let free = loc.fs.free_space(&loc.path);
@@ -609,7 +604,7 @@ fn listed(
                     }
                 }
             }
-            app.error(format!("Cannot open {}: {e}", location.display()));
+            app.error(format!("Can't open {}: {e}", location.display()));
             return;
         }
     };
@@ -677,7 +672,7 @@ pub fn enter_archive(app: &mut App, side: usize, file: VPath) {
     let name = file.name();
     let p = panel_mut(app, side);
     p.jobs += 1;
-    p.busy_text = Some(format!("opening {name}…"));
+    p.busy_text = Some(format!("Opening {name}…"));
     let file2 = file.clone();
     app.tasks.run_in_background(
         move |_| oc_vfs::open_archive(&file2),
@@ -688,7 +683,7 @@ pub fn enter_archive(app: &mut App, side: usize, file: VPath) {
                 Some(Ok(root)) => load(app, side, root, LoadOptions::default()),
                 // The archive's own message names the file (1.x: str(exc)).
                 Some(Err(e)) => app.error(e.to_string()),
-                None => app.error(format!("{name} can't be opened as an archive")),
+                None => app.error(format!("Can't open {name} as an archive")),
             }
         },
     );
@@ -716,7 +711,7 @@ pub fn open_external(app: &mut App, side: usize, name: &str) {
         move |token| oc_vfs::ops::materialize_cancellable(&target, &cache, &token.as_fn()),
         move |app, result| match result {
             Ok(local) => open_local(app, &name, local),
-            Err(e) => app.error(format!("Cannot open {name}: {e}")),
+            Err(e) => app.error(format!("Can't open {name}: {e}")),
         },
     );
 }
@@ -728,7 +723,7 @@ fn open_local(app: &mut App, name: &str, local: PathBuf) {
         move |_| oc_local::open_with_default_app(&local),
         move |app, result| {
             if let Err(e) = result {
-                app.notify(format!("Cannot open {name}: {e}"), Severity::Error);
+                app.notify(format!("Can't open {name}: {e}"), Severity::Error);
             }
         },
     );

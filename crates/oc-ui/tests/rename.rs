@@ -151,7 +151,7 @@ fn counter_rename_and_undo() {
     // Only the last batch can be undone.
     press_with(&mut app, Key::Char('z'), Mods::primary());
     assert!(app.modal_titles().is_empty());
-    assert_eq!(toast(&app), "Nothing to undo");
+    assert_eq!(toast(&app), "No rename to undo");
 }
 
 #[test]

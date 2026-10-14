@@ -153,7 +153,7 @@ impl Archive {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let meta = std::fs::metadata(path)
-            .map_err(|e| ArchiveError(format!("Cannot read {display_name}: {e}")))?;
+            .map_err(|e| ArchiveError(format!("Can't read {display_name}: {}", oc_vfs::io_reason(&e))))?;
         let listing = match kind {
             ArchiveKind::Zip => crate::zip::list(path),
             ArchiveKind::Tar => crate::tar::list(path),
@@ -162,7 +162,7 @@ impl Archive {
             ArchiveKind::Rar => crate::rar::list(path),
             #[cfg(not(feature = "rar"))]
             ArchiveKind::Rar => Err(ListError::User(format!(
-                "RAR support is not included in this build: {display_name}"
+                "Can't open {display_name}: this version was built without RAR support"
             ))),
             ArchiveKind::Gz | ArchiveKind::Bz2 | ArchiveKind::Xz => {
                 crate::single::list(path, kind, &meta)
@@ -172,7 +172,7 @@ impl Archive {
         // that already are user-facing ("Encrypted … not supported yet") pass as-is.
         let listing = listing.map_err(|e| match e {
             ListError::User(msg) => ArchiveError(msg),
-            ListError::Other(msg) => ArchiveError(format!("Cannot read {display_name}: {msg}")),
+            ListError::Other(msg) => ArchiveError(format!("Can't read {display_name}: {msg}")),
         })?;
         let mut archive = Archive {
             path: path.to_path_buf(),
@@ -320,7 +320,7 @@ impl Archive {
                 .unwrap_or_default();
             return Err(VfsError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotADirectory,
-                format!("Not a directory in {name}: {inner}"),
+                format!("{inner} in {name} isn't a folder"),
             )));
         }
         let entries = self
@@ -356,10 +356,7 @@ impl Archive {
             .index_of(name)
             .ok_or_else(|| VfsError::NotFound(name.to_owned()))?;
         if self.members[i].is_dir {
-            return Err(VfsError::Io(std::io::Error::new(
-                std::io::ErrorKind::IsADirectory,
-                format!("Is a directory: {name}"),
-            )));
+            return Err(oc_vfs::io_error_at(std::io::ErrorKind::IsADirectory.into(), name));
         }
         Ok(i)
     }
@@ -465,8 +462,16 @@ impl<'a> Iterator for Walk<'a> {
     }
 }
 
+/// A link member whose target isn't in the archive (a not-found error).
+pub(crate) fn missing_link_target(name: &str) -> VfsError {
+    VfsError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("The link {name} points to a file that isn't in the archive"),
+    ))
+}
+
 /// Listing failures: `User` messages are shown as they are, `Other` ones get
-/// "Cannot read <archive>: " in front.
+/// "Can't read <archive>: " in front.
 #[derive(Debug)]
 pub(crate) enum ListError {
     User(String),
@@ -475,6 +480,12 @@ pub(crate) enum ListError {
 
 impl<E: std::fmt::Display> From<E> for ListError {
     fn from(e: E) -> Self {
-        ListError::Other(e.to_string())
+        // Without std's " (os error N)".
+        let text = e.to_string();
+        let text = match text.rfind(" (os error ") {
+            Some(i) if text.ends_with(')') => text[..i].to_string(),
+            _ => text,
+        };
+        ListError::Other(text)
     }
 }

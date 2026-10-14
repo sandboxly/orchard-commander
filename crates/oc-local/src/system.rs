@@ -122,7 +122,8 @@ pub(crate) fn c_path(path: &Path) -> io::Result<std::ffi::CString> {
 
 /// Open `path` with the OS default application, without waiting for it.
 pub fn open_with_default_app(path: &Path) -> io::Result<()> {
-    open::that_detached(path)
+    // In words: callers show it after "Can't open <name>: ".
+    open::that_detached(path).map_err(|e| io::Error::new(e.kind(), oc_vfs::io_reason(&e)))
 }
 
 /// Whether `item` (by the folder holding it, so a link counts where it

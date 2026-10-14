@@ -291,7 +291,7 @@ fn bookmark_inside_an_archive_opens_and_round_trips() {
     let mut damaged = Spec::archive(local(&zip), "x");
     damaged.0.remove("archive");
     bookmarks::navigate(&mut app, &damaged, 0, true);
-    assert_eq!(toast(&app), "This bookmark is damaged and can't be opened");
+    assert!(toast(&app).starts_with("Can't open this bookmark: "), "{}", toast(&app));
     // A missing archive: an error, the panel stays.
     let missing = Spec::archive(local(&e.dst.join("gone.zip")), "");
     bookmarks::navigate(&mut app, &missing, 0, true);
@@ -384,12 +384,12 @@ fn organizer_edit_bookmark_dialog() {
     assert_eq!(top(&app), "Edit bookmark");
     type_text(&mut app, "x"); // appended to the title
     press(&mut app, Key::Tab); // Folder
-    // Clear the folder: "Enter a folder."
+    // Clear the folder: "Enter a folder to bookmark"
     press_with(&mut app, Key::Char('a'), Mods::primary());
     press(&mut app, Key::Backspace);
     press(&mut app, Key::Enter);
     assert_eq!(top(&app), "Edit bookmark");
-    assert!(app.top_modal_text().unwrap().ends_with("Enter a folder."));
+    assert!(app.top_modal_text().unwrap().ends_with("Enter a folder to bookmark"));
     press(&mut app, Key::Tab); // Use active panel
     press(&mut app, Key::Space);
     press(&mut app, Key::Tab); // Other panel

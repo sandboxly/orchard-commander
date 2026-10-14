@@ -78,6 +78,8 @@ pub const PYGMENTS_STYLES: &[&str] = &[
 ];
 
 pub const TITLE: &str = "Edit color scheme";
+const SAVE: &str = "Save color scheme";
+const DELETE: &str = "Delete color scheme";
 const WIDTH: u16 = 96;
 /// Rows of the taller color column: Files (1 + 5), a gap, Messages (1 + 3),
 /// a gap, Key bar (1 + 3).
@@ -142,7 +144,7 @@ impl SchemeEditor {
         let builtin = themes::is_builtin(&scheme.name);
         let name = if builtin { format!("{} (custom)", scheme.name) } else { scheme.name.clone() };
         let hex = COLOR_ROLES.iter().map(|(role, _, _)| TextInput::new(scheme.color(role).unwrap_or_default())).collect();
-        let labels: &[&str] = if builtin { &["Save", "Cancel"] } else { &["Save", "Delete", "Cancel"] };
+        let labels: &[&str] = if builtin { &[SAVE, "Cancel"] } else { &[SAVE, DELETE, "Cancel"] };
         SchemeEditor {
             slot,
             builtin,
@@ -356,8 +358,8 @@ impl SchemeEditor {
     fn delete(&self, app: &mut App) {
         let Some(name) = self.original.clone() else { return };
         let dir = app.paths.color_schemes_dir();
-        let question = format!("Delete '{name}'?");
-        dialogs::confirm(app, "Delete color scheme", &question, "Delete", move |app| {
+        let question = format!("Delete '{name}'? Its file is deleted and you can't undo this. Where it's in use, the default color scheme takes over.");
+        dialogs::confirm(app, "Delete color scheme", &question, DELETE, move |app| {
             app.state::<EditorStatus>().busy = true;
             app.tasks.run_in_background(
                 move |_| match themes::delete_user_scheme(&dir, &name) {
@@ -392,11 +394,11 @@ impl SchemeEditor {
 
     fn press(&mut self, app: &mut App, i: usize) -> ModalOutcome {
         match self.buttons.buttons[i].label.as_str() {
-            "Save" => {
+            SAVE => {
                 self.save(app);
                 ModalOutcome::Consumed
             }
-            "Delete" => {
+            DELETE => {
                 self.delete(app);
                 ModalOutcome::Consumed
             }
@@ -463,7 +465,7 @@ impl Modal for SchemeEditor {
         let l = self.rects(screen);
         draw_box(f, l.outer, TITLE, ctx);
         if let Some(r) = l.note {
-            let text = format!("'{}' is built in: your changes are saved as a new color scheme.", self.scheme.name);
+            let text = format!("'{}' is built in: your changes are saved as a new color scheme", self.scheme.name);
             form::muted(f, r.x, r.y, &text, r.w, ctx);
         }
         form::label(f, l.name_label.x, l.name_label.y, "Name", l.name_label.w, ctx);

@@ -641,7 +641,7 @@ impl EditorWindow {
                     "Some characters can't be written as {enc} ({}).\n\nSave the file as UTF-8 instead?",
                     py_repr(&unencodable_run(&self.file, &text, e.ch))
                 );
-                let mb = MessageBox::new("Save as UTF-8", &msg, &["Save", "Cancel"], 0).width(60).on_choice(move |app, choice| {
+                let mb = MessageBox::new("Save as UTF-8", &msg, &["Save as UTF-8", "Cancel"], 0).width(60).on_choice(move |app, choice| {
                     with_editor(app, id, |w, app| {
                         if choice == Some(0) {
                             w.file.encoding = Encoding::Utf8;
@@ -686,8 +686,8 @@ impl EditorWindow {
                             }
                         }
                         Err(e) => {
-                            let text = format!("Couldn't save {}:\n{e}", w.name());
-                            app.push_modal(id, Box::new(MessageBox::new("Not saved", &text, &["OK"], 0).severity(Severity::Error)));
+                            let text = format!("Can't save {}:\n{e}", w.name());
+                            app.push_modal(id, Box::new(MessageBox::new("Not saved", &text, &["Close"], 0).severity(Severity::Error)));
                             app.quit_pending = false;
                         }
                     }
@@ -779,8 +779,8 @@ impl EditorWindow {
             return;
         }
         self.asking_reload = true;
-        let text = format!("{} was changed by another program.\n\nReload it and lose your changes?", self.name());
-        let mb = MessageBox::new("Changed on disk", &text, &["Reload", "Cancel"], 0).width(56).on_choice(move |app, choice| {
+        let text = format!("{} was changed by another program.\n\nReload it? Your unsaved changes will be lost.", self.name());
+        let mb = MessageBox::new("Changed on disk", &text, &["Reload and discard changes", "Keep editing"], 0).width(56).on_choice(move |app, choice| {
             with_editor(app, id, |w, app| {
                 w.asking_reload = false;
                 if choice == Some(0) {
@@ -827,11 +827,11 @@ impl EditorWindow {
         match find::find(&self.buf, &needle, from, backward, case) {
             Some(m) => {
                 self.select_match(m);
-                self.bar.status = "wrapped around".into();
+                self.bar.status = "Wrapped around".into();
                 true
             }
             None => {
-                self.bar.status = "not found".into();
+                self.bar.status = "Not found".into();
                 false
             }
         }
@@ -1287,7 +1287,7 @@ impl EditorWindow {
             spec.push(Some(("Delete", Item::Delete, selected)));
         }
         spec.push(None);
-        spec.push(Some(("Select All", Item::Action(Action::SelectAll), self.buf.len_chars() > 0)));
+        spec.push(Some(("Select all", Item::Action(Action::SelectAll), self.buf.len_chars() > 0)));
         let entries = spec
             .iter()
             .map(|e| match *e {
@@ -1375,7 +1375,7 @@ impl UiWindow for EditorWindow {
             if !self.asking {
                 self.asking = true;
                 let text = format!("Save the changes to {}?", self.name());
-                let mb = MessageBox::new("Unsaved changes", &text, &["Save", "Don't save", "Cancel"], 0).width(56).on_choice(
+                let mb = MessageBox::new("Unsaved changes", &text, &["Save changes", "Discard changes", "Cancel"], 0).width(56).on_choice(
                     move |app, choice| {
                         let mut close = false;
                         with_editor(app, id, |w, app| {
@@ -1556,7 +1556,7 @@ fn py_printable(c: char) -> bool {
 
 /// ⌘L: ask for a line number.
 fn ask_line(app: &mut App, id: WinId) {
-    let ib = InputBox::new("Go to line", "Line number:", "", "Go", move |app, value| {
+    let ib = InputBox::new("Go to line", "Line number:", "", "Go to line", move |app, value| {
         let Some(n) = value.and_then(|v| v.trim().parse::<usize>().ok()) else {
             return;
         };

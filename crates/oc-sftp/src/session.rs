@@ -79,19 +79,19 @@ pub(crate) async fn open_sftp(ssh: &Ssh, timeout: Duration, stream: bool) -> Res
     let request_timeout_secs = if stream { STREAM_REQUEST_TIMEOUT_SECS } else { REQUEST_TIMEOUT_SECS };
     let channel = tokio::time::timeout(timeout, ssh.channel_open_session())
         .await
-        .map_err(|_| "timed out opening an SFTP channel".to_string())?
-        .map_err(|e| format!("cannot open an SFTP channel: {e}"))?;
+        .map_err(|_| "the server didn't start an SFTP session in time".to_string())?
+        .map_err(|e| format!("can't start an SFTP session: {e}"))?;
     tokio::time::timeout(timeout, channel.request_subsystem(true, "sftp"))
         .await
-        .map_err(|_| "timed out starting SFTP".to_string())?
-        .map_err(|e| format!("cannot start SFTP: {e}"))?;
+        .map_err(|_| "the server didn't start SFTP in time".to_string())?
+        .map_err(|e| format!("can't start SFTP: {e}"))?;
     let config = russh_sftp::client::Config {
         max_packet_len: 512 * 1024,
         request_timeout_secs: timeout.as_secs().max(1),
         ..Default::default()
     };
     let mut raw = RawSftpSession::new_with_config(channel.into_stream(), config);
-    let version = raw.init().await.map_err(|e| format!("the server has no SFTP service ({e})"))?;
+    let version = raw.init().await.map_err(|e| format!("the server doesn't offer SFTP ({e})"))?;
     let has = |name: &str| version.extensions.contains_key(name);
     let (mut read_chunk, mut write_chunk) = (SAFE_CHUNK, SAFE_CHUNK);
     if has("limits@openssh.com")
@@ -266,27 +266,30 @@ impl Conn {
     pub fn error(&self, err: SftpError, what: &str) -> VfsError {
         match err {
             SftpError::Status(status) => {
-                let message = if status.error_message.trim().is_empty() {
-                    status.status_code.to_string()
-                } else {
-                    status.error_message.trim().to_string()
-                };
-                let kind = match status.status_code {
+                let message = status.error_message.trim();
+                let (kind, text) = match status.status_code {
                     StatusCode::NoSuchFile => return VfsError::NotFound(what.to_string()),
-                    StatusCode::PermissionDenied => io::ErrorKind::PermissionDenied,
-                    StatusCode::OpUnsupported => io::ErrorKind::Unsupported,
-                    StatusCode::Eof => io::ErrorKind::UnexpectedEof,
                     StatusCode::NoConnection | StatusCode::ConnectionLost => return self.lost(),
-                    _ => io::ErrorKind::Other,
+                    StatusCode::PermissionDenied => return oc_vfs::io_error_at(io::ErrorKind::PermissionDenied.into(), what),
+                    StatusCode::OpUnsupported => {
+                        (io::ErrorKind::Unsupported, format!("The server doesn't support this: {what}"))
+                    }
+                    StatusCode::Eof => (io::ErrorKind::UnexpectedEof, format!("{what} ended early")),
+                    // "Failure" is SFTP's catch-all; a server's own words say more.
+                    _ if message.is_empty() || message.eq_ignore_ascii_case("failure") => {
+                        (io::ErrorKind::Other, format!("The server couldn't complete the request for {what}"))
+                    }
+                    _ => (io::ErrorKind::Other, format!("{message}: {what}")),
                 };
-                VfsError::Io(io::Error::new(kind, format!("{message}: {what}")))
+                VfsError::Io(io::Error::new(kind, text))
             }
             _ if !self.is_connected() => self.lost(),
             SftpError::Timeout => VfsError::Io(io::Error::new(
                 io::ErrorKind::TimedOut,
-                format!("{} did not answer in time: {what}", self.label),
+                format!("{} didn't answer in time: {what}", self.label),
             )),
-            other => VfsError::Io(io::Error::other(format!("{other}: {what}"))),
+            SftpError::IO(e) => VfsError::Io(io::Error::other(format!("{}: {what}", e.trim()))),
+            other => VfsError::Io(io::Error::other(format!("The server couldn't complete the request for {what} ({other})"))),
         }
     }
 }

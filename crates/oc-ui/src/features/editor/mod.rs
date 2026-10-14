@@ -65,7 +65,7 @@ pub fn edit_file(app: &mut App) {
         return;
     }
     if entry.is_dir {
-        app.warn("F4 edits files; this is a folder");
+        app.warn("Can't edit a folder: F4 edits files");
         return;
     }
     let Some(target) = p.cursor_target() else {
@@ -73,7 +73,7 @@ pub fn edit_file(app: &mut App) {
     };
     if entry.size > ASK_ABOVE_BYTES {
         let text = format!("{} is {}. Open it in the editor anyway?", target.name(), oc_vfs::human_size(entry.size));
-        dialogs::confirm(app, "Large file", &text, "Open", move |app| {
+        dialogs::confirm(app, "Large file", &text, "Open anyway", move |app| {
             open_editor(app, target);
         });
         return;
@@ -89,7 +89,7 @@ pub fn open_editor(app: &mut App, location: VPath) -> WinId {
         return id;
     }
     if !location.fs.capabilities().writable {
-        app.warn(format!("{}: the file opens read-only", location.fs.read_only_reason()));
+        app.warn(format!("Opening read-only: {}", location.fs.read_only_reason()));
     }
     let id = app.open_window(Box::new(EditorWindow::new(location.clone())), window::COLS, window::ROWS);
     app.state::<EditorState>().windows.push((id, location));
@@ -106,7 +106,7 @@ pub fn new_text_file(app: &mut App) {
         return;
     }
     let message = format!("Create in {}:", folder.display());
-    dialogs::ask_text(app, "New file", &message, "", "Create", move |app, name| {
+    dialogs::ask_text(app, "New file", &message, "", "Create file", move |app, name| {
         let Some(name) = name else { return };
         let dir = folder.clone();
         app.tasks.run_in_background(

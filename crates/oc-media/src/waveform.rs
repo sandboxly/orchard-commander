@@ -225,7 +225,7 @@ impl WaveShared {
                     l.peaks.extend(peaks);
                     l.rms.extend(rms);
                 }
-                Err(e) => l.error = if e.is_empty() { "the audio can't be decoded".into() } else { e },
+                Err(e) => l.error = if e.is_empty() { "the audio can't be read".into() } else { e },
             }
             l.complete = true;
         }
@@ -244,7 +244,7 @@ impl WaveShared {
             if idle >= stall {
                 // Show what was decoded; without anything, say why.
                 if l.peaks.is_empty() {
-                    l.error = "the decoder stopped responding".into();
+                    l.error = "reading the audio stopped".into();
                 }
                 l.complete = true;
                 self.abort.store(true, Ordering::Release);

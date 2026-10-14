@@ -30,7 +30,7 @@ from the system keychain if it was saved.
 4. In **Put in**, choose a bookmark folder, or leave the top level selected.
 5. Optionally select **Also open the other panel at…** to store the other
    panel's folder with the bookmark.
-6. Click **Add**.
+6. Click **Add bookmark**.
 
 To remove the bookmark of the current folder, open the menu and press **-**.
 
@@ -52,11 +52,11 @@ Open the bookmark menu and press **\*** (**Organize bookmarks…**), or choose
 | Reorder | Drag an entry, or select it and click ▲ or ▼ |
 | Move into a folder | Drag the entry onto the folder |
 | Create a folder | Click **New folder** |
-| Add a separator line | Click **Separator** |
+| Add a separator line | Click **New separator** |
 | Change title, folder or other panel folder | Select the entry and click **Edit…**, or double-click it |
 | Delete | Select the entry and click **Delete** |
 
-Click **OK** to save your changes, or **Cancel** to discard them.
+Click **Save bookmarks** to save your changes, or **Cancel** to discard them.
 
 In the **Edit bookmark** dialog, **Folder** is the folder the bookmark opens
 and **Other panel** is an optional folder for the other panel. Click

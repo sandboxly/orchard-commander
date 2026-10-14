@@ -85,7 +85,7 @@ pub(crate) fn list(
         let len = file.metadata()?.len();
         let mut tail = [0u8; 4];
         if len < 4 {
-            return Err(ListError::Other("file too short".into()));
+            return Err(ListError::Other("the file is too short to be an archive".into()));
         }
         read_exact_at(&file, &mut tail, len - 4)?;
         size = u64::from(u32::from_le_bytes(tail));

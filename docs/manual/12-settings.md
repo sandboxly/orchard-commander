@@ -74,11 +74,11 @@ keep the selected scheme, or **Esc** to return to the previous one.
    immediately.
 4. Choose **Syntax colors** for highlighted source code in previews.
 5. Select **Dark scheme** if the scheme has a dark background.
-6. Click **Save**.
+6. Click **Save color scheme**.
 
 Changes to a built-in scheme are saved as a new scheme; the built-in scheme
 stays unchanged. To delete one of your own schemes, open it with **Edit…**
-and click **Delete**.
+and click **Delete color scheme**. This deletes the scheme's file.
 
 ### Scheme files
 
@@ -155,4 +155,4 @@ To reset Orchard Commander to its defaults, quit the app and delete
 
 **Options → About Orchard Commander…** (on macOS **Orchard Commander →
 About Orchard Commander**) shows the version and the third-party components.
-Click **Licenses…** to open the folder with their license texts.
+Click **Show licenses** to open the folder with their license texts.

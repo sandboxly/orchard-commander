@@ -23,11 +23,11 @@ fn addresses_accounts_labels() {
     let named = Connection { name: "Cloud".into(), ..conn.clone() };
     assert_eq!(label(&named), "Cloud");
     let err = from_url("gopher://x").unwrap_err();
-    assert!(err.starts_with("Unsupported address (use ") && err.contains("webdavs://"), "{err}");
+    assert!(err.starts_with("Unsupported address: gopher://x — use ") && err.contains("webdavs://"), "{err}");
     // An add-on type that isn't installed: its own account, never shared.
     let addon = Connection::new("ftp", Default::default(), "");
     assert_eq!(account(&addon), format!("ftp://{}", addon.id));
-    assert!(provider_of(&addon).err().is_some_and(|e| e.contains("No support for ftp:// connections")));
+    assert!(provider_of(&addon).err().is_some_and(|e| e.contains("Can't open ftp:// connections")));
     let moved = with_path(&conn, "/sub");
     assert_eq!((moved.id.as_str(), moved.get_str("path")), (conn.id.as_str(), "/sub"));
 }
@@ -35,17 +35,17 @@ fn addresses_accounts_labels() {
 #[test]
 fn declined_questions_are_worded_like_1x() {
     let sftp = Connection::new("sftp", serde_json::json!({"host": "example.com"}).as_object().unwrap().clone(), "");
-    assert_eq!(not_trusted(&sftp), "Host key for example.com was not trusted");
+    assert_eq!(not_trusted(&sftp), "Not connected: the host key of example.com wasn't trusted");
     let dav = Connection { kind: "webdavs".into(), ..sftp };
-    assert_eq!(not_trusted(&dav), "The certificate of example.com was not trusted");
+    assert_eq!(not_trusted(&dav), "Not connected: the certificate of example.com wasn't trusted");
     // paramiko names a host off port 22 "[host]:port".
     let sftp_port = |p: serde_json::Value| Connection { kind: "sftp".into(), ..dav.with_params([("port".to_string(), p)]) };
-    assert_eq!(not_trusted(&sftp_port(2222.into())), "Host key for [example.com]:2222 was not trusted");
-    assert_eq!(not_trusted(&sftp_port("2222".into())), "Host key for [example.com]:2222 was not trusted");
-    assert_eq!(not_trusted(&sftp_port(22.into())), "Host key for example.com was not trusted");
+    assert_eq!(not_trusted(&sftp_port(2222.into())), "Not connected: the host key of [example.com]:2222 wasn't trusted");
+    assert_eq!(not_trusted(&sftp_port("2222".into())), "Not connected: the host key of [example.com]:2222 wasn't trusted");
+    assert_eq!(not_trusted(&sftp_port(22.into())), "Not connected: the host key of example.com wasn't trusted");
     // S3 without a server: Amazon's certificate.
     let s3 = Connection::new("s3", Default::default(), "");
-    assert_eq!(not_trusted(&s3), "The certificate of s3.amazonaws.com was not trusted");
+    assert_eq!(not_trusted(&s3), "Not connected: the certificate of s3.amazonaws.com wasn't trusted");
 }
 
 #[test]

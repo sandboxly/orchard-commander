@@ -207,7 +207,7 @@ fn quitting_asks_about_unsaved_editors() {
     key(&mut app, id, Key::Escape, Mods::NONE); // Cancel: keep running
     assert!(!app.quitting && !app.quit_pending && app.window_ids().contains(&id));
     app.quit();
-    // "Don't save": the editor closes and quitting carries on.
+    // "Discard changes": the editor closes and quitting carries on.
     key(&mut app, id, Key::Right, Mods::NONE);
     key(&mut app, id, Key::Enter, Mods::NONE);
     wait_until(&mut app, "quit", Duration::from_secs(10), |app| app.quitting);
@@ -283,7 +283,7 @@ fn find_next_wraps_and_replace_one_by_one() {
     assert_eq!(ed(&app, id).buf.selection(), Some(8..11));
     key(&mut app, id, Key::Char('g'), primary());
     assert_eq!(ed(&app, id).buf.selection(), Some(0..3));
-    assert_eq!(ed(&app, id).bar.status, "wrapped around");
+    assert_eq!(ed(&app, id).bar.status, "Wrapped around");
     key(&mut app, id, Key::Char('g'), primary_shift());
     assert_eq!(ed(&app, id).buf.selection(), Some(8..11));
     // ⌥⌘F keeps the search text; Enter in the replacement field replaces one.
@@ -296,7 +296,7 @@ fn find_next_wraps_and_replace_one_by_one() {
     assert_eq!(ed(&app, id).buf.selection(), Some(0..3));
     key(&mut app, id, Key::Enter, Mods::NONE);
     assert_eq!(text(&app, id), "1 two 1\n");
-    assert_eq!(ed(&app, id).bar.status, "not found");
+    assert_eq!(ed(&app, id).bar.status, "Not found");
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn archives_open_read_only_and_binary_files_dont_open() {
     let mut app = app(&e);
     let archive = oc_vfs::open_archive(&oc_local::local(e.left.join("pack.zip"))).unwrap().unwrap();
     open_editor(&mut app, archive.child(&["inner.txt"]));
-    assert!(app.toast.as_ref().unwrap().text.contains("the file opens read-only"));
+    assert!(app.toast.as_ref().unwrap().text.contains("Opening read-only: "));
     let id = editor_for(&mut app, "inner.txt");
     assert!(ed(&app, id).read_only);
     assert_eq!(text(&app, id), "inside");
@@ -868,7 +868,7 @@ fn right_click_shows_the_text_menu() {
     key(&mut app, id, Key::Right, Mods::SHIFT);
     mouse(&mut app, id, MouseKind::Down(MouseButton::Right), code.x + 8, code.y);
     assert_eq!(app.modal_titles(), ["popup menu"]);
-    assert_eq!(app.top_modal_text().unwrap(), "Undo\nRedo\nCut\nCopy\nPaste\nDelete\nSelect All");
+    assert_eq!(app.top_modal_text().unwrap(), "Undo\nRedo\nCut\nCopy\nPaste\nDelete\nSelect all");
     assert_eq!(ed(&app, id).buf.selection(), Some(0..2), "a right click keeps the selection");
     // Undo and Redo are disabled: the first entry is Cut.
     key(&mut app, id, Key::Enter, Mods::NONE);
@@ -903,7 +903,7 @@ fn read_only_text_menu_has_copy_and_select_all() {
     assert!(ed(&app, id).read_only);
     let code = layout(&app, id).code;
     mouse(&mut app, id, MouseKind::Down(MouseButton::Right), code.x + 2, code.y);
-    assert_eq!(app.top_modal_text().unwrap(), "Copy\nSelect All");
+    assert_eq!(app.top_modal_text().unwrap(), "Copy\nSelect all");
 }
 
 #[test]

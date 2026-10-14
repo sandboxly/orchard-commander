@@ -147,7 +147,7 @@ pub struct MediaView {
     player: Option<Player>,
     waveform: Option<WaveformAnalyzer>,
     note: &'static str,
-    /// "Cannot play this file: …" in place of the player.
+    /// "Can't play this file: …" in place of the player.
     error: Option<MessageView>,
     pub animator: SpectrumAnimator,
     anim_timer: Option<u64>,

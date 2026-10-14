@@ -149,7 +149,7 @@ fn copy_dir_into_itself_rejected() {
     let t = tree();
     let r = cp(&[t.path().join("src")], &t.path().join("src/sub"), None);
     match r {
-        Err(VfsError::Operation(msg)) => assert_eq!(msg, "Cannot copy or move 'src' into itself"),
+        Err(VfsError::Operation(msg)) => assert_eq!(msg, "Can't copy or move 'src' into itself"),
         other => panic!("{other:?}"),
     }
     // Also into a not-yet-existing folder below itself, and onto itself.
@@ -166,7 +166,7 @@ fn copy_multiple_to_missing_dir_rejected() {
     let nope = t.path().join("nope");
     let r = cp(&[t.path().join("src/a.txt"), t.path().join("src/b.bin")], &nope, None);
     match r {
-        Err(VfsError::Operation(msg)) => assert_eq!(msg, format!("Target directory does not exist: {}", nope.display())),
+        Err(VfsError::Operation(msg)) => assert_eq!(msg, format!("Destination folder {} doesn't exist", nope.display())),
         other => panic!("{other:?}"),
     }
 }

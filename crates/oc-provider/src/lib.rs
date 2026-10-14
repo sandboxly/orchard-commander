@@ -25,11 +25,11 @@ pub enum ConnectError {
     #[error("{0}")]
     AuthenticationRequired(String),
     /// The user declined a question while connecting (e.g. didn't trust a host key).
-    #[error("cancelled")]
+    #[error("Cancelled")]
     Cancelled,
     #[error("{0}")]
     Connection(String),
-    #[error(transparent)]
+    #[error("{}", oc_vfs::io_display(.0))]
     Io(#[from] std::io::Error),
 }
 
@@ -126,10 +126,10 @@ pub trait FileSystemProvider: Send + Sync {
         for f in self.fields() {
             let v = param_str(params, f.key);
             if f.required && v.trim().is_empty() {
-                return Some(format!("Enter {}.", f.label.to_lowercase()));
+                return Some(format!("Enter the {}", f.label.to_lowercase()));
             }
             if f.kind == FieldKind::Int && !v.is_empty() && !v.chars().all(|c| c.is_ascii_digit()) {
-                return Some(format!("{} must be a number.", f.label));
+                return Some(format!("{} must be a number", f.label));
             }
         }
         None
@@ -214,7 +214,7 @@ pub fn split_server_url(url: &str, scheme: &str) -> Result<(Params, Vec<String>)
         params.insert("username".into(), Value::String(unquote(user)));
     }
     if let Some(p) = port.filter(|p| !p.is_empty()) {
-        let n: u16 = p.parse().map_err(|_| format!("Port could not be cast to integer value as '{p}'"))?;
+        let n: u16 = p.parse().map_err(|_| format!("Port must be a number: {p}"))?;
         if n != 0 {
             params.insert("port".into(), Value::from(n));
         }
@@ -232,6 +232,44 @@ pub fn join_server_url(scheme: &str, params: &Params, default_port: Option<i64>,
         _ => String::new(),
     };
     format!("{scheme}://{user}{}{port}{path}", param_str(params, "host"))
+}
+
+// ---------------------------------------------------------------------------
+// Connection error messages
+// ---------------------------------------------------------------------------
+
+/// Why connecting failed, in words (lower case, for after a colon), from the
+/// socket error's kind; `os_text` (the OS's own words) for other kinds.
+pub fn describe_network_error(kind: std::io::ErrorKind, os_text: &str) -> String {
+    use std::io::ErrorKind as K;
+    match kind {
+        K::TimedOut | K::WouldBlock => "no answer — check the address and your network".into(),
+        K::HostUnreachable | K::NetworkUnreachable => {
+            "the server can't be reached — check the address and your network".into()
+        }
+        K::ConnectionRefused => "the connection was refused — check the port and that the server is running".into(),
+        K::ConnectionReset | K::ConnectionAborted => "the server closed the connection".into(),
+        _ if os_text.is_empty() => kind.to_string(),
+        _ => {
+            let mut chars = os_text.chars();
+            chars.next().map(|c| c.to_lowercase().chain(chars).collect()).unwrap_or_default()
+        }
+    }
+}
+
+/// "Can't connect to host:port: why". With `unreachable_local` (a LAN
+/// address that couldn't be reached) on macOS, a hint about its Local
+/// Network privacy setting, which silently blocks programs without that
+/// permission from reaching devices on the LAN ("No route to host").
+pub fn connect_error_message(host: &str, port: u16, reason: &str, unreachable_local: bool) -> String {
+    let mut message = format!("Can't connect to {host}:{port}: {reason}");
+    if cfg!(target_os = "macos") && unreachable_local {
+        message.push_str(
+            ". macOS may be blocking local network access: allow Orchard Commander in \
+             System Settings → Privacy & Security → Local Network, then try again.",
+        );
+    }
+    message
 }
 
 // ---------------------------------------------------------------------------

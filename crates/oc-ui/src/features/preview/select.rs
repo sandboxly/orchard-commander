@@ -215,9 +215,9 @@ pub fn context_menu(
     };
     let entries = vec![
         item("&Copy", key("Primary+C"), has_selection),
-        item("Copy &Link Location", String::new(), on_link),
+        item("Copy &link location", String::new(), on_link),
         MenuEntry::Separator,
-        item("Select All", key("Primary+A"), true),
+        item("Select all", key("Primary+A"), true),
     ];
     app.show(PopupMenu::new(entries, m.col, m.row, move |app, i| {
         let choice = match i {

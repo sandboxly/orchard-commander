@@ -67,13 +67,13 @@ fn key_file_with_passphrase() {
     // Without the passphrase: the password (= passphrase) is asked for.
     let mut o = f.options(None);
     o.key_file = Some(path.clone());
-    assert_eq!(auth_failed(connect(&o, &|_| true)), format!("Authentication failed for {USER}@127.0.0.1"));
+    assert_eq!(auth_failed(connect(&o, &|_| true)), format!("The server didn't accept the login for {USER}@127.0.0.1"));
 
     // A missing key file says so.
     let mut o = f.options(None);
     o.key_file = Some(f.tmp.join("nope"));
     match connect(&o, &|_| true) {
-        Err(ConnectError::Connection(msg)) => assert!(msg.starts_with("Cannot read the key file"), "{msg}"),
+        Err(ConnectError::Connection(msg)) => assert!(msg.starts_with("Can't read the key file"), "{msg}"),
         other => panic!("{:?}", other.err()),
     }
 }
@@ -99,7 +99,7 @@ fn keyboard_interactive_fallback() {
     assert_eq!(f.server.auth_log().keyboard_interactive_attempts, 1);
     assert_eq!(
         auth_failed(connect(&f.options(Some("wrong")), &|_| true)),
-        format!("Authentication failed for {USER}@127.0.0.1")
+        format!("The server didn't accept the login for {USER}@127.0.0.1")
     );
 }
 
@@ -122,7 +122,7 @@ fn agent_keys_without_password() {
     let other = oc_sftp::testing::start_agent(&[random_key()]);
     let mut o = f.options(None);
     o.agent = Agent::Socket(other.socket.clone());
-    assert_eq!(auth_failed(connect(&o, &|_| true)), format!("Authentication failed for {USER}@127.0.0.1"));
+    assert_eq!(auth_failed(connect(&o, &|_| true)), format!("The server didn't accept the login for {USER}@127.0.0.1"));
 }
 
 #[cfg(unix)]

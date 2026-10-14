@@ -66,7 +66,7 @@ impl Rate {
 pub(crate) fn to_io(err: VfsError) -> io::Error {
     match err {
         VfsError::Io(e) => e,
-        VfsError::NotFound(p) => io::Error::new(io::ErrorKind::NotFound, format!("not found: {p}")),
+        VfsError::NotFound(p) => io::Error::new(io::ErrorKind::NotFound, format!("{p} not found")),
         other => io::Error::other(other.to_string()),
     }
 }

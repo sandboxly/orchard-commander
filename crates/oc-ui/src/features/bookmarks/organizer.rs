@@ -29,8 +29,8 @@ use crate::widgets::{ButtonRow, DrawCtx, ListState, Scrollbar, TextInput, fill, 
 const WIDTH: u16 = 96;
 /// Tree rows (Python: at least 16 lines).
 const TREE_ROWS: u16 = 16;
-pub const HINT: &str = "Drag entries to reorder them or to move them into folders.";
-const ACTIONS: [&str; 6] = ["New folder", "Separator", "Edit…", "Delete", "▲", "▼"];
+pub const HINT: &str = "Drag entries to reorder them or to move them into folders";
+const ACTIONS: [&str; 6] = ["New folder", "New separator", "Edit…", "Delete", "▲", "▼"];
 
 // ---------------------------------------------------------------------------
 // The tree being edited
@@ -350,7 +350,7 @@ impl Organizer {
             active,
             other,
             actions: ButtonRow::new(&ACTIONS, 0),
-            buttons: ButtonRow::new(&["OK", "Cancel"], 0),
+            buttons: ButtonRow::new(&["Save bookmarks", "Cancel"], 0),
             focus: Focus::Tree,
             drag: None,
             on_done: Some(Box::new(on_done)),
@@ -395,7 +395,7 @@ impl Organizer {
 
     fn add_folder(&mut self, app: &mut App) {
         let tree = self.tree.clone();
-        dialogs::ask_text(app, "New folder", "Folder title (an & sets its hotkey):", "", "Create", move |_, title| {
+        dialogs::ask_text(app, "New folder", "Folder title (an & sets its hotkey):", "", "Create folder", move |_, title| {
             if let Some(title) = title {
                 tree.borrow_mut().insert(Folder::new(title, Vec::new()).into());
             }
@@ -407,7 +407,7 @@ impl Organizer {
         let tree = self.tree.clone();
         match current {
             Some(Item::Folder(f)) => {
-                dialogs::ask_text(app, "Rename folder", "Folder title:", &f.title, "Save", move |_, title| {
+                dialogs::ask_text(app, "Rename folder", "Folder title:", &f.title, "Rename folder", move |_, title| {
                     if let Some(title) = title {
                         tree.borrow_mut().replace(Item::Folder(Folder { title, ..f }));
                     }
@@ -669,7 +669,7 @@ impl EditBookmark {
         on_done: impl FnOnce(&mut App, Option<Bookmark>) + 'static,
     ) -> Self {
         let mut target = TextInput::new(&bookmark.target.as_ref().map(Spec::describe).unwrap_or_default());
-        target.placeholder = "optional: a folder to open in the other panel".into();
+        target.placeholder = "optional, e.g. ~/Downloads".into();
         let use_button = |label: &str, spec: &Option<Spec>| {
             let mut row = ButtonRow::new(&[label], 0);
             row.buttons[0].enabled = spec.is_some();
@@ -682,7 +682,7 @@ impl EditBookmark {
             picked: [None, None],
             use_buttons: [use_button("Use active panel", &active), use_button("Use other panel", &other)],
             panels: [active, other],
-            buttons: ButtonRow::new(&["Save", "Cancel"], 0),
+            buttons: ButtonRow::new(&["Save bookmark", "Cancel"], 0),
             error: String::new(),
             bookmark,
             focus: EditFocus::Title,
@@ -744,7 +744,7 @@ impl EditBookmark {
             }
         };
         let Some(location) = location else {
-            self.error = "Enter a folder.".into();
+            self.error = "Enter a folder to bookmark".into();
             return ModalOutcome::Consumed;
         };
         let title = self.title.text.trim();

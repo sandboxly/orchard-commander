@@ -86,8 +86,11 @@ impl FileSystemProvider for SftpProvider {
         let port = match param_int(params, "port") {
             _ if port_text.trim().is_empty() => DEFAULT_PORT,
             Some(0) => DEFAULT_PORT,
-            Some(p) => u16::try_from(p).map_err(|_| ConnectError::Connection(format!("Invalid port: {p}")))?,
-            None => return Err(ConnectError::Connection(format!("Invalid port: {port_text}"))),
+            Some(p) => u16::try_from(p)
+                .map_err(|_| ConnectError::Connection(format!("Port must be a number from 1 to 65535: {p}")))?,
+            None => {
+                return Err(ConnectError::Connection(format!("Port must be a number from 1 to 65535: {port_text}")));
+            }
         };
         let mut opts = ConnectOptions::new(param_str(params, "host"), ctx.data_dir().join("known_hosts"));
         opts.port = port;

@@ -8,10 +8,10 @@ use std::path::Path;
 use oc_vfs::{ReadStream, Result, VfsError};
 use unrar::error::{Code, UnrarError};
 
-use crate::archive::{Archive, Format, ListError, Listing, Member, OnChunk, Source};
+use crate::archive::{Archive, Format, ListError, Listing, Member, OnChunk, Source, missing_link_target};
 use crate::{dirname, dos_time_to_epoch, normalize, normpath};
 
-const ENCRYPTED: &str = "Encrypted rar archives are not supported yet";
+const ENCRYPTED: &str = "Password-protected RAR archives aren't supported yet";
 const S_IFMT: u32 = 0o170000;
 const S_IFLNK: u32 = 0o120000;
 
@@ -68,7 +68,7 @@ fn extract_error(name: &str, e: UnrarError) -> VfsError {
     if is_password_error(&e) {
         VfsError::Operation(ENCRYPTED.into())
     } else {
-        VfsError::Operation(format!("Cannot extract {name}: {e}"))
+        VfsError::Operation(format!("Can't extract {name}: {e}"))
     }
 }
 
@@ -127,7 +127,7 @@ fn decode_member(archive: &Archive, idx: usize, out: &Path, depth: usize) -> Res
                 .and_then(|t| archive.index_of(t))
                 .filter(|_| depth < MAX_LINK_DEPTH)
                 .ok_or_else(|| {
-                    VfsError::NotFound(format!("{name}: link target not found in archive"))
+                    missing_link_target(name)
                 })?;
             if archive.member_at(target_idx).is_dir {
                 std::fs::File::create(out)?;
@@ -140,11 +140,9 @@ fn decode_member(archive: &Archive, idx: usize, out: &Path, depth: usize) -> Res
         // regular file that didn't appear is a failure, not empty data.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             if !archive.member_at(idx).is_link {
-                return Err(VfsError::Operation(format!("Could not extract {name}")));
+                return Err(VfsError::Operation(format!("Can't extract {name}")));
             }
-            Err(VfsError::NotFound(format!(
-                "{name}: link target not found in archive"
-            )))
+            Err(missing_link_target(name))
         }
         Err(e) => Err(e.into()),
     }

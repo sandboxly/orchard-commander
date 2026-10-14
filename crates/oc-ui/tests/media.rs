@@ -286,7 +286,7 @@ fn play_next_skips_other_files_and_stops_at_the_last() {
     // bad.mp3 is next by name (it is an .mp3): the player tries it.
     wait_for(&mut app, "bad.mp3", |app| cursor(app) == "bad.mp3");
     wait_for(&mut app, "the error", |app| player_view(app).and_then(MediaView::error).is_some());
-    assert!(view(&app).error().unwrap().starts_with("Cannot play this file:\n"));
+    assert!(view(&app).error().unwrap().starts_with("Can't play this file:\n"));
     // A video is played by the same previewer: after the clip comes nothing (notes.txt).
     show(&mut app, "clip.mp4");
     with_player(&mut app, |v, app| v.seek_to(app, 1900));

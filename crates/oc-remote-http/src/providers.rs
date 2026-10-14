@@ -32,7 +32,7 @@ fn port(params: &Params, default: u16) -> Result<u16, ConnectError> {
     }
     param_int(params, "port")
         .and_then(|p| u16::try_from(p).ok())
-        .ok_or_else(|| ConnectError::Connection(format!("Invalid port: {}", param_str(params, "port"))))
+        .ok_or_else(|| ConnectError::Connection(format!("Port must be a number from 1 to 65535: {}", param_str(params, "port"))))
 }
 
 /// A param as an optional, non-empty string.
@@ -99,7 +99,7 @@ fn webdav_fields(port_placeholder: &'static str) -> Vec<Field> {
     vec![
         field("host", "Server", FieldKind::Text, true, "e.g. cloud.example.com"),
         field("port", "Port", FieldKind::Int, false, port_placeholder),
-        field("root", "Server path", FieldKind::Text, false, "e.g. /remote.php/dav/files/USER for Nextcloud"),
+        field("root", "Server path", FieldKind::Text, false, "e.g. /remote.php/dav/files/USER"),
         field("username", "User", FieldKind::Text, false, ""),
         field("path", "Start folder", FieldKind::Text, false, "below the server path"),
     ]
@@ -126,7 +126,7 @@ fn webdav_format(params: &Params, scheme: &str, default_port: u16) -> String {
 fn webdav_validate(params: &Params, fields: Vec<Field>) -> Option<String> {
     let host = param_str(params, "host");
     if host.contains("://") || host.contains('/') {
-        return Some("Enter just the server name; the rest of the address goes into Server path.".into());
+        return Some("Enter just the server name — the rest of the address goes into Server path".into());
     }
     Defaults(fields).validate(params)
 }
@@ -288,7 +288,7 @@ fn s3_format(params: &Params, scheme: &str, default_port: u16) -> String {
 fn s3_validate(params: &Params, fields: Vec<Field>) -> Option<String> {
     let host = param_str(params, "host");
     if host.contains("://") || host.contains('/') {
-        return Some("Enter just the server name (e.g. minio.local); the bucket goes into Start folder.".into());
+        return Some("Enter just the server name (e.g. storage.local) — the bucket goes into Start folder".into());
     }
     Defaults(fields).validate(params)
 }
@@ -327,10 +327,10 @@ impl FileSystemProvider for S3Provider {
         "s3"
     }
     fn title(&self) -> &'static str {
-        "S3 (Amazon S3 and compatible)"
+        "S3 (HTTPS)"
     }
     fn fields(&self) -> Vec<Field> {
-        s3_fields("empty: Amazon S3 · or e.g. minio.local", "default 443")
+        s3_fields("empty: the public S3 service · or e.g. storage.local", "default 443")
     }
     fn secret_label(&self) -> &'static str {
         "Secret key"
@@ -372,7 +372,7 @@ impl FileSystemProvider for PlainS3Provider {
         "S3 (HTTP, unencrypted)"
     }
     fn fields(&self) -> Vec<Field> {
-        s3_fields("e.g. minio.local or 192.168.1.20", "default 80")
+        s3_fields("e.g. storage.local or 192.168.1.20", "default 80")
     }
     fn secret_label(&self) -> &'static str {
         "Secret key"
@@ -427,13 +427,13 @@ mod tests {
         assert_eq!(dav.format_url(&params(json!({"host": "nas", "port": "443", "root": "/a b/", "path": "ü"}))), "webdavs://nas/a%20b/%C3%BC");
         assert!(dav.validate(&params(json!({"host": "https://cloud.example.com"}))).is_some());
         assert_eq!(dav.validate(&params(json!({"host": "cloud.example.com"}))), None);
-        assert_eq!(dav.validate(&params(json!({}))).as_deref(), Some("Enter server."));
-        assert_eq!(dav.validate(&params(json!({"host": "x", "port": "8o"}))).as_deref(), Some("Port must be a number."));
+        assert_eq!(dav.validate(&params(json!({}))).as_deref(), Some("Enter the server"));
+        assert_eq!(dav.validate(&params(json!({"host": "x", "port": "8o"}))).as_deref(), Some("Port must be a number"));
         assert_eq!(dav.describe(&saved), "me@cloud.example.com");
         assert_eq!(dav.secret_label(), "Password");
         let fields: Vec<_> = plain.fields().iter().map(|f| (f.key, f.label, f.placeholder)).collect();
         assert_eq!(fields[1], ("port", "Port", "default 80"));
-        assert_eq!(fields[2], ("root", "Server path", "e.g. /remote.php/dav/files/USER for Nextcloud"));
+        assert_eq!(fields[2], ("root", "Server path", "e.g. /remote.php/dav/files/USER"));
         let dummy: Arc<dyn FileSystem> = Arc::new(oc_vfs::testing::MemFS::new());
         assert_eq!(dav.start_path(&params(json!({"path": "docs/"})), &dummy), "/docs");
         assert_eq!(dav.start_path(&params(json!({})), &dummy), "/");
@@ -466,7 +466,7 @@ mod tests {
         assert_eq!(region_param("s3://h/b?x=1&region=eu%2Dwest+1"), Some("eu-west 1".into()));
         assert_eq!(region_param("s3://h/b?region="), None);
         let fields: Vec<_> = plain.fields().iter().map(|f| (f.key, f.placeholder)).collect();
-        assert_eq!(fields[0], ("host", "e.g. minio.local or 192.168.1.20"));
+        assert_eq!(fields[0], ("host", "e.g. storage.local or 192.168.1.20"));
     }
 
     #[test]

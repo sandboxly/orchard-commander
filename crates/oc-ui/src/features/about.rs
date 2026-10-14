@@ -22,7 +22,7 @@ pub fn register(reg: &mut Registry) {
 
 fn show(app: &mut App) {
     let folder = licenses_dir();
-    let buttons: &[&str] = if folder.is_some() { &["OK", "&Licenses…"] } else { &["OK"] };
+    let buttons: &[&str] = if folder.is_some() { &["Close", "Show &licenses"] } else { &["Close"] };
     let mb = MessageBox::new("About Orchard Commander", &about_text(folder.as_deref()), buttons, 0).width(68).on_choice(
         move |app, choice| {
             if let (Some(1), Some(dir)) = (choice, folder) {
@@ -30,7 +30,7 @@ fn show(app: &mut App) {
                     move |_| oc_local::open_with_default_app(&dir),
                     |app, result| {
                         if let Err(e) = result {
-                            app.notify(format!("Cannot open the licenses folder: {e}"), Severity::Error);
+                            app.notify(format!("Can't open the licenses folder: {e}"), Severity::Error);
                         }
                     },
                 );

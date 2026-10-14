@@ -58,7 +58,7 @@ impl FileSystem for ArchiveFS {
     }
 
     fn read_only_reason(&self) -> String {
-        format!("{} is an archive (read-only)", self.container.name())
+        "archives are read-only — extract the files first (F5)".to_string()
     }
 
     fn container(&self) -> Option<VPath> {

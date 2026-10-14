@@ -222,7 +222,8 @@ impl Id {
                 "Selects the next audio or video file in the panel and plays it. Off: videos loop, audio stops at the end."
             }
             Id::Link => "cd in the terminal moves the panel; moving the panel types a cd in the shell (once it's back at its prompt)",
-            Id::Size => "Also ⌘= / ⌘- / ⌘0 (Ctrl+= / Ctrl+- / Ctrl+0)",
+            Id::Size if cfg!(target_os = "macos") => "Also ⌘= / ⌘- / ⌘0",
+            Id::Size => "Also Ctrl+= / Ctrl+- / Ctrl+0",
             _ => "",
         }
     }

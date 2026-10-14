@@ -113,31 +113,16 @@ fn local_user() -> String {
 // Error messages
 // ---------------------------------------------------------------------------
 
-/// "Cannot connect to host:port: …", with a hint for macOS's Local Network
+/// "Can't connect to host:port: …", with a hint for macOS's Local Network
 /// privacy, which silently blocks programs without permission from reaching
 /// devices on the LAN ("No route to host"). Port of `describe_connect_error`.
 pub fn describe_connect_error(host: &str, port: u16, error: &dyn fmt::Display, unreachable: bool) -> String {
-    let mut message = format!("Cannot connect to {host}:{port}: {error}");
-    if cfg!(target_os = "macos") && unreachable && is_local(host) {
-        message.push_str(
-            ". macOS may be blocking local network access for this program: allow it in \
-             System Settings → Privacy & Security → Local Network (look for Orchard Commander), then retry.",
-        );
-    }
-    message
+    oc_provider::connect_error_message(host, port, &error.to_string(), unreachable && is_local(host))
 }
 
-/// Like Python's `OSError.__str__`: "[Errno 61] Connection refused".
-pub(crate) fn os_error_text(err: &io::Error) -> String {
-    let text = err.to_string();
-    let text = match text.rfind(" (os error ") {
-        Some(i) => text[..i].to_string(),
-        None => text,
-    };
-    match err.raw_os_error() {
-        Some(code) => format!("[Errno {code}] {text}"),
-        None => text,
-    }
+/// Why a socket operation failed, in words ("the connection was refused — …").
+pub(crate) fn network_error_text(err: &io::Error) -> String {
+    oc_provider::describe_network_error(err.kind(), &oc_vfs::os_text(err))
 }
 
 fn is_unreachable(err: &io::Error) -> bool {
@@ -369,7 +354,7 @@ async fn authenticate(h: &mut Handle<ClientHandler>, plan: &AuthPlan) -> Result<
     let passphrase = plan.password.as_deref();
 
     if let Some(path) = &plan.key_file {
-        let text = std::fs::read_to_string(path).map_err(|e| AuthError::KeyFile(path.clone(), os_error_text(&e)))?;
+        let text = std::fs::read_to_string(path).map_err(|e| AuthError::KeyFile(path.clone(), oc_vfs::io_reason(&e)))?;
         tried = true;
         // An encrypted key without (or with a wrong) passphrase counts as a
         // failed attempt: the user is asked for the password, which unlocks it.
@@ -523,21 +508,24 @@ pub fn connect(
     let verdict = std::mem::take(&mut *check.lock().unwrap_or_else(|e| e.into_inner()));
     if let HostCheck::Changed(key) = &verdict {
         return Err(ConnectError::Connection(format!(
-            "The host key of {host} has changed (now {}). \
-             This could mean someone is intercepting the connection; refusing to connect.",
+            "The host key of {host} has changed (now {}). Someone may be intercepting the connection, \
+             so {APP_NAME} didn't connect. If the server was reinstalled, confirm the new key with its \
+             administrator, then remove the old one from known_hosts.",
             known_hosts::fingerprint(key)
         )));
     }
     let mut handle = match handshake {
         Ok(h) => h,
-        Err(HandshakeError::Timeout) => return Err(fail(&"timed out", false)),
-        Err(HandshakeError::Io(e)) => return Err(fail(&os_error_text(&e), is_unreachable(&e))),
-        Err(HandshakeError::Ssh(russh::Error::IO(e))) => return Err(fail(&os_error_text(&e), is_unreachable(&e))),
-        Err(HandshakeError::Ssh(e)) => return Err(fail(&e, false)),
+        Err(HandshakeError::Timeout) => {
+            return Err(fail(&oc_provider::describe_network_error(io::ErrorKind::TimedOut, ""), false));
+        }
+        Err(HandshakeError::Io(e)) => return Err(fail(&network_error_text(&e), is_unreachable(&e))),
+        Err(HandshakeError::Ssh(russh::Error::IO(e))) => return Err(fail(&network_error_text(&e), is_unreachable(&e))),
+        Err(HandshakeError::Ssh(e)) => return Err(fail(&format!("the secure connection couldn't be set up ({e})"), false)),
     };
     if matches!(verdict, HostCheck::NotSeen) {
         disconnect(handle);
-        return Err(fail(&"the server did not identify itself", false));
+        return Err(fail(&"the server didn't identify itself", false));
     }
 
     if let HostCheck::Unknown(key) = &verdict {
@@ -581,16 +569,16 @@ pub fn connect(
                 ConnectError::AuthenticationRequired(format!("{shown_user}@{host} needs a password"))
             }
             AuthError::Rejected => {
-                ConnectError::AuthenticationRequired(format!("Authentication failed for {shown_user}@{host}"))
+                ConnectError::AuthenticationRequired(format!("The server didn't accept the login for {shown_user}@{host}"))
             }
             // A server that hangs up after too many attempts rejected us.
             AuthError::Ssh(_) if closed => {
-                ConnectError::AuthenticationRequired(format!("Authentication failed for {shown_user}@{host}"))
+                ConnectError::AuthenticationRequired(format!("The server didn't accept the login for {shown_user}@{host}"))
             }
             AuthError::Ssh(e) => fail(&e, false),
-            AuthError::Timeout => fail(&"Authentication timeout.", false),
+            AuthError::Timeout => fail(&"the server didn't answer the login in time", false),
             AuthError::KeyFile(path, e) => {
-                ConnectError::Connection(format!("Cannot read the key file {}: {e}", path.display()))
+                ConnectError::Connection(format!("Can't read the key file {}: {e}", path.display()))
             }
         });
     }

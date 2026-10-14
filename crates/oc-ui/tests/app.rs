@@ -506,7 +506,7 @@ fn no_second_operation_while_a_cancelled_one_winds_down() {
     wait_dialog(&mut app, "Copy");
     press(&mut app, Key::Enter);
     settle(&mut app);
-    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Another file operation is still running"));
+    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Another copy or move is still running: wait for it to finish"));
     assert!(app.operation.as_ref().is_some_and(|t| t.is_cancelled()), "still the old one");
     assert!(!e.right.join("a.txt").exists());
 }
@@ -591,7 +591,7 @@ fn archives_open_like_folders() {
     press(&mut app, Key::Enter);
     settle(&mut app);
     let text = app.toast.as_ref().map(|t| t.text.clone()).unwrap_or_default();
-    assert!(text.starts_with("Cannot read broken.zip: ") && !text.contains("Cannot open"), "{text}");
+    assert!(text.starts_with("Can't read broken.zip: ") && !text.contains("Can't open"), "{text}");
 }
 
 /// A minimal stored (uncompressed) zip writer, so the test needs no zip crate.

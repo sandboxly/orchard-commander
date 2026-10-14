@@ -180,7 +180,7 @@ fn show_results(app: &mut App, side: usize, results: Arc<SearchResultsFS>) {
 fn finished(app: &mut App, outcome: Result<(), String>) {
     let failed = outcome.is_err();
     if let Err(e) = outcome {
-        app.error(format!("Search failed: {e}"));
+        app.error(format!("Can't start the search: {e}"));
     }
     let mut done: Vec<Arc<SearchResultsFS>> = Vec::new();
     for t in app.state::<SearchState>().tracked.iter_mut().filter(|t| !t.results.is_running() && !t.announced) {
@@ -266,7 +266,7 @@ pub fn stop_search(app: &mut App) {
 pub fn show_last_results(app: &mut App) {
     let Some(results) = app.try_state::<SearchState>().and_then(|s| s.last.clone()) else {
         let key = if cfg!(target_os = "macos") { "⌘F" } else { "Ctrl+F" };
-        app.warn(format!("No search yet: Alt+F7 or {key} to find files"));
+        app.warn(format!("No search yet — press Alt+F7 or {key} to find files"));
         return;
     };
     if !app.state::<SearchState>().tracked.iter().any(|t| Arc::ptr_eq(&t.results, &results)) {

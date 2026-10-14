@@ -283,7 +283,7 @@ impl<'s> Engine<'s> {
         let audio = ai.and_then(|i| AudioTrack::open(&input, i).map_err(|e| log::info!("audio: {}", describe(&e))).ok());
         let video = vi.and_then(|i| VideoTrack::open(&input, i, opts.video_size).map_err(|e| log::info!("video: {}", describe(&e))).ok());
         if audio.is_none() && video.is_none() {
-            return Err("the codec is not supported".into());
+            return Err("its audio and video format isn't supported".into());
         }
         if audio.is_none() {
             info.audio = None;
@@ -529,7 +529,7 @@ impl<'s> Engine<'s> {
             self.drain_video();
         }
         if !self.decoded_any {
-            self.shared.fail("nothing in this file can be decoded".into());
+            self.shared.fail("nothing in this file can be played".into());
             self.dead = true;
         }
     }

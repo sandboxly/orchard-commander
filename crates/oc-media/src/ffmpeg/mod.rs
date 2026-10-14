@@ -23,10 +23,12 @@ pub(crate) fn init() {
     });
 }
 
-/// FFmpeg's text for an error.
+/// FFmpeg's text for an error, in plain words for the common ones.
 pub(crate) fn describe(e: &ff::Error) -> String {
     match e {
         ff::Error::StreamNotFound => "no audio or video in this file".to_string(),
+        ff::Error::InvalidData => "the file is damaged or in a format that isn't supported".to_string(),
+        ff::Error::DecoderNotFound => "its audio and video format isn't supported".to_string(),
         e => e.to_string(),
     }
 }

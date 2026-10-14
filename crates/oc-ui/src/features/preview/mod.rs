@@ -417,7 +417,7 @@ impl PreviewView {
             self.chips.clear();
             self.title.clear();
             self.info.clear();
-            self.set_content(app, side, Box::new(MessageView::new("No file selected", None)));
+            self.set_content(app, side, Box::new(MessageView::new("No file selected\nMove the cursor to a file to preview it", None)));
             return;
         };
         let name = path.name().to_owned();
@@ -505,7 +505,7 @@ impl PreviewView {
                     PreviewError::NeedsDownload { .. } => MessageView::new(e.to_string(), Some("Download and preview")),
                     PreviewError::CloudNotDelivered { .. } => MessageView::new(e.to_string(), Some("Try again")),
                     PreviewError::ShowMessage(_) | PreviewError::CannotPreview(_) => MessageView::new(e.to_string(), None),
-                    e => MessageView::new(format!("Cannot preview:\n{e}"), None),
+                    e => MessageView::new(format!("Can't preview:\n{e}"), None),
                 })
             }
         };

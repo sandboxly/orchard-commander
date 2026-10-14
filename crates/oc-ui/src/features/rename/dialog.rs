@@ -255,9 +255,13 @@ impl RenameDialog {
     pub fn new(id: u64, side: usize, items: Vec<Item>, rule: &Rule, exists: Arc<ExistingNames>) -> Self {
         let n = items.len();
         let mut search = TextInput::new(&rule.search);
-        search.placeholder = "text to find; several: a|b".into();
+        search.placeholder = "e.g. draft or draft|old".into();
         let mut replace = TextInput::new(&rule.replace);
-        replace.placeholder = "replacement; pairs: x|y   groups: $1".into();
+        replace.placeholder = "e.g. final, final|new or $1".into();
+        let mut name_mask = TextInput::selected_all(&rule.name_mask);
+        name_mask.placeholder = "e.g. [N]_[C]".into();
+        let mut ext_mask = TextInput::new(&rule.ext_mask);
+        ext_mask.placeholder = "e.g. [E]".into();
         RenameDialog {
             id,
             side,
@@ -267,11 +271,11 @@ impl RenameDialog {
             exists,
             plan: Plan::default(),
             rule: rule.clone(),
-            name_mask: TextInput::selected_all(&rule.name_mask),
-            ext_mask: TextInput::new(&rule.ext_mask),
+            name_mask,
+            ext_mask,
             search,
             replace,
-            regex: Checkbox::new("RegEx", rule.regex),
+            regex: Checkbox::new("Regex", rule.regex),
             case_sensitive: Checkbox::new("Case sensitive", rule.case_sensitive),
             case: CASES.iter().position(|c| *c == rule.case.as_str()).unwrap_or(0),
             counter_start: Spin::new(rule.counter_start, -999_999, 999_999),
@@ -688,8 +692,8 @@ impl RenameDialog {
             search: clip(Rect::new(fx, c.y + 2, search_w, 1)),
             replace_label: fx + search_w,
             replace: clip(Rect::new(replace_x, c.y + 2, c.right().saturating_sub(replace_x), 1)),
-            regex: clip(Rect::new(fx, c.y + 3, width("[ ] RegEx"), 1)),
-            case_sensitive: clip(Rect::new(fx + width("[ ] RegEx") + 2, c.y + 3, width("[ ] Case sensitive"), 1)),
+            regex: clip(Rect::new(fx, c.y + 3, width("[ ] Regex"), 1)),
+            case_sensitive: clip(Rect::new(fx + width("[ ] Regex") + 2, c.y + 3, width("[ ] Case sensitive"), 1)),
             case: clip(Rect::new(fx, c.y + 4, case_w - 2, 1)),
             counter_label,
             start: clip(start),

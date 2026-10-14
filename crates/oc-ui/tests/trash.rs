@@ -108,7 +108,7 @@ fn trashed_entries_leave_both_panels_at_once() {
     assert_eq!(names(&app, 0), ["a", "d", "e"]);
     assert_eq!(cursor(&app, 0).as_deref(), Some("d"), "the reload keeps the cursor");
     assert_eq!(app.main.sides[0].panel.subtitle(), "0 dirs, 3 files · memory");
-    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Moving to trash finished"));
+    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Moved 2 items to the trash"));
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn trash_and_copy_dont_wait_for_each_other() {
     press(&mut app, Key::F(5));
     assert_eq!(app.modal_titles(), ["Copy"]);
     press(&mut app, Key::Enter);
-    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Another file operation is still running"));
+    assert_eq!(app.toast.as_ref().map(|t| t.text.as_str()), Some("Another copy or move is still running: wait for it to finish"));
     // No copy running: one starts while the trash job still waits.
     app.operation = None;
     let other = Arc::new(MemFS::new());

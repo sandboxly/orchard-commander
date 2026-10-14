@@ -435,7 +435,11 @@ fn target_taken_after_planning_is_not_overwritten() {
     std::fs::write(tmp.path().join("b.txt"), "someone else's").unwrap();
     let done = oc_rename::execute(&p, None);
     assert!(done.renames.is_empty());
-    assert!(done.errors[0].starts_with("a.txt: already exists: "), "{:?}", done.errors);
+    assert!(
+        done.errors[0].starts_with("a.txt: ") && done.errors[0].ends_with("b.txt already exists"),
+        "{:?}",
+        done.errors
+    );
     assert_eq!(names_in(tmp.path()), ["a.txt", "b.txt"]);
     assert_eq!(std::fs::read_to_string(tmp.path().join("b.txt")).unwrap(), "someone else's");
     assert_eq!(std::fs::read_to_string(tmp.path().join("a.txt")).unwrap(), "A");

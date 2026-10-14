@@ -1,11 +1,9 @@
 //! Turning SMB failures into the errors and messages users see.
 //!
-//! The Python version translated smbprotocol's `SMBOSError` into plain
-//! `OSError`s, so error dialogs read like local ones:
-//! `[Errno 2] No such file or directory: '\\server\share\x'`. Connection-level
-//! failures became `ConnectionError("smb://server/share: …")`. The same shapes
-//! are produced here; the `io::ErrorKind` is kept so `VfsError::is_not_found`
-//! and friends work.
+//! Answers about a file read like local errors
+//! (`\\server\share\x not found`, [`oc_vfs::io_message`]); connection-level
+//! failures name the share (`smb://server/share: the connection was closed`).
+//! The `io::ErrorKind` is kept so `VfsError::is_not_found` and friends work.
 
 use std::io;
 use std::net::{IpAddr, ToSocketAddrs};
@@ -65,20 +63,15 @@ impl Failure {
     }
 
     /// A file-level failure (the server answered about this path) as
-    /// `[Errno N] reason: 'unc'`, or a connection failure as
+    /// `\\server\share\x not found`, or a connection failure as
     /// `smb://server/share: what happened`.
     pub(crate) fn into_vfs(self, type_name: &str, unc: &str) -> VfsError {
-        if let Some((kind, errno, reason)) = self.as_os_error() {
-            return VfsError::Io(io::Error::new(kind, format!("[Errno {errno}] {reason}: '{unc}'")));
+        if let Some(kind) = self.as_os_error() {
+            return oc_vfs::io_error_at(kind.into(), unc);
         }
         if let Some(status) = self.status() {
-            // Python: "[Error 0] [NtStatus 0xc0000043] Unknown NtStatus error returned 'STATUS_…': '…'"
-            let name = status.to_string();
-            let name = if name.starts_with("0x") { "STATUS_UNKNOWN".to_string() } else { name };
-            return VfsError::Io(io::Error::other(format!(
-                "[NtStatus 0x{:08x}] Unknown NtStatus error returned '{name}': '{unc}'",
-                status.0
-            )));
+            let what = describe_status(status);
+            return VfsError::Io(io::Error::other(format!("{}: {unc}", capitalized(&what))));
         }
         let kind = match &self {
             Failure::Closed => io::ErrorKind::NotConnected,
@@ -93,25 +86,21 @@ impl Failure {
         VfsError::Io(io::Error::new(kind, format!("{type_name}: {}", self.describe())))
     }
 
-    /// (io kind, errno, strerror) for the statuses Python mapped to an errno.
-    fn as_os_error(&self) -> Option<(io::ErrorKind, i32, &'static str)> {
+    /// The local error kind for answers about a file that have one.
+    fn as_os_error(&self) -> Option<io::ErrorKind> {
         use io::ErrorKind as K;
         if self.status().is_some_and(|s| s.0 == DIRECTORY_NOT_EMPTY) {
-            return Some((K::DirectoryNotEmpty, errno::ENOTEMPTY, "Directory not empty"));
+            return Some(K::DirectoryNotEmpty);
         }
         self.status()?; // no status: not an answer about the file but a connection problem
         Some(match self.kind()? {
-            Kind::NotFound => (K::NotFound, errno::ENOENT, "No such file or directory"),
-            Kind::AlreadyExists => (K::AlreadyExists, errno::EEXIST, "File exists"),
-            Kind::AccessDenied => (K::PermissionDenied, errno::EACCES, "Permission denied"),
-            Kind::IsADirectory => (K::IsADirectory, errno::EISDIR, "Is a directory"),
-            Kind::NotADirectory => (K::NotADirectory, errno::ENOTDIR, "Not a directory"),
-            Kind::SharingViolation => (
-                K::ResourceBusy,
-                errno::EPERM,
-                "The process cannot access the file because it is being used by another process",
-            ),
-            Kind::DiskFull => (K::StorageFull, errno::ENOSPC, "No space left on device"),
+            Kind::NotFound => K::NotFound,
+            Kind::AlreadyExists => K::AlreadyExists,
+            Kind::AccessDenied => K::PermissionDenied,
+            Kind::IsADirectory => K::IsADirectory,
+            Kind::NotADirectory => K::NotADirectory,
+            Kind::SharingViolation => K::ResourceBusy,
+            Kind::DiskFull => K::StorageFull,
             _ => return None,
         })
     }
@@ -120,14 +109,28 @@ impl Failure {
     pub(crate) fn describe(&self) -> String {
         match self {
             Failure::Closed => "the connection was closed".into(),
-            Failure::TimedOut => "the server did not answer in time".into(),
+            Failure::TimedOut => "the server didn't answer in time".into(),
             Failure::Smb(smb2::Error::Protocol { status, .. }) => describe_status(*status),
             Failure::Smb(smb2::Error::ConnectFailed { attempts, .. }) => match attempts.first() {
-                Some(a) => describe_io_kind(a.error_kind),
-                None => "the server name could not be resolved".into(),
+                Some(a) => oc_provider::describe_network_error(a.error_kind.unwrap_or(io::ErrorKind::TimedOut), ""),
+                None => "the server name wasn't found — check the address".into(),
             },
-            Failure::Smb(smb2::Error::Io(e)) => e.to_string(),
-            Failure::Smb(e) => e.to_string(),
+            Failure::Smb(smb2::Error::Io(e)) => oc_provider::describe_network_error(e.kind(), &oc_vfs::os_text(e)),
+            Failure::Smb(e) => match e.kind() {
+                Kind::ConnectionLost => "the connection was lost".into(),
+                Kind::TimedOut => "the server didn't answer in time".into(),
+                Kind::Cancelled => "cancelled".into(),
+                Kind::SessionExpired => "the session expired — connect again".into(),
+                Kind::AuthRequired | Kind::AccessDenied => {
+                    "the server didn't accept the user name or password — check them in the connection settings"
+                        .into()
+                }
+                _ => {
+                    let text = e.to_string();
+                    let mut chars = text.chars();
+                    chars.next().map(|c| c.to_lowercase().chain(chars).collect()).unwrap_or_default()
+                }
+            },
         }
     }
 
@@ -141,46 +144,35 @@ impl Failure {
     }
 }
 
+/// What an SMB status means, in words (lower case, for after a colon).
 fn describe_status(status: NtStatus) -> String {
-    let what = match status.0 {
-        0xC000_00CC => "the share does not exist",
-        0xC000_006D => "the user name or password is wrong",
-        0xC000_0022 => "access denied",
-        0xC000_0034 | 0xC000_003A | 0xC000_000F => "no such file or directory",
-        0xC000_0035 => "the name already exists",
-        0xC000_0043 => "the file is in use",
-        DIRECTORY_NOT_EMPTY => "the directory is not empty",
-        0xC000_007F => "the disk is full",
-        _ => "",
-    };
-    if what.is_empty() { status.to_string() } else { format!("{what} ({status})") }
-}
-
-fn describe_io_kind(kind: Option<io::ErrorKind>) -> String {
-    use io::ErrorKind as K;
-    match kind {
-        Some(K::ConnectionRefused) => "Connection refused".into(),
-        Some(K::HostUnreachable) => "No route to host".into(),
-        Some(K::NetworkUnreachable) => "Network is unreachable".into(),
-        Some(K::TimedOut) | None => "timed out".into(),
-        Some(other) => other.to_string(),
+    match status.0 {
+        0xC000_00CC => "the share doesn't exist — check the share name".into(),
+        0xC000_006D => {
+            "the server didn't accept the user name or password — check them in the connection settings".into()
+        }
+        0xC000_0022 => "you don't have permission".into(),
+        0xC000_0034 | 0xC000_003A | 0xC000_000F => "not found".into(),
+        0xC000_0035 => "the name already exists".into(),
+        0xC000_0043 => "the file is in use by another program".into(),
+        DIRECTORY_NOT_EMPTY => "the folder isn't empty".into(),
+        0xC000_007F => "the server's disk is full".into(),
+        0xC000_00BB => "the server doesn't support this".into(),
+        code => format!("the server couldn't do this (error 0x{code:08X})"),
     }
 }
 
-/// Port of `remote.describe_connect_error`: the message for a failed connect,
-/// with a hint for macOS's Local Network privacy, which silently blocks
-/// programs without that permission from reaching devices on the LAN (they
-/// just see "No route to host").
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// The message for a failed connect, with a hint for macOS's Local Network
+/// privacy, which silently blocks programs without that permission from
+/// reaching devices on the LAN (they just see "No route to host").
 pub(crate) fn describe_connect_error(host: &str, port: u16, failure: &Failure) -> String {
-    let mut message = format!("Cannot connect to {host}:{port}: {}", failure.describe());
-    if cfg!(target_os = "macos") && failure.connect_io_kind() == Some(io::ErrorKind::HostUnreachable) && is_local(host)
-    {
-        message.push_str(
-            ". macOS may be blocking local network access for this program: allow it in \
-             System Settings → Privacy & Security → Local Network (look for Orchard Commander), then retry.",
-        );
-    }
-    message
+    let unreachable = failure.connect_io_kind() == Some(io::ErrorKind::HostUnreachable) && is_local(host);
+    oc_provider::connect_error_message(host, port, &failure.describe(), unreachable)
 }
 
 /// Whether `host` resolves to a private / link-local address (Python's
@@ -198,36 +190,6 @@ pub(crate) fn is_local(host: &str) -> bool {
     })
 }
 
-/// errno values as Python reports them on this platform.
-mod errno {
-    pub const EPERM: i32 = 1;
-    pub const ENOENT: i32 = 2;
-    pub const EACCES: i32 = 13;
-    pub const EEXIST: i32 = 17;
-    pub const ENOTDIR: i32 = 20;
-    pub const EISDIR: i32 = 21;
-    pub const ENOSPC: i32 = 28;
-    #[cfg(any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "netbsd"
-    ))]
-    pub const ENOTEMPTY: i32 = 66;
-    #[cfg(windows)]
-    pub const ENOTEMPTY: i32 = 41;
-    #[cfg(not(any(
-        windows,
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "netbsd"
-    )))]
-    pub const ENOTEMPTY: i32 = 39;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,27 +200,26 @@ mod tests {
     }
 
     #[test]
-    fn file_errors_read_like_os_errors() {
+    fn file_errors_read_like_local_ones() {
         let e = status(0xC000_0034).into_vfs("smb://h/S", r"\\h\S\x");
         assert!(e.is_not_found());
-        assert_eq!(e.to_string(), r"[Errno 2] No such file or directory: '\\h\S\x'");
+        assert_eq!(e.to_string(), r"\\h\S\x not found");
         let e = status(0xC000_0035).into_vfs("smb://h/S", r"\\h\S\x");
         assert!(matches!(&e, VfsError::Io(io) if io.kind() == io::ErrorKind::AlreadyExists));
         let e = status(DIRECTORY_NOT_EMPTY).into_vfs("smb://h/S", r"\\h\S\d");
         assert!(matches!(&e, VfsError::Io(io) if io.kind() == io::ErrorKind::DirectoryNotEmpty));
         let e = status(0xC000_0022).into_vfs("smb://h/S", r"\\h\S\x");
-        assert_eq!(e.to_string(), r"[Errno 13] Permission denied: '\\h\S\x'");
+        assert_eq!(e.to_string(), r"You don't have permission to access \\h\S\x");
         let e = status(0xC000_00BB).into_vfs("smb://h/S", r"\\h\S\x");
-        assert_eq!(
-            e.to_string(),
-            r"[NtStatus 0xc00000bb] Unknown NtStatus error returned 'STATUS_NOT_SUPPORTED': '\\h\S\x'"
-        );
+        assert_eq!(e.to_string(), r"The server doesn't support this: \\h\S\x");
+        let e = status(0xC000_0061).into_vfs("smb://h/S", r"\\h\S\x");
+        assert_eq!(e.to_string(), r"The server couldn't do this (error 0xC0000061): \\h\S\x");
     }
 
     #[test]
     fn connection_errors_name_the_server() {
         let e = Failure::Smb(smb2::Error::Disconnected).into_vfs("smb://h/S", r"\\h\S\x");
-        assert_eq!(e.to_string(), "smb://h/S: Disconnected from server");
+        assert_eq!(e.to_string(), "smb://h/S: the connection was lost");
         let e = Failure::TimedOut.into_vfs("smb://h/S", "");
         assert!(matches!(&e, VfsError::Io(io) if io.kind() == io::ErrorKind::TimedOut));
     }
@@ -274,12 +235,12 @@ mod tests {
         });
         assert_eq!(
             describe_connect_error("127.0.0.1", 1, &refused),
-            "Cannot connect to 127.0.0.1:1: Connection refused"
+            "Can't connect to 127.0.0.1:1: the connection was refused — check the port and that the server is running"
         );
         let no_share = status(0xC000_00CC);
         assert_eq!(
             describe_connect_error("nas", 445, &no_share),
-            "Cannot connect to nas:445: the share does not exist (STATUS_BAD_NETWORK_NAME)"
+            "Can't connect to nas:445: the share doesn't exist — check the share name"
         );
         let unreachable = Failure::Smb(smb2::Error::ConnectFailed {
             host: "192.168.1.20:445".into(),

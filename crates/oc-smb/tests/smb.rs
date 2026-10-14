@@ -48,7 +48,7 @@ fn wrong_password() {
     };
     match server.connect_with("nope") {
         Err(SmbConnectError::AuthenticationRequired(msg)) => {
-            assert_eq!(msg, "Authentication failed for tester on 127.0.0.1")
+            assert_eq!(msg, "The server 127.0.0.1 didn't accept the user name or password for tester")
         }
         Err(other) => panic!("expected AuthenticationRequired, got {other:?}"),
         Ok(_) => panic!("connected with a wrong password"),
@@ -112,7 +112,12 @@ fn unreachable_server() {
     };
     match oc_smb::connect("127.0.0.1", "SHARE", &opts) {
         Err(SmbConnectError::Connection(msg)) => {
-            assert_eq!(msg, format!("Cannot connect to 127.0.0.1:{port}: Connection refused"))
+            assert_eq!(
+                msg,
+                format!(
+                    "Can't connect to 127.0.0.1:{port}: the connection was refused — check the port and that the server is running"
+                )
+            )
         }
         other => panic!("expected a connection error, got {:?}", other.err()),
     }
@@ -152,7 +157,7 @@ fn silent_server_times_out() {
     let (result, took) = connect_to(port);
     match result {
         Err(SmbConnectError::Connection(msg)) => {
-            assert!(msg.starts_with(&format!("Cannot connect to 127.0.0.1:{port}: ")), "{msg}")
+            assert!(msg.starts_with(&format!("Can't connect to 127.0.0.1:{port}: ")), "{msg}")
         }
         other => panic!("expected a connection error, got {:?}", other.err()),
     }
@@ -224,14 +229,14 @@ fn samba_write_operations() {
     w.finish().unwrap();
     assert!(root.list_dir(all()).unwrap().iter().any(|e| e.name == "Grüße & spaß.txt"));
 
-    // Errors read like the Python version's.
+    // Errors read like local ones.
     let err = remote.stat("/missing.txt").unwrap_err();
     assert!(err.is_not_found());
-    assert_eq!(err.to_string(), r"[Errno 2] No such file or directory: '\\127.0.0.1\SHARE\missing.txt'");
+    assert_eq!(err.to_string(), r"\\127.0.0.1\SHARE\missing.txt not found");
     let err = remote.mkdir("/new", false).unwrap_err();
-    assert!(err.to_string().starts_with("[Errno 17] File exists"), "{err}");
+    assert!(err.to_string().ends_with(r"\new already exists"), "{err}");
     let err = remote.rename("/up.txt", "/new").unwrap_err();
-    assert!(err.to_string().starts_with("[Errno 17] File exists"), "{err}");
+    assert!(err.to_string().ends_with(" already exists"), "{err}");
 
     // A file being previewed (open for reading) can still be replaced.
     let mut reader = remote.open_read("/up.txt").unwrap();
@@ -269,7 +274,7 @@ fn samba_wrong_password_and_missing_share() {
     match oc_smb::connect(&server.host, "NOPE", &opts) {
         Err(SmbConnectError::Connection(msg)) => assert_eq!(
             msg,
-            format!("Cannot connect to 127.0.0.1:{}: the share does not exist (STATUS_BAD_NETWORK_NAME)", server.port)
+            format!("Can't connect to 127.0.0.1:{}: the share doesn't exist — check the share name", server.port)
         ),
         other => panic!("expected a connection error, got {:?}", other.err()),
     }

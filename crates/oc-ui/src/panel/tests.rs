@@ -244,21 +244,15 @@ fn watcher_reloads_skip_what_our_own_reload_already_shows() {
 }
 
 #[test]
-fn error_reason_is_strerror() {
+fn error_reason_is_short_and_without_the_path() {
     use oc_vfs::VfsError;
     use std::io;
-    let io = |msg: &str| VfsError::Io(io::Error::new(io::ErrorKind::PermissionDenied, msg));
-    assert_eq!(error_reason(&io("[Errno 13] Permission denied: '/x'")), "Permission denied");
-    assert_eq!(error_reason(&io("[Errno 61] Connection refused")), "Connection refused");
-    // The OS's own text without " (os error N)": EACCES / ERROR_ACCESS_DENIED.
+    // Messages that name the path give just the reason: it follows "Can't open /x: ".
+    let named = io::Error::new(io::ErrorKind::PermissionDenied, "You don't have permission to access /x");
+    assert_eq!(error_reason(&VfsError::Io(named)), "you don't have permission");
     let code = if cfg!(windows) { 5 } else { 13 };
-    let os = io::Error::from_raw_os_error(code);
-    let want = os.to_string().replace(&format!(" (os error {code})"), "");
-    assert_eq!(error_reason(&VfsError::Io(os)), want);
-    #[cfg(unix)]
-    assert_eq!(want, "Permission denied");
-    // 1.x's remote file systems raise FileExistsError / FileNotFoundError.
-    assert_eq!(error_reason(&VfsError::AlreadyExists("sftp://h/docs".into())), "File exists");
-    assert_eq!(error_reason(&VfsError::NotFound("sftp://h/x".into())), "No such file or directory");
-    assert_eq!(error_reason(&VfsError::Operation("Target directory does not exist".into())), "Target directory does not exist");
+    assert_eq!(error_reason(&VfsError::Io(io::Error::from_raw_os_error(code))), "you don't have permission");
+    assert_eq!(error_reason(&VfsError::AlreadyExists("sftp://h/docs".into())), "already exists");
+    assert_eq!(error_reason(&VfsError::NotFound("sftp://h/x".into())), "not found");
+    assert_eq!(error_reason(&VfsError::Operation("Destination folder /x doesn't exist".into())), "Destination folder /x doesn't exist");
 }

@@ -76,7 +76,7 @@ impl Clipboard for SystemClipboard {
 
     fn set_image(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
         let Some(c) = self.get() else {
-            return Err("no system clipboard".into());
+            return Err("the system clipboard isn't available".into());
         };
         let image = arboard::ImageData { width: width as usize, height: height as usize, bytes: rgba.into() };
         c.set_image(image).map_err(|e| e.to_string())

@@ -155,7 +155,7 @@ impl ImageView {
             },
             move |app, r| {
                 if let Err(e) = r {
-                    app.notify(format!("Cannot open {name}: {e}"), Severity::Error);
+                    app.notify(format!("Can't open {name}: {e}"), Severity::Error);
                 }
             },
         );
@@ -182,7 +182,7 @@ impl ImageView {
 fn copy_to_clipboard(app: &mut App, name: &str, w: u32, h: u32, rgba: &[u8]) {
     match app.clipboard.set_image(w, h, rgba) {
         Ok(()) => app.info(format!("Copied {name} ({w}×{h})")),
-        Err(e) => app.error(format!("Cannot copy {name}: {e}")),
+        Err(e) => app.error(format!("Can't copy {name}: {e}")),
     }
 }
 

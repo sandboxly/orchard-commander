@@ -155,11 +155,11 @@ fn stalled_servers_time_out() {
     let started = Instant::now();
     let err = c.request("GET", "/", &Headers::new(), Body::None).unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
-    assert!(matches!(&err, Error::Connection(m) if m.ends_with("timed out")), "{err}");
+    assert!(matches!(&err, Error::Connection(m) if m.contains("no answer")), "{err}");
     // Nothing listening: refused at once.
     let port = { std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port() };
     let err = client(port, Duration::from_secs(5)).request("GET", "/", &Headers::new(), Body::None).unwrap_err();
-    assert!(matches!(&err, Error::Connection(m) if m.starts_with(&format!("Cannot connect to 127.0.0.1:{port}: "))), "{err}");
+    assert!(matches!(&err, Error::Connection(m) if m.starts_with(&format!("Can't connect to 127.0.0.1:{port}: "))), "{err}");
 }
 
 #[test]

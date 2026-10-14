@@ -205,7 +205,7 @@ fn scheme_editor_saves_a_builtin_as_a_copy_then_deletes_it() {
     press(&mut app, Key::Enter);
     assert_eq!(app.modal_titles(), ["Settings", "Edit color scheme"]);
     assert!(app.top_modal_text().unwrap().starts_with("nord (custom)\n"));
-    assert!(screen_text(&app).contains("'nord' is built in: your changes are saved as a new color scheme."));
+    assert!(screen_text(&app).contains("'nord' is built in: your changes are saved as a new color scheme"));
     // To "Directories": name, dark, syntax, then the colors in role order.
     for _ in 0..13 {
         press(&mut app, Key::Down);
@@ -264,7 +264,7 @@ fn scheme_editor_cancel_restores_colors_and_reports_errors() {
     press(&mut app, Key::Enter);
     wait_idle(&mut app);
     assert_eq!(app.modal_titles(), ["Settings", "Edit color scheme"]);
-    assert!(screen_text(&app).contains("A color scheme needs a name"));
+    assert!(screen_text(&app).contains("Enter a name for the color scheme"));
 }
 
 #[test]

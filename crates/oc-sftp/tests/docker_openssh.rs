@@ -170,7 +170,7 @@ fn real_openssh_server() {
         o.password = None;
         match connect(&o, &|_| panic!("asked")) {
             Err(ConnectError::AuthenticationRequired(msg)) => {
-                assert_eq!(msg, "Authentication failed for tester@127.0.0.1")
+                assert_eq!(msg, "The server didn't accept the login for tester@127.0.0.1")
             }
             other => panic!("{:?}", other.err()),
         }

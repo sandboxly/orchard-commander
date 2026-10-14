@@ -58,7 +58,7 @@ fn parse_args() -> Result<Args, String> {
                 let v = it.next().ok_or("--size needs COLSxROWS")?;
                 let v = v.to_string_lossy();
                 let (c, r) = v.split_once(['x', 'X']).ok_or("--size needs COLSxROWS")?;
-                let parse = |s: &str| s.parse::<u16>().ok().filter(|&n| n >= 20).ok_or(format!("bad --size {v}"));
+                let parse = |s: &str| s.parse::<u16>().ok().filter(|&n| n >= 20).ok_or(format!("--size needs COLSxROWS, each at least 20, not {v}"));
                 args.size = (parse(c)?, parse(r)?);
             }
             Some("--keys") => {
@@ -67,7 +67,7 @@ fn parse_args() -> Result<Args, String> {
             }
             Some("--scale") => {
                 let v = it.next().ok_or("--scale needs a number")?;
-                args.scale = v.to_string_lossy().parse().map_err(|_| "bad --scale".to_string())?;
+                args.scale = v.to_string_lossy().parse().map_err(|_| "--scale needs a number".to_string())?;
             }
             Some("--version" | "-V") => {
                 println!("orchard-commander {}", env!("CARGO_PKG_VERSION"));

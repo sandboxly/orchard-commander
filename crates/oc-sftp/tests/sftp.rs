@@ -113,7 +113,7 @@ fn rejected_and_changed_host_keys() {
         Err(ConnectError::Connection(msg)) => {
             assert!(msg.starts_with("The host key of 127.0.0.1 has changed (now SHA256:"), "{msg}");
             assert!(msg.contains(&f.server.host_key_fingerprint), "{msg}");
-            assert!(msg.ends_with("This could mean someone is intercepting the connection; refusing to connect."));
+            assert!(msg.contains("Someone may be intercepting the connection"), "{msg}");
         }
         other => panic!("expected a changed host key, got {:?}", other.err()),
     }
@@ -153,7 +153,7 @@ fn wrong_password() {
     let f = fixture();
     match connect(&f.options(Some("nope")), &|_| true) {
         Err(ConnectError::AuthenticationRequired(msg)) => {
-            assert_eq!(msg, format!("Authentication failed for {USER}@127.0.0.1"))
+            assert_eq!(msg, format!("The server didn't accept the login for {USER}@127.0.0.1"))
         }
         other => panic!("expected AuthenticationRequired, got {:?}", other.err()),
     }
@@ -180,7 +180,7 @@ fn connection_refused_is_described() {
     o.agent = Agent::Off;
     match connect(&o, &|_| true) {
         Err(ConnectError::Connection(msg)) => {
-            assert!(msg.starts_with(&format!("Cannot connect to 127.0.0.1:{port}: [Errno ")), "{msg}");
+            assert!(msg.starts_with(&format!("Can't connect to 127.0.0.1:{port}: ")), "{msg}");
             assert!(msg.contains("refused"), "{msg}");
         }
         other => panic!("expected a connection error, got {:?}", other.err()),
@@ -604,13 +604,13 @@ fn a_dropped_writer_has_closed_its_file() {
 fn local_network_hint_on_macos() {
     use oc_sftp::describe_connect_error;
     let hint = |host: &str, unreachable: bool| {
-        describe_connect_error(host, 22, &"[Errno 65] No route to host", unreachable).contains("Local Network")
+        describe_connect_error(host, 22, &"No route to host", unreachable).contains("Local Network")
     };
     assert_eq!(hint("192.168.1.20", true), cfg!(target_os = "macos"));
     assert!(!hint("8.8.8.8", true));
     assert!(!hint("192.168.1.2", false));
     assert_eq!(
-        describe_connect_error("h", 2222, &"[Errno 61] Connection refused", false),
-        "Cannot connect to h:2222: [Errno 61] Connection refused"
+        describe_connect_error("h", 2222, &"the connection was refused", false),
+        "Can't connect to h:2222: the connection was refused"
     );
 }

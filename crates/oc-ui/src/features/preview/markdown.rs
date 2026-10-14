@@ -474,7 +474,7 @@ fn open_link(app: &mut App, link: String) {
         move |_| oc_local::open_with_default_app(std::path::Path::new(&link)).map_err(|e| (link, e)),
         |app, r| {
             if let Err((link, e)) = r {
-                app.error(format!("Cannot open {link}: {e}"));
+                app.error(format!("Can't open {link}: {e}"));
             }
         },
     );

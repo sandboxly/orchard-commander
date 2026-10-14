@@ -9,7 +9,7 @@ with them like any other files.
 1. Open the folder you want to search in the active panel.
 2. Press **⌘F** / **Ctrl+F** or **⌥F7** / **Alt+F7**.
 3. Fill in the search criteria (see below).
-4. Click **Search** or press **Enter**.
+4. Click **Find files** or press **Enter**.
 
 The dialog keeps your last entries until you quit the app. **Search in**
 always starts with the active panel's folder.
@@ -21,7 +21,7 @@ always starts with the active panel's folder.
 | Field | Description |
 | --- | --- |
 | Search for | One or more file name masks (see below). Leave `*` to match all names. |
-| RegEx | Treat **Search for** as a regular expression |
+| Regex | Treat **Search for** as a regular expression |
 | Case sensitive | Distinguish upper and lower case in names |
 | Search in | The folder to search. To search several local folders, separate them with `;`. |
 | Depth | **All subfolders**, **This folder only**, or a number of levels |
@@ -49,10 +49,10 @@ Masks are not case-sensitive unless you select **Case sensitive**.
 | Field | Description |
 | --- | --- |
 | Containing | Text the files must contain. Leave empty to search by name only. |
-| RegEx | Treat the text as a regular expression |
+| Regex | Treat the text as a regular expression |
 | Case sensitive | Distinguish upper and lower case |
 | Whole words | Match only whole words |
-| NOT containing | Find files that do *not* contain the text |
+| Not containing | Find files that do *not* contain the text |
 | Also cloud-only files | Also search online-only cloud files. These files are downloaded to be searched. |
 
 Content searches apply to files only. Without **Also cloud-only files**,

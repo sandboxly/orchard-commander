@@ -146,7 +146,7 @@ fn check_not_into_self(src: &Path, dst: &Path) -> Result<()> {
     let d = normcase(resolve_lenient(dst));
     if d.starts_with(&s) {
         let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        return Err(op_err(format!("Cannot copy or move '{name}' into itself")));
+        return Err(op_err(format!("Can't copy or move '{name}' into itself")));
     }
     Ok(())
 }
@@ -167,7 +167,7 @@ pub fn resolve_target<P: AsRef<Path>>(sources: &[P], target: &Path) -> Result<Ve
     if let [only] = sources {
         return Ok(vec![(only.as_ref().to_path_buf(), target.to_path_buf())]);
     }
-    Err(op_err(format!("Target directory does not exist: {}", target.display())))
+    Err(op_err(format!("Destination folder {} doesn't exist", target.display())))
 }
 
 /// (file count, total bytes) for everything below `paths`. Directories don't
@@ -568,7 +568,37 @@ pub fn trash_paths<P: AsRef<Path>>(paths: &[P]) -> Result<()> {
         use trash::macos::{DeleteMethod, TrashContextExtMacos};
         ctx.set_delete_method(DeleteMethod::NsFileManager);
     }
-    ctx.delete_all(paths.iter().map(AsRef::as_ref)).map_err(|e| op_err(e.to_string()))
+    ctx.delete_all(paths.iter().map(AsRef::as_ref)).map_err(trash_error)
+}
+
+/// The trash library's error in words: its own text is debug output.
+fn trash_error(e: trash::Error) -> VfsError {
+    const CANT: &str = "Can't move to the trash";
+    op_err(match e {
+        trash::Error::TargetedRoot => "Can't move the root folder to the trash".into(),
+        trash::Error::CanonicalizePath { original } => format!("{CANT}: {} not found", original.display()),
+        trash::Error::CouldNotAccess { target } => format!("{CANT}: can't access {target}"),
+        trash::Error::ConvertOsString { original } => {
+            format!("{CANT}: the name {} isn't valid text", original.to_string_lossy())
+        }
+        #[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))]
+        trash::Error::FileSystem { path, source } => {
+            format!("Can't move {} to the trash: {}", path.display(), oc_vfs::io_reason(&source))
+        }
+        trash::Error::Os { description, .. } | trash::Error::Unknown { description } => {
+            // macOS: "While deleting '…', `trashItemAtURL` failed: <the system's sentence>";
+            // Windows: "windows error: <the system's sentence>".
+            let reason = description
+                .rsplit_once("failed: ")
+                .map(|(_, r)| r)
+                .or_else(|| description.strip_prefix("windows error: "))
+                .unwrap_or(&description)
+                .trim()
+                .trim_end_matches('.');
+            format!("{CANT}: {reason}")
+        }
+        _ => CANT.into(),
+    })
 }
 
 #[cfg(test)]

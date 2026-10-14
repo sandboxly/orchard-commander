@@ -13,7 +13,7 @@ use crate::modal::{Modal, ModalOutcome};
 use crate::widgets::button::RowOutcome;
 use crate::widgets::{ButtonRow, Checkbox, DrawCtx, TextInput, put};
 
-pub const TIP: &str = "Tip: an & in the title sets its hotkey, e.g. “&Projects” → P.";
+pub const TIP: &str = "Tip: an & in the title sets its hotkey, e.g. “&Projects” → P";
 const WIDTH: u16 = 70;
 const LABEL_W: u16 = 8;
 
@@ -75,7 +75,7 @@ impl AddBookmark {
             // No "&" hotkey here: the label is the 1.x text (and may contain a path).
             with_target: Checkbox::new(&label.replace('&', "&&"), false),
             has_target: target.is_some(),
-            buttons: ButtonRow::new(&["Add", "Cancel"], 0),
+            buttons: ButtonRow::new(&["Add bookmark", "Cancel"], 0),
             focus: Focus::Title,
             on_done: Some(Box::new(on_done)),
         }

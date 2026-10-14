@@ -149,25 +149,8 @@ impl From<Error> for io::Error {
 /// macOS (15+) silently blocks programs without Local Network permission from
 /// reaching devices on the LAN; they just see "No route to host".
 pub fn describe_connect_error(host: &str, port: u16, err: &io::Error) -> String {
-    let what = match err.kind() {
-        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "timed out".to_string(),
-        _ => {
-            // The OS's description without std's " (os error N)" suffix (as oc-local does).
-            let text = err.to_string();
-            match text.rfind(" (os error ") {
-                Some(i) if text.ends_with(')') => text[..i].to_string(),
-                _ => text,
-            }
-        }
-    };
-    let mut message = format!("Cannot connect to {host}:{port}: {what}");
-    if cfg!(target_os = "macos") && is_host_unreachable(err) && is_local(host) {
-        message.push_str(&format!(
-            ". macOS may be blocking local network access for this program: allow it in \
-             System Settings → Privacy & Security → Local Network (look for {APP_NAME}), then retry."
-        ));
-    }
-    message
+    let why = oc_provider::describe_network_error(err.kind(), &oc_vfs::os_text(err));
+    oc_provider::connect_error_message(host, port, &why, is_host_unreachable(err) && is_local(host))
 }
 
 fn is_host_unreachable(err: &io::Error) -> bool {
@@ -302,11 +285,17 @@ mod tests {
     #[test]
     fn connect_errors() {
         let e = io::Error::new(io::ErrorKind::ConnectionRefused, "Connection refused");
-        assert_eq!(describe_connect_error("nas", 445, &e), "Cannot connect to nas:445: Connection refused");
+        assert_eq!(
+            describe_connect_error("nas", 445, &e),
+            "Can't connect to nas:445: the connection was refused — check the port and that the server is running"
+        );
         let e = io::Error::new(io::ErrorKind::WouldBlock, "Resource temporarily unavailable");
-        assert_eq!(describe_connect_error("nas", 80, &e), "Cannot connect to nas:80: timed out");
-        let e = io::Error::from_raw_os_error(61);
+        assert_eq!(
+            describe_connect_error("nas", 80, &e),
+            "Can't connect to nas:80: no answer — check the address and your network"
+        );
+        let e = io::Error::from_raw_os_error(5); // EIO: no plain-words version
         let message = describe_connect_error("nas", 80, &e);
-        assert!(message.starts_with("Cannot connect to nas:80: ") && !message.contains("os error"), "{message}");
+        assert!(message.starts_with("Can't connect to nas:80: ") && !message.contains("os error"), "{message}");
     }
 }

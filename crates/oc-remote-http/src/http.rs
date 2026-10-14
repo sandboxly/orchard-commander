@@ -20,7 +20,7 @@ use std::time::Duration;
 use rustls::{ClientConfig, ClientConnection, StreamOwned};
 
 use crate::tls::{handshake, is_pin_mismatch, pinned_config, server_name, system_config, tcp_connect};
-use crate::{Error, Result, describe_connect_error};
+use crate::{APP_NAME, Error, Result, describe_connect_error};
 
 /// Timeout of every connect, read and write.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
@@ -352,8 +352,9 @@ impl HttpClient {
 
     fn certificate_changed(&self) -> Error {
         Error::CertificateChanged(format!(
-            "The certificate of {} has changed. This could mean someone is intercepting the connection; \
-             refusing to connect.",
+            "The certificate of {} has changed. Someone may be intercepting the connection, so {APP_NAME} \
+             didn't connect. If the server got a new certificate, confirm it with its administrator, then \
+             remove the old one from trusted_certificates.json in the settings folder.",
             self.0.host
         ))
     }
@@ -462,7 +463,7 @@ impl HttpClient {
                 }
             }
         }
-        Err(Error::Connection(format!("{}: too many retries", self.0.host)))
+        Err(Error::Connection(format!("{} didn't answer after several tries — try again", self.0.host)))
     }
 
     fn round_trip(

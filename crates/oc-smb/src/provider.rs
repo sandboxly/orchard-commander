@@ -25,7 +25,7 @@ impl FileSystemProvider for SmbProvider {
     }
 
     fn title(&self) -> &'static str {
-        "SMB (Windows / Samba share)"
+        "SMB (network share)"
     }
 
     fn fields(&self) -> Vec<Field> {
@@ -71,7 +71,7 @@ impl FileSystemProvider for SmbProvider {
     ) -> Result<Arc<dyn FileSystem>, ConnectError> {
         let port = match param_int(params, "port") {
             None => DEFAULT_PORT,
-            Some(p) => u16::try_from(p).map_err(|_| ConnectError::Connection(format!("Invalid port: {p}")))?,
+            Some(p) => u16::try_from(p).map_err(|_| ConnectError::Connection(format!("Port must be a number from 1 to 65535: {p}")))?,
         };
         let username = param_str(params, "username");
         let opts = ConnectOptions {
@@ -196,11 +196,11 @@ mod tests {
         assert_eq!(p.parse_url("smb://").unwrap_err(), "No server in address: smb://");
         assert_eq!(p.parse_url("smb:///share").unwrap_err(), "No server in address: smb:///share");
         assert!(p.parse_url("sftp://server/x").is_err());
-        assert_eq!(p.validate(&params(json!({"host": "", "share": "x"}))).as_deref(), Some("Enter server."));
-        assert_eq!(p.validate(&params(json!({"host": "h"}))).as_deref(), Some("Enter share."));
+        assert_eq!(p.validate(&params(json!({"host": "", "share": "x"}))).as_deref(), Some("Enter the server"));
+        assert_eq!(p.validate(&params(json!({"host": "h"}))).as_deref(), Some("Enter the share"));
         assert_eq!(
             p.validate(&params(json!({"host": "h", "share": "s", "port": "x1"}))).as_deref(),
-            Some("Port must be a number.")
+            Some("Port must be a number")
         );
         assert_eq!(p.validate(&params(json!({"host": "h", "share": "s"}))), None);
     }

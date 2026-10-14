@@ -282,27 +282,39 @@ fn parse_xml<'a>(text: &'a str, what: &str) -> Result<roxmltree::Document<'a>> {
 
 fn s3_error(status: u16, reason: &str, err: &S3Error, what: &str) -> Error {
     let detail = [err.message.as_str(), err.code.as_str(), reason].into_iter().find(|s| !s.is_empty()).unwrap_or("");
-    let message = format!("{what}: {status} {detail}");
     let code = err.code.as_str();
     if AUTH_ERRORS.contains(&code) {
         return Error::AuthenticationRequired(format!("The server didn't accept the access key: {detail}"));
     }
-    let kind = if status == 404 || matches!(code, "NoSuchKey" | "NoSuchBucket" | "NoSuchUpload") {
-        io::ErrorKind::NotFound
+    use io::ErrorKind as K;
+    let (kind, plain) = if status == 404 || matches!(code, "NoSuchKey" | "NoSuchBucket" | "NoSuchUpload") {
+        (K::NotFound, "not found")
     } else if status == 403 {
-        io::ErrorKind::PermissionDenied
+        (K::PermissionDenied, "you don't have permission")
     } else if matches!(code, "BucketAlreadyExists" | "BucketAlreadyOwnedByYou") {
-        io::ErrorKind::AlreadyExists
+        (K::AlreadyExists, "already exists")
     } else if code == "BucketNotEmpty" {
-        io::ErrorKind::DirectoryNotEmpty
+        (K::DirectoryNotEmpty, "the bucket isn't empty")
     } else if matches!(code, "InvalidBucketName" | "KeyTooLongError") {
-        io::ErrorKind::InvalidInput
+        (K::InvalidInput, "the name isn't allowed")
     } else if matches!(code, "QuotaExceeded" | "EntityTooLarge") || status == 507 {
-        io::ErrorKind::StorageFull
+        (K::StorageFull, "not enough space")
     } else {
-        io::ErrorKind::Other
+        (K::Other, "")
     };
-    Error::os(kind, message)
+    // The server's own sentence if it sent one, else plain words (never just
+    // its error code or the status number, unless nothing else is known).
+    let message = err.message.trim().trim_end_matches('.');
+    let why = if !message.is_empty() {
+        message.to_string()
+    } else if !plain.is_empty() {
+        plain.to_string()
+    } else if !reason.trim().is_empty() {
+        format!("the server refused the request (error {status} {})", reason.trim())
+    } else {
+        format!("the server refused the request (error {status})")
+    };
+    Error::os(kind, format!("{what}: {why}"))
 }
 
 /// Copies and completed uploads can fail after "200 OK", with an error in the body.
@@ -702,13 +714,16 @@ impl S3 {
                 if matches!(response.status, 301 | 307) && err.code.is_empty() {
                     err = S3Error {
                         code: "PermanentRedirect".into(),
-                        message: format!("the bucket is in another region than {}", known.as_deref().unwrap_or("None")),
+                        message: match known.as_deref() {
+                            Some(known) => format!("the bucket is in another region than {known}"),
+                            None => "the bucket is in another region".into(),
+                        },
                         region: String::new(),
                     };
                 }
             }
             let what = req.what.clone().unwrap_or_else(|| {
-                format!("{} {}", req.method, self.display(&posix_join("/", &[req.bucket.unwrap_or(""), req.key])))
+                self.display(&posix_join("/", &[req.bucket.unwrap_or(""), req.key]))
             });
             return Err(s3_error(response.status, &response.reason, &err, &what));
         }
@@ -778,7 +793,7 @@ impl S3 {
             entries.push(if item.is_prefix { Entry::dir(rest, 0.0) } else { Self::object_entry(rest, &item) });
         }
         if !found {
-            return Err(Error::os(io::ErrorKind::NotFound, format!("No such folder: {}", self.display(path))));
+            return Err(Error::os(io::ErrorKind::NotFound, format!("{} not found", self.display(path))));
         }
         Ok(entries)
     }
@@ -800,7 +815,7 @@ impl S3 {
                 if self.any_below(bucket, &format!("{key}/"))? {
                     return Ok(Entry::dir(self.basename(path), 0.0));
                 }
-                return Err(Error::os(io::ErrorKind::NotFound, format!("Not found: {}", self.display(path))));
+                return Err(Error::os(io::ErrorKind::NotFound, format!("{} not found", self.display(path))));
             }
             Err(e) => return Err(e),
         };
@@ -829,7 +844,7 @@ impl S3 {
     fn mkdir(self: &Arc<Self>, path: &str, exist_ok: bool) -> Result<()> {
         let (bucket, key) = split(path);
         let Some(bucket) = bucket else {
-            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(path))));
+            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("{} already exists", self.display(path))));
         };
         if key.is_empty() {
             return self.create_bucket(bucket, exist_ok);
@@ -839,7 +854,7 @@ impl S3 {
                 if exist_ok && entry.is_dir {
                     return Ok(());
                 }
-                return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(path))));
+                return Err(Error::os(io::ErrorKind::AlreadyExists, format!("{} already exists", self.display(path))));
             }
             Err(e) if e.is_not_found() => {}
             Err(e) => return Err(e),
@@ -857,7 +872,7 @@ impl S3 {
     fn create_bucket(self: &Arc<Self>, bucket: &str, exist_ok: bool) -> Result<()> {
         if !exist_ok && self.try_exists(&format!("/{bucket}"))? {
             // us-east-1 answers "200 OK" to a second create.
-            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(&format!("/{bucket}")))));
+            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("{} already exists", self.display(&format!("/{bucket}")))));
         }
         let region = if self.region.is_empty() { DEFAULT_REGION.to_string() } else { self.region.clone() };
         self.regions.lock().unwrap_or_else(|e| e.into_inner()).insert(bucket.to_string(), region.clone());
@@ -953,7 +968,7 @@ impl S3 {
             return Err(Error::os(io::ErrorKind::PermissionDenied, format!("Buckets can't be renamed: {}", self.display(src))));
         }
         if self.try_exists(dst)? {
-            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("File exists: {}", self.display(dst))));
+            return Err(Error::os(io::ErrorKind::AlreadyExists, format!("{} already exists", self.display(dst))));
         }
         let entry = self.stat(src)?;
         if entry.is_dir {
@@ -1171,7 +1186,7 @@ impl Multipart {
         let text = String::from_utf8_lossy(&data);
         let id = parse_xml(&text, &fs.type_name).map(|doc| text_of(&doc.root_element(), "UploadId")).unwrap_or_default();
         if id.is_empty() {
-            return Err(Error::os(io::ErrorKind::Other, format!("{} started no upload for {key}", fs.type_name)));
+            return Err(Error::os(io::ErrorKind::Other, format!("{} didn't start the upload of {key}", fs.type_name)));
         }
         Ok(Multipart { fs: fs.clone(), bucket: bucket.into(), key: key.into(), id, etags: Vec::new() })
     }
@@ -1532,7 +1547,7 @@ mod tests {
         assert_eq!((nested.code.as_str(), nested.region.as_str()), ("X", "eu-west-1"));
         assert_eq!(S3Error::parse(b"not xml"), S3Error::default());
         let e = s3_error(404, "Not Found", &S3Error::default(), "GET s3://x/b/k");
-        assert!(e.is_not_found() && e.to_string() == "GET s3://x/b/k: 404 Not Found");
+        assert!(e.is_not_found() && e.to_string() == "GET s3://x/b/k: not found");
         assert!(matches!(s3_error(403, "", &S3Error { code: "SignatureDoesNotMatch".into(), message: "Check your key".into(), region: String::new() }, "x"),
             Error::AuthenticationRequired(m) if m == "The server didn't accept the access key: Check your key"));
         assert!(raise_embedded_error(b"<?xml version=\"1.0\"?>\n<Error><Code>InternalError</Code></Error>", "Copying").is_err());

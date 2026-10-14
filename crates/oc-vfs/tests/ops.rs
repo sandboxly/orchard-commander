@@ -194,16 +194,16 @@ fn target_semantics() {
     // Several sources need an existing directory.
     let err = copy(&[src.child(&["src", "a.txt"]), src.child(&["src", "b.bin"])], &dst.child(&["nope"]), None)
         .unwrap_err();
-    assert_eq!(err.to_string(), "Target directory does not exist: mem:/nope");
+    assert_eq!(err.to_string(), "Destination folder mem:/nope doesn't exist");
 }
 
 #[test]
 fn copying_into_itself_is_refused() {
     let (fs, root) = source_tree();
     let err = copy(&[root.child(&["src"])], &root.child(&["src", "sub"]), None).unwrap_err();
-    assert_eq!(err.to_string(), "Cannot copy or move 'src' into itself");
+    assert_eq!(err.to_string(), "Can't copy or move 'src' into itself");
     let err = move_to(&[root.child(&["src"])], &root, None).unwrap_err();
-    assert_eq!(err.to_string(), "Cannot copy or move 'src' into itself");
+    assert_eq!(err.to_string(), "Can't copy or move 'src' into itself");
     let err = copy(&[root.child(&["src", "a.txt"])], &root.child(&["src"]), Some(Conflict::Overwrite)).unwrap_err();
     assert_eq!(err.to_string(), "Source and destination are the same file: mem:/src/a.txt");
     let err = move_to(&[root.child(&["src", "a.txt"])], &root.child(&["src"]), Some(Conflict::Overwrite)).unwrap_err();
@@ -630,9 +630,9 @@ fn moving_a_folder_into_itself_through_two_handles_is_refused() {
     let a = VPath::new(Arc::new(DiskRw(dir.path().to_path_buf())), "");
     let b = VPath::new(Arc::new(DiskRw(dir.path().to_path_buf())), "");
     let err = move_to(&[a.child(&["src"])], &b.child(&["src", "inner"]), None).unwrap_err();
-    assert_eq!(err.to_string(), "Cannot copy or move 'src' into itself");
+    assert_eq!(err.to_string(), "Can't copy or move 'src' into itself");
     let err = copy(&[a.child(&["src"])], &b.child(&["src", "new"]), None).unwrap_err();
-    assert_eq!(err.to_string(), "Cannot copy or move 'src' into itself");
+    assert_eq!(err.to_string(), "Can't copy or move 'src' into itself");
     assert_eq!(std::fs::read(dir.path().join("src/f.txt")).unwrap(), b"keep");
     assert!(!dir.path().join("src/new").exists());
 }
@@ -678,7 +678,7 @@ fn same_fs_move_with_refused_rename_keeps_skipped_items() {
 fn no_sources_and_no_target_directory_is_an_error() {
     let (_, root) = mem();
     let err = copy(&[], &root.child(&["nope"]), None).unwrap_err();
-    assert_eq!(err.to_string(), "Target directory does not exist: mem:/nope");
+    assert_eq!(err.to_string(), "Destination folder mem:/nope doesn't exist");
     copy(&[], &root, None).unwrap();
 }
 

@@ -143,7 +143,7 @@ impl ColorPicker {
             val: 0,
             well: (0..48).find(|&i| basic_color(i) == color).unwrap_or(0),
             html: TextInput::default(),
-            buttons: ButtonRow::new(&["OK", "Cancel"], 0),
+            buttons: ButtonRow::new(&["Use color", "Cancel"], 0),
             focus: Focus::Basic,
             drag: None,
         };

@@ -147,7 +147,7 @@ fn save(app: &mut App) {
         },
         |app, result| {
             if let Err(e) = result {
-                app.error(format!("Could not save bookmarks: {e}"));
+                app.error(format!("Can't save bookmarks: {e}"));
             }
         },
     );
@@ -226,7 +226,7 @@ pub fn add_bookmark(app: &mut App, side: Option<usize>) {
     when_loaded(app, move |app| {
         let side = side.unwrap_or_else(|| side_of_location(app));
         let Some(location) = location_spec(app, side) else {
-            app.warn("This location can't be bookmarked");
+            app.warn("Can't bookmark this location: only folders can be bookmarked");
             return;
         };
         let target = location_spec(app, 1 - side);
@@ -281,7 +281,8 @@ pub fn go_to_bookmark(app: &mut App) {
         let entries: Vec<(Vec<String>, Bookmark)> =
             store::bookmarks(items(app)).into_iter().map(|(trail, b)| (trail, b.clone())).collect();
         if entries.is_empty() {
-            app.warn("No bookmarks yet: add one with Ctrl+D → Add current folder");
+            let key = if cfg!(target_os = "macos") { "⌘D" } else { "Ctrl+D" };
+            app.warn(format!("No bookmarks yet — press {key} and choose Add current folder"));
             return;
         }
         let shown = entries

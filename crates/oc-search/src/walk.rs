@@ -453,7 +453,7 @@ impl<'a> Walker<'a> {
             };
             if rel.is_empty() {
                 if !entry.is_dir {
-                    self.progress.add_error(format!("{}: not a directory", root.display()));
+                    self.progress.add_error(format!("{}: not a folder", root.display()));
                     return;
                 }
                 continue;

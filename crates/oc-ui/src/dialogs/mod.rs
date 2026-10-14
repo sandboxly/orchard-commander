@@ -101,9 +101,9 @@ pub fn ask_text(
     app.show(InputBox::new(title, message, value, ok_label, on_done));
 }
 
-/// An error or notice that needs acknowledging.
+/// An error or notice that needs acknowledging (one "Close" button).
 pub fn message(app: &mut App, title: &str, text: &str, severity: Severity) {
-    let mb = MessageBox::new(title, text, &["OK"], 0).severity(severity);
+    let mb = MessageBox::new(title, text, &["Close"], 0).severity(severity);
     app.show(mb);
 }
 
@@ -118,8 +118,8 @@ pub fn ask_conflict(app: &mut App, src: &str, dst: &str, reply: Reply<(oc_vfs::C
         (Conflict::Skip, true),
         (Conflict::Cancel, false),
     ];
-    let text = format!("Overwrite\n  {dst}\nwith\n  {src}?");
-    let mb = MessageBox::new("File exists", &text, &["&Overwrite", "&All", "&Skip", "S&kip all", "Cancel"], 2).width(72).on_choice(
+    let text = format!("Replace\n  {dst}\nwith\n  {src}?\n\nYou can't undo this.");
+    let mb = MessageBox::new("File exists", &text, &["&Overwrite", "Overwrite &all", "&Skip", "S&kip all", "Cancel"], 2).width(72).on_choice(
         move |_, choice| {
             reply.send(choice.map_or((Conflict::Cancel, false), |i| CHOICES[i]));
         },

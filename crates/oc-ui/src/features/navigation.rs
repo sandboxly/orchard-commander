@@ -25,7 +25,7 @@ pub fn register(reg: &mut Registry) {
     );
     reg.add(
         Command::new("nav.goto", "Go to path", goto_path)
-            .help("Type a directory or a server address")
+            .help("Type a folder path or a server address")
             .keys(&["Primary+G", "Primary+Shift+G"])
             // First in the bookmarks block (1.x); registered before them.
             .menu(Menu::Commands, "bookmarks"),
@@ -38,13 +38,13 @@ pub fn register(reg: &mut Registry) {
     );
     reg.add(
         Command::new("panel.same", "Same directory", same_dir)
-            .help("Show the active folder in the other panel too (Target = Source)")
+            .help("Show the active folder in the other panel too")
             .keys(&["Primary+E"])
             .menu(Menu::Commands, "panels"),
     );
     reg.add(
         Command::new("panel.reload", "Reload panels", reload_all)
-            .help("Re-read both directories")
+            .help("Re-read both folders")
             .keys(&["Primary+R"])
             .menu(Menu::Commands, "panels"),
     );
@@ -163,7 +163,7 @@ pub fn transfer(app: &mut App, dest: usize) {
 pub fn goto_path(app: &mut App) {
     let side = app.main.files_side();
     let here = main_window::location(app, side);
-    let message = format!("Directory, or server address ({}):", oc_provider::address_examples());
+    let message = format!("Folder or server address ({}):", oc_provider::address_examples());
     dialogs::ask_text(app, "Go to", &message, &here.display(), "Go", move |app, value| {
         let Some(value) = value else { return };
         if crate::connections::is_url(&value) {

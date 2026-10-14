@@ -115,7 +115,7 @@ fn dialog_search_shows_results_as_a_folder() {
 
     // The dialog remembers the entries; from the results it searches where they came from.
     press(&mut app, Key::F(7)); // can't create folders in the results
-    assert!(app.toast.as_ref().is_some_and(|t| t.text.contains("search results is read-only")));
+    assert!(app.toast.as_ref().is_some_and(|t| t.text.contains("search results are read-only")));
     press_with(&mut app, Key::F(7), Mods::ALT);
     let text = app.top_modal_text().unwrap();
     assert!(text.contains("Search for: *.txt") && text.contains(&format!("Search in: {}", e.src.display())), "{text}");
@@ -259,7 +259,7 @@ fn copy_into_the_results_is_refused() {
     app.main.sides[0].panel.set_cursor(row);
     press(&mut app, Key::F(5));
     assert!(app.modal_titles().is_empty());
-    assert!(app.toast.as_ref().is_some_and(|t| t.text == "Can't copy there: search results is read-only"));
+    assert!(app.toast.as_ref().is_some_and(|t| t.text == "Can't copy there: search results are read-only — open a folder in this panel first"));
 }
 
 #[test]
@@ -444,7 +444,7 @@ fn last_results_without_a_search_and_relocation() {
     let e = env();
     let mut app = app(&e);
     press_with(&mut app, Key::Char('f'), Mods::primary().union(Mods::SHIFT));
-    assert!(app.toast.as_ref().is_some_and(|t| t.text.starts_with("No search yet: Alt+F7 or ")));
+    assert!(app.toast.as_ref().is_some_and(|t| t.text.starts_with("No search yet — press Alt+F7 or ")));
 
     let results = run_search(&mut app, 0, |q| q.names = "*.txt".into());
     // A renamed folder: the hits inside follow (multi-rename calls relocate).

@@ -36,7 +36,7 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
         // "wait:MS": let timers and background output run (a shell printing its prompt).
         if let Some(ms) = key.strip_prefix("wait:") {
             let Ok(ms) = ms.parse::<u64>() else {
-                eprintln!("bad {key:?} (use wait:MILLISECONDS)");
+                eprintln!("{key:?} needs milliseconds, e.g. wait:500");
                 return ExitCode::from(2);
             };
             let end = Instant::now() + Duration::from_millis(ms);
@@ -74,7 +74,7 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     let mut renderer = match renderer.join().expect("renderer thread") {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("cannot render offscreen: {e}");
+            eprintln!("can't render offscreen: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -98,7 +98,7 @@ pub fn run(args: &Args, out: &Path) -> ExitCode {
     };
     let rendered = t_render.elapsed();
     if let Err(e) = image.save_png(out) {
-        eprintln!("cannot write {}: {e}", out.display());
+        eprintln!("can't write {}: {e}", out.display());
         return ExitCode::FAILURE;
     }
     let counts: Vec<usize> = app.main.sides.iter().map(|s| s.panel.entries.len()).collect();

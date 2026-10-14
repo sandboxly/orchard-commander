@@ -22,7 +22,7 @@ use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{CertificateError, ClientConfig, ClientConnection, DigitallySignedStruct, SignatureScheme};
 use sha2::{Digest, Sha256};
 
-use crate::{Error, Result, describe_connect_error};
+use crate::{APP_NAME, Error, Result, describe_connect_error};
 
 /// The question for `confirm_certificate`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -287,8 +287,9 @@ pub fn check_certificate(
         Some(known) if known == fingerprint => return Ok(Some(fingerprint)),
         Some(_) => {
             return Err(Error::CertificateChanged(format!(
-                "The certificate of {host} has changed (now {fingerprint}). This could mean someone is \
-                 intercepting the connection; refusing to connect."
+                "The certificate of {host} has changed (now {fingerprint}). Someone may be intercepting the \
+                 connection, so {APP_NAME} didn't connect. If the server got a new certificate, confirm it with \
+                 its administrator, then remove the old one from trusted_certificates.json in the settings folder."
             )));
         }
         None => {}
@@ -300,31 +301,37 @@ pub fn check_certificate(
         problem: describe_problem(problem, &der),
     };
     if !confirm_certificate(&question) {
-        return Err(Error::CertificateRejected(format!("The certificate of {host} was not trusted")));
+        return Err(Error::CertificateRejected(format!("Not connected: the certificate of {host} wasn't trusted")));
     }
     store
         .add(host, port, &fingerprint)
-        .map_err(|e| Error::Connection(format!("Can't remember the certificate in {}: {e}", trusted_certificates.display())))?;
+        .map_err(|e| {
+            Error::Connection(format!(
+                "Can't remember the certificate in {}: {}",
+                trusted_certificates.display(),
+                oc_vfs::io_reason(&e)
+            ))
+        })?;
     Ok(Some(fingerprint))
 }
 
-/// Why the system doesn't trust a certificate, in OpenSSL's words where possible.
+/// Why the system doesn't trust a certificate, for "isn't trusted by this computer (…)".
 fn describe_problem(problem: &CertificateError, der: &[u8]) -> String {
     if is_self_signed(der) {
         return "self-signed certificate".into();
     }
     match problem {
-        CertificateError::UnknownIssuer => "unable to get local issuer certificate".into(),
-        CertificateError::Expired | CertificateError::ExpiredContext { .. } => "certificate has expired".into(),
+        CertificateError::UnknownIssuer => "certificate from an unknown authority".into(),
+        CertificateError::Expired | CertificateError::ExpiredContext { .. } => "expired certificate".into(),
         CertificateError::NotValidYet | CertificateError::NotValidYetContext { .. } => {
-            "certificate is not yet valid".into()
+            "certificate not valid yet".into()
         }
         CertificateError::NotValidForName | CertificateError::NotValidForNameContext { .. } => {
-            "the certificate is for another server name".into()
+            "certificate for another server name".into()
         }
-        CertificateError::Revoked => "certificate revoked".into(),
+        CertificateError::Revoked => "revoked certificate".into(),
         CertificateError::Other(other) => other.to_string(),
-        other => format!("{other:?}"),
+        _ => "certificate that can't be checked".into(),
     }
 }
 
