@@ -26,8 +26,8 @@ Website: https://sandboxly.github.io/orchard-commander/
 curl -fsSL https://raw.githubusercontent.com/sandboxly/orchard-commander/main/packaging/omarchy/install.sh | bash
 ```
 
-Add `-s -- --bind --default` after `bash` to bind Super+Ctrl+Shift+F and open folders in
-Orchard Commander; `-s -- --uninstall` removes it. Rerun the command to update.
+Add `-s -- --bind --default --free-f9` after `bash` to bind Super+Ctrl+Shift+F, open folders in
+Orchard Commander and free F9 from Omarchy's dictation key; `-s -- --uninstall` removes it. Rerun the command to update.
 A `PKGBUILD` for the AUR package `orchard-commander-bin` is in `packaging/omarchy/`.
 
 All versions are on the [releases page](https://github.com/sandboxly/orchard-commander/releases).

@@ -8,6 +8,8 @@
 #
 # Options
 #   --bind        Super+Ctrl+Shift+F opens (or focuses) Orchard Commander
+#   --free-f9     unbind F9 from Omarchy's push-to-talk dictation, so F9 reaches the
+#                 app (its menu strip); dictation keeps working if you rebind it
 #   --default     open folders (inode/directory) with Orchard Commander
 #   --version X   install release X (for example 2.1.0) instead of the latest
 #   --uninstall   remove the app, the launcher entry and the key binding
@@ -25,6 +27,7 @@ APPS="$HOME/.local/share/applications"
 ICONS="$HOME/.local/share/icons/hicolor/256x256/apps"
 BINDINGS="$HOME/.config/hypr/bindings.lua"
 MARK="-- Orchard Commander (added by its installer)"
+MARK_F9="-- Orchard Commander: F9 is its menu (added by its installer)"
 # Window system, keyboard, audio, fonts and GPU loader. Most are on Omarchy already.
 DEPS=(wayland libxkbcommon libx11 libxcursor libxi alsa-lib fontconfig vulkan-icd-loader mesa ca-certificates)
 
@@ -37,6 +40,9 @@ uninstall() {
   if [[ -f "$BINDINGS" ]] && grep -qF -- "$MARK" "$BINDINGS"; then
     # The marker line and the bind line after it.
     sed -i "\|^$MARK\$|,+1d" "$BINDINGS"
+  fi
+  if [[ -f "$BINDINGS" ]] && grep -qF -- "$MARK_F9" "$BINDINGS"; then
+    sed -i "\|^$MARK_F9\$|,+1d" "$BINDINGS"
   fi
   if [[ "$(xdg-mime query default inode/directory 2>/dev/null)" == orchard-commander.desktop ]]; then
     xdg-mime default org.gnome.Nautilus.desktop inode/directory
@@ -101,15 +107,23 @@ add_binding() {
   hyprctl reload >/dev/null 2>&1 || true
 }
 
+free_f9() {
+  [[ -f "$BINDINGS" ]] || die "no $BINDINGS: is this Omarchy 4 or later?"
+  if grep -qF -- "$MARK_F9" "$BINDINGS"; then return; fi
+  printf '\n%s\nhl.unbind("F9")\n' "$MARK_F9" >>"$BINDINGS"
+  hyprctl reload >/dev/null 2>&1 || true
+}
+
 main() {
-  local bind=0 default=0 version=""
+  local free=0 bind=0 default=0 version=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --bind) bind=1 ;;
+      --free-f9) free=1 ;;
       --default) default=1 ;;
       --version) version="${2:?--version needs a number, for example 2.1.0}"; shift ;;
       --uninstall) uninstall; exit 0 ;;
-      -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null || true; exit 0 ;;
+      -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null || true; exit 0 ;;
       *) die "unknown option: $1" ;;
     esac
     shift
@@ -120,6 +134,7 @@ main() {
   install_deps
   install_app "$version"
   [[ $bind -eq 1 ]] && add_binding
+  [[ $free -eq 1 ]] && free_f9
   [[ $default -eq 1 ]] && xdg-mime default orchard-commander.desktop inode/directory
 
   say "Installed. Start it from the launcher (Super+Space) or with: orchard-commander"
