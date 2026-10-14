@@ -125,6 +125,42 @@ pub fn open_with_default_app(path: &Path) -> io::Result<()> {
     open::that_detached(path)
 }
 
+/// Whether `item` (by the folder holding it, so a link counts where it
+/// lies) is on the same volume as the folder `dir`: there a system file
+/// manager moves a dragged item, elsewhere it copies. False when unsure.
+pub fn same_volume(item: &Path, dir: &Path) -> bool {
+    let holder = item.parent().unwrap_or(item);
+    match (volume_id(holder), volume_id(dir)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+#[cfg(unix)]
+fn volume_id(path: &Path) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path).ok().map(|m| m.dev().to_string())
+}
+
+#[cfg(windows)]
+fn volume_id(path: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let mut buf = [0u16; 1024];
+    // SAFETY: wide is NUL-terminated; buf's length is passed along.
+    let ok = unsafe { windows_sys::Win32::Storage::FileSystem::GetVolumePathNameW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32) };
+    if ok == 0 {
+        return None;
+    }
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..end]).to_lowercase())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn volume_id(_path: &Path) -> Option<String> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,3 +195,4 @@ mod tests {
         assert!(mounts_in(&dir.path().join("missing")).is_empty());
     }
 }
+

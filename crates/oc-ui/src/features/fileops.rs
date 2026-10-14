@@ -1,7 +1,9 @@
 //! F5 copy, F6 move/rename, F7 make directory, F8 trash / delete — with the
 //! File exists dialog (asked from the worker through `ask_ui`), a progress
 //! dialog with Cancel, and errors in a toast (port of the file
-//! operation half of `main_window.py` and `ui/operations.py`).
+//! operation half of `main_window.py` and `ui/operations.py`). Files
+//! dropped from the system file manager go through the same prompt
+//! ([`dropped`]).
 //!
 //! Trash and delete don't wait for the disk: the entries leave the panels at
 //! once and the work runs as background jobs, one after another, beside a
@@ -129,13 +131,46 @@ pub fn transfer(app: &mut App, kind: Kind) {
     if refuse(app, &destination, "copy there", destination.fs.capabilities().writable) {
         return;
     }
-    let verb = if kind == Kind::Copy { "Copy" } else { "Move" };
     let default = match &single {
         Some(name) if destination == source_loc => name.clone(),
         _ => destination.display(),
     };
+    ask_target(app, kind, &what, &default, sources, source_loc, destination, Origin::Panel(side));
+}
+
+/// Where a copy / move came from: the marked files of a panel (whose marks
+/// go afterwards), or a drop on panel `n` from another app.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    Panel(usize),
+    Dropped(usize),
+}
+
+impl Origin {
+    /// The panel that is active afterwards.
+    fn side(self) -> usize {
+        match self {
+            Origin::Panel(s) | Origin::Dropped(s) => s,
+        }
+    }
+}
+
+/// The Copy / Move prompt: the target (prefilled with `default`), then run.
+/// A relative path is taken from `source_loc`.
+#[allow(clippy::too_many_arguments)]
+fn ask_target(
+    app: &mut App,
+    kind: Kind,
+    what: &str,
+    default: &str,
+    sources: Vec<VPath>,
+    source_loc: VPath,
+    destination: VPath,
+    origin: Origin,
+) {
+    let verb = if kind == Kind::Copy { "Copy" } else { "Move" };
     let message = format!("{verb} {what} to:");
-    dialogs::ask_text(app, verb, &message, &default, verb, move |app, value| {
+    dialogs::ask_text(app, verb, &message, default, verb, move |app, value| {
         let Some(value) = value else { return };
         let target = if value == destination.display() {
             destination
@@ -151,8 +186,71 @@ pub fn transfer(app: &mut App, kind: Kind) {
                 oc_local::local(base.join(path))
             }
         };
-        run(app, kind, sources, Some(target), side);
+        start(app, kind, sources, Some(target), origin);
     });
+}
+
+/// Copy or move for files dropped from another app (the binary reads the
+/// modifier keys held at the drop).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DropAction {
+    /// The system file manager's rule: move within a volume, copy across volumes.
+    #[default]
+    Auto,
+    Copy,
+    Move,
+}
+
+/// Files dropped on the main window from the system file manager: into the
+/// folder row under the pointer, else that panel's folder (`at`: the cell;
+/// None: the active panel). The F5 / F6 prompt confirms the target, then
+/// the usual copy / move runs (File exists dialog, progress, Cancel).
+pub fn dropped(app: &mut App, paths: Vec<std::path::PathBuf>, at: Option<(u16, u16)>, action: DropAction) {
+    if paths.is_empty() {
+        return;
+    }
+    if app.has_modal(crate::MAIN_WINDOW) {
+        app.warn("Close the dialog first, then drop the files again");
+        return;
+    }
+    let (side, target) = main_window::drop_target(app, at);
+    if refuse(app, &target, "copy there", target.fs.capabilities().writable) {
+        return;
+    }
+    let local_target = target.is_local().then(|| std::path::PathBuf::from(&target.path));
+    // Stat on a worker: the files may be on a slow network drive.
+    app.tasks.run_in_background(
+        move |_| {
+            let dirs: Vec<bool> = paths.iter().map(|p| p.is_dir()).collect();
+            let same = local_target.as_ref().is_some_and(|t| paths.iter().all(|p| oc_local::same_volume(p, t)));
+            (paths, dirs, same)
+        },
+        move |app, (paths, dirs, same)| {
+            let parent = paths[0].parent().map(oc_local::local);
+            if paths.iter().all(|p| p.parent().map(oc_local::local) == parent) && parent.as_ref() == Some(&target) {
+                return; // dropped where they already are
+            }
+            let kind = match action {
+                DropAction::Copy => Kind::Copy,
+                DropAction::Move => Kind::Move,
+                DropAction::Auto if same => Kind::Move,
+                DropAction::Auto => Kind::Copy,
+            };
+            let entries: Vec<Entry> = paths
+                .iter()
+                .zip(&dirs)
+                .map(|(p, &d)| {
+                    let name = p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned());
+                    if d { Entry::dir(name, 0.0) } else { Entry::file(name, 0, 0.0) }
+                })
+                .collect();
+            let what = describe(&entries.iter().collect::<Vec<_>>());
+            let sources: Vec<VPath> = paths.iter().map(oc_local::local).collect();
+            let source_loc = parent.unwrap_or_else(|| target.clone());
+            let default = target.display();
+            ask_target(app, kind, &what, &default, sources, source_loc, target, Origin::Dropped(side));
+        },
+    );
 }
 
 /// F7.
@@ -242,6 +340,11 @@ fn conflict_asker(tasks: Tasks) -> impl FnMut(&str, &str) -> Conflict {
 /// their cursors and the source's marks are cleared. Trash and delete are
 /// queued instead (see [`Removals`]).
 pub fn run(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>, side: usize) {
+    start(app, kind, sources, target, Origin::Panel(side));
+}
+
+fn start(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>, origin: Origin) {
+    let side = origin.side();
     if matches!(kind, Kind::Trash | Kind::Delete) {
         remove(app, kind, sources, side);
         return;
@@ -280,7 +383,7 @@ pub fn run(app: &mut App, kind: Kind, sources: Vec<VPath>, target: Option<VPath>
             let callbacks = TransferCallbacks { on_conflict: &mut ask, on_progress: Some(&mut report), is_cancelled: &cancelled };
             oc_local::copy(&sources, &target, kind == Kind::Move, callbacks)
         },
-        move |app, result| finished(app, side, title, progress_dialog, result),
+        move |app, result| finished(app, origin, title, progress_dialog, result),
     );
 }
 
@@ -294,7 +397,8 @@ impl Drop for RunningGuard {
 
 /// After an operation: close the progress dialog, report (errors too as a
 /// toast, like 1.x), refresh, and make the source panel the active one.
-pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::modal::ModalId>, result: oc_vfs::Result<()>) {
+pub fn finished(app: &mut App, origin: Origin, title: &str, dialog: Option<crate::modal::ModalId>, result: oc_vfs::Result<()>) {
+    let side = origin.side();
     app.operation = None;
     app.operation_running = None;
     if let Some(id) = dialog {
@@ -305,7 +409,9 @@ pub fn finished(app: &mut App, side: usize, title: &str, dialog: Option<crate::m
         Err(VfsError::Cancelled) => app.notify(format!("{title} cancelled"), Severity::Warning),
         Err(e) => app.notify(e.to_string(), Severity::Error),
     }
-    app.main.sides[side].panel.set_all_marks(false);
+    if let Origin::Panel(s) = origin {
+        app.main.sides[s].panel.set_all_marks(false);
+    }
     // Out of the terminal first: it reports the focus loss to the side it was on.
     crate::features::terminal::focus_panels(app);
     app.main.active = side;

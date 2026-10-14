@@ -93,7 +93,14 @@ struct Platform {
     /// The main window's content area while neither maximized nor full
     /// screen (logical): Qt's normal geometry, saved with the window state.
     normal_geometry: Option<geometry::Rect>,
+    /// Files dropped on a window in this round of events (winit sends one
+    /// event per file), with the cell under the pointer and the action the
+    /// held keys asked for at the first one.
+    dropped: HashMap<WindowId, PendingDrop>,
 }
+
+/// Dropped paths, the cell under the pointer, the action the keys ask for.
+type PendingDrop = (Vec<std::path::PathBuf>, Option<(u16, u16)>, oc_ui::DropAction);
 
 pub fn run(args: Args, started: Instant) -> ExitCode {
     // Scanning the system fonts takes ~100 ms: start it now, in parallel
@@ -130,6 +137,7 @@ pub fn run(args: Args, started: Instant) -> ExitCode {
         #[cfg(target_os = "macos")]
         window_menu: None,
         normal_geometry: None,
+        dropped: HashMap::new(),
     };
     if let Err(e) = event_loop.run_app(&mut platform) {
         eprintln!("event loop error: {e}");
@@ -695,6 +703,17 @@ impl ApplicationHandler<AppEvent> for Platform {
                     self.mouse(key, MouseKind::HScroll(cols));
                 }
             }
+            WindowEvent::DroppedFile(path) => {
+                let w = &self.windows[&key];
+                let entry = self.dropped.entry(key).or_insert_with(|| {
+                    let (pointer, action) = crate::dropping::pointer_and_action(&w.window);
+                    let size = w.window.inner_size();
+                    let inside = |p: &PhysicalPosition<f64>| p.x >= 0.0 && p.y >= 0.0 && p.x < size.width as f64 && p.y < size.height as f64;
+                    (Vec::new(), pointer.filter(inside).map(|p| w.cell_at(p)), action)
+                });
+                entry.0.push(path);
+                return; // all of them at once, in about_to_wait
+            }
             WindowEvent::Focused(f) => self.send(key, Event::Focus(f)),
             WindowEvent::ThemeChanged(t) => self.app().set_system_dark(t == winit::window::Theme::Dark),
             _ => return,
@@ -703,6 +722,11 @@ impl ApplicationHandler<AppEvent> for Platform {
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        for (key, (paths, at, action)) in std::mem::take(&mut self.dropped) {
+            if let Some(id) = self.windows.get(&key).map(|w| w.id) {
+                self.app().drop_files(id, paths, at, action);
+            }
+        }
         self.settle(el);
     }
 

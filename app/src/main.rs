@@ -16,6 +16,7 @@
 // that print attach to it (`attach_parent_console`).
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
+mod dropping;
 mod geometry;
 mod platform;
 mod screenshot;

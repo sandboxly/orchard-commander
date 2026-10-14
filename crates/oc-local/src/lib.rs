@@ -32,7 +32,7 @@ pub use listing::{
 };
 pub use oc_vfs::human_size;
 pub use ops::{copy_paths, measure, move_paths, resolve_target, trash_paths};
-pub use system::{disk_free, home_dir, locations, open_with_default_app};
+pub use system::{disk_free, home_dir, locations, open_with_default_app, same_volume};
 
 use error::IoContext;
 

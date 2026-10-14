@@ -574,6 +574,28 @@ pub fn register(reg: &mut Registry) {
 }
 
 /// Helpers for features: the panels' locations.
+/// Where files dropped at cell `at` go: the folder row under the pointer,
+/// else that side's folder; without a position, the active panel's folder.
+pub fn drop_target(app: &App, at: Option<(u16, u16)>) -> (usize, VPath) {
+    let l = layout(app);
+    let side = at
+        .and_then(|(c, r)| (0..2).find(|&s| l.frames[s].contains(c, r) || l.tabs[s].contains(c, r)))
+        .unwrap_or_else(|| app.main.files_side());
+    let p = &app.main.sides[side].panel;
+    if let Some((c, r)) = at
+        && app.main.sides[side].mode == SideMode::Files
+    {
+        let rows = panel::draw::layout(l.frames[side]).rows;
+        if rows.contains(c, r) {
+            let row = panel::draw::first_row(p, rows.h as usize) + (r - rows.y) as usize;
+            if let Some(e) = p.entry_at(row).filter(|e| e.is_dir) {
+                return (side, p.target(&e.name));
+            }
+        }
+    }
+    (side, p.location.clone())
+}
+
 pub fn location(app: &App, side: usize) -> VPath {
     app.main.sides[side].panel.location.clone()
 }

@@ -548,6 +548,13 @@ Colors come only from `ctx.theme.colors` (the scheme's roles: `surface`,
   reload (search results forget the hits at once).
   A slow job says so on its panel's bottom line (`FilePanel::note`);
   quitting waits for the running job and runs the queued ones (bounded).
+* Drops from the system file manager: winit reports only paths, so
+  `app/src/dropping.rs` asks the system for the pointer and the held keys
+  (macOS, Windows; X11 knows neither) and calls `App::drop_files`.
+  `fileops::dropped` picks the folder row or panel under the pointer
+  (`main_window::drop_target`), copy or move (keys, else move within a
+  volume: `oc_local::same_volume`) and shows the F5 / F6 prompt; a drop
+  leaves the panel's marks alone (`fileops::Origin`).
 * Folder watching: `panel/watch.rs` (notify), debounced 250 ms, reload keeps
   the cursor; never supersedes a listing still on its way. Watchers are
   started and stopped on a worker (FSEvents starts/joins a thread). A

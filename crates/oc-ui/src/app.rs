@@ -26,6 +26,7 @@ use oc_grid::Frame;
 
 use crate::clipboard::Clipboard;
 use crate::commands::{CommandId, Registry};
+use crate::features::fileops::DropAction;
 use crate::geom::Rect;
 use crate::input::{Event, MouseButton, MouseKind};
 use crate::main_window::MainWindow;
@@ -460,6 +461,16 @@ impl App {
     pub fn screen(&self, win: WinId) -> Rect {
         let (c, r) = self.size_of(win);
         Rect::screen(c, r)
+    }
+
+    /// Files dropped on window `win` from another app, at cell `at` if the
+    /// platform knows where (see [`crate::features::fileops::dropped`]).
+    /// Only the main window takes them.
+    pub fn drop_files(&mut self, win: WinId, paths: Vec<std::path::PathBuf>, at: Option<(u16, u16)>, action: DropAction) {
+        if win == MAIN_WINDOW {
+            crate::features::fileops::dropped(self, paths, at, action);
+            self.redraw = true;
+        }
     }
 
     /// Feed one input event for window `win`.
