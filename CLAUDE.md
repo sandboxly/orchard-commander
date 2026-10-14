@@ -24,7 +24,7 @@ packaging/macos/package.sh --notarize                  # signed, notarized dist/
 - Build against FFmpeg with `FFMPEG_DIR=vendor/ffmpeg/<platform>`; `cargo run`/`cargo test` need the libraries on `PATH` (Windows) or `LD_LIBRARY_PATH` (Linux). bindgen needs libclang.
 - `ORCHARD_COMMANDER_CONFIG_DIR=<empty dir>` runs the app (or `--screenshot`) with default settings and without touching the real config.
 - `OC_TIMING=1` prints startup phases; `OC_TIMING=exit` quits after the first frame.
-- Server tests: SFTP runs an in-process russh server; WebDAV/S3/SMB use WsgiDAV, moto and impacket from a Python environment (`OC_TEST_PYTHON`, default `../fcmd/.venv`) and Samba/OpenSSH/MinIO in Docker. Each skips with a note when its server is unavailable.
+- Server tests: SFTP runs an in-process russh server; WebDAV/S3/SMB use WsgiDAV, moto and impacket from a Python environment (`OC_TEST_PYTHON`, default `.venv` at the repository root: `uv venv .venv && uv pip install --python .venv/bin/python -r tests/servers-requirements.txt`) and Samba/OpenSSH/MinIO in Docker. Each skips with a note when its server is unavailable. The SFTP interop test against 1.x runs only with `OC_PYTHON1_CHECKOUT=<dir>` (e.g. `git worktree add <dir> python-1.x`).
 - Windows/Linux packages come from CI (`.github/workflows/ci.yml`, `packaging/stage.sh`, Inno Setup, nfpm, appimagetool). Release steps and the native-library table: `docs/RELEASING.md`; fixed asset names and identities: `docs/RELEASE-2.0-REQUIREMENTS.md`.
 
 ## Architecture

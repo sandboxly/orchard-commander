@@ -2,7 +2,7 @@
 
 This is the guide for adding features to Orchard Commander 2.x. Read it before
 touching `crates/oc-ui` or `app/`. The Python 1.x code
-(`../fcmd/src/orchard_commander/ui/`) is the behavioural reference; this
+(branch `python-1.x`, `src/orchard_commander/ui/`) is the behavioural reference; this
 document says where each kind of thing goes in Rust.
 
 ## The pieces
@@ -106,7 +106,7 @@ reg.add(
 
 * `Primary` is ⌘ on macOS and Ctrl elsewhere (Qt's `ControlModifier`); `Ctrl`
   is the Control key itself (⌃ on macOS). Take shortcuts from
-  `../fcmd/docs/manual/13-keyboard-reference.md` and `main_window.py`.
+  `docs/manual/13-keyboard-reference.md` and 1.x's `main_window.py`.
 * Key matching uses the key **without** modifiers applied (⌥⌘A is `a`, not
   `å`; ⇧⌘. is `.` + Shift). Typed text (for `+`, `*`, quick search, inputs)
   is in `KeyEvent::text`.
