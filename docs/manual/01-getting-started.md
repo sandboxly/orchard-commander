@@ -61,6 +61,7 @@ To use Orchard Commander without installing it, extract
 | Fedora, RHEL, openSUSE | `Orchard-Commander-Linux-x86_64.rpm` | `sudo dnf install ./Orchard-Commander-Linux-x86_64.rpm` (openSUSE: `sudo zypper install`) |
 | Any distribution | `Orchard-Commander-Linux-x86_64.AppImage` | Make the file executable (`chmod +x`) and run it |
 | Any distribution | `Orchard-Commander-Linux.tar.gz` | Extract it and run `./orchard-commander` in the `orchard-commander` folder |
+| Omarchy, Arch Linux | install script | See below |
 
 The `.deb` and `.rpm` packages install the app to `/opt/orchard-commander`,
 add the `orchard-commander` command and a menu entry, and install the
@@ -68,6 +69,31 @@ libraries the app needs. Uninstall them with your package manager.
 
 The AppImage needs FUSE. Without it, run the AppImage with
 `--appimage-extract-and-run`.
+
+#### Omarchy and Arch Linux
+
+One command installs the app for your user, adds a menu entry to the
+launcher (**Super+Space**) and installs missing libraries with `pacman`
+(it asks for your password for that):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sandboxly/orchard-commander/main/packaging/omarchy/install.sh | bash
+```
+
+The app goes to `~/.local/opt/orchard-commander`, and the `orchard-commander`
+command to `~/.local/bin`. Run the command again to update. To pass options,
+add `-s --` after `bash`, for example `bash -s -- --bind --default`:
+
+| Option | What it does |
+| --- | --- |
+| `--bind` | **Super+Ctrl+Shift+F** opens Orchard Commander, or focuses it if it's open |
+| `--default` | Folders open in Orchard Commander instead of the default file manager |
+| `--free-f9` | Frees **F9** for the menu strip (Omarchy uses it for dictation) |
+| `--version 2.1.0` | Installs that release instead of the latest |
+| `--uninstall` | Removes the app, the menu entry and the changes the options made. Your settings stay in `~/.config/orchard-commander` |
+
+`--bind` and `--free-f9` add a marked line each to
+`~/.config/hypr/bindings.lua`; `--uninstall` removes them again.
 
 ## The main window
 

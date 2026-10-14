@@ -140,7 +140,7 @@ main() {
   say "Installed. Start it from the launcher (Super+Space) or with: orchard-commander"
   [[ $bind -eq 1 ]] && echo "Key: Super+Ctrl+Shift+F"
   [[ $default -eq 1 ]] && echo "Folders now open in Orchard Commander."
-  [[ $bind -eq 0 || $default -eq 0 ]] && echo "Add --bind and --default to set up a key or the folder opener."
+  [[ $bind -eq 0 || $default -eq 0 || $free -eq 0 ]] && echo "Options: --bind adds a key; --default opens folders here; --free-f9 frees F9 from Omarchy's dictation key."
   case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "Add ~/.local/bin to your PATH to run it from a terminal." ;; esac
 }
 

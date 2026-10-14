@@ -26,6 +26,19 @@ Debian and Ubuntu, or `mesa-vulkan-drivers` and `mesa-libEGL` on Fedora.
 To try the other graphics interface, start the app with
 `WGPU_BACKEND=gl orchard-commander` or `WGPU_BACKEND=vulkan orchard-commander`.
 
+### Linux: F9 does nothing (Omarchy)
+
+Omarchy uses **F9** for push-to-talk dictation, so the key never reaches the
+app. Free it by running the install script again with `--free-f9`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sandboxly/orchard-commander/main/packaging/omarchy/install.sh | bash -s -- --free-f9
+```
+
+Or add `hl.unbind("F9")` to `~/.config/hypr/bindings.lua`. Dictation then
+no longer starts with F9; bind it to another key there. Click **F9** in the
+function-key bar to open the menu in the meantime.
+
 ## Servers
 
 ### A server on my network can't be reached (macOS)
