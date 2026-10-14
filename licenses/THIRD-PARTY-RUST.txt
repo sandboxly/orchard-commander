@@ -10047,23 +10047,23 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - orchard-commander 2.0.0
-  - oc-archive 2.0.0
-  - oc-config 2.0.0
-  - oc-grid 2.0.0
-  - oc-local 2.0.0
-  - oc-media 2.0.0
-  - oc-pdf 2.0.0
-  - oc-preview 2.0.0
-  - oc-provider 2.0.0
-  - oc-remote-http 2.0.0
-  - oc-rename 2.0.0
-  - oc-search 2.0.0
-  - oc-sftp 2.0.0
-  - oc-smb 2.0.0
-  - oc-term 2.0.0
-  - oc-ui 2.0.0
-  - oc-vfs 2.0.0
+  - orchard-commander 2.0.1
+  - oc-archive 2.0.1
+  - oc-config 2.0.1
+  - oc-grid 2.0.1
+  - oc-local 2.0.1
+  - oc-media 2.0.1
+  - oc-pdf 2.0.1
+  - oc-preview 2.0.1
+  - oc-provider 2.0.1
+  - oc-remote-http 2.0.1
+  - oc-rename 2.0.1
+  - oc-search 2.0.1
+  - oc-sftp 2.0.1
+  - oc-smb 2.0.1
+  - oc-term 2.0.1
+  - oc-ui 2.0.1
+  - oc-vfs 2.0.1
   - block2 0.5.1 <https://github.com/madsmtm/objc2>
   - block2 0.6.2 <https://github.com/madsmtm/objc2>
   - chrono 0.4.45 <https://github.com/chronotope/chrono>
