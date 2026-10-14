@@ -1,4 +1,5 @@
 """Build the website into _site/: the landing page plus the manual rendered from docs/manual.
+The landing page's @VERSION@ ("2.1.0") and @MINOR_VERSION@ ("2.1") come from the workspace version in Cargo.toml.
 
     pip install markdown && python site/build.py    then open _site/index.html
 """
@@ -9,6 +10,7 @@ import html
 import re
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 import markdown
@@ -116,9 +118,18 @@ def render(text: str) -> str:
     return body
 
 
+def version() -> str:
+    with open(ROOT / "Cargo.toml", "rb") as f:
+        return tomllib.load(f)["workspace"]["package"]["version"]
+
+
 def build() -> None:
     shutil.rmtree(OUT, ignore_errors=True)
     shutil.copytree(SITE, OUT, ignore=shutil.ignore_patterns("build.py", "__pycache__"))
+    full = version()
+    landing = OUT / "index.html"
+    text = landing.read_text(encoding="utf-8").replace("@VERSION@", full)
+    landing.write_text(text.replace("@MINOR_VERSION@", ".".join(full.split(".")[:2])), encoding="utf-8")
 
     chapters = sorted(p for p in MANUAL.glob("*.md") if p.name != "index.md")
     pages = [MANUAL / "index.md", *chapters]
