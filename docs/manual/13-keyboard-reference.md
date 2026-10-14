@@ -12,7 +12,7 @@ keyboards, the function keys may require **fn**.
 | Jump to a name | Type its first letters | Type its first letters |
 | Open a folder or archive; open a file | Enter | Enter |
 | Open with the default application | Shift+Enter or ⌘Enter | Shift+Enter or Ctrl+Enter |
-| Parent folder | Backspace | Backspace |
+| Parent folder (on Windows, from a drive's top folder: all drives) | Backspace | Backspace |
 | Switch to the other side | Tab or ⇧Tab | Tab or Shift+Tab |
 | Reload both panels (read the folders again) | ⌘R | Ctrl+R |
 | Sort by a column; again to reverse | Click its header | Click its header |
@@ -42,6 +42,7 @@ keyboards, the function keys may require **fn**.
 | Copy | F5 | F5 |
 | Move or rename | F6 | F6 |
 | Make directory | F7 | F7 |
+| Show information about the item under the cursor | ⌥Enter | Alt+Enter |
 | Move to trash (delete on servers) | F8, Delete or ⌘⌫ | F8, Delete or Ctrl+Backspace |
 | Multi-rename | ⌘M | Ctrl+M |
 | Undo the last multi-rename | ⌘Z | Ctrl+Z |

@@ -10,6 +10,8 @@
 //! OS fast copies), everything else streams through `oc_vfs::ops`.
 
 mod cloud;
+mod details;
+mod drives;
 mod error;
 mod listing;
 mod ops;
@@ -26,6 +28,8 @@ use oc_vfs::{
     WriteStream,
 };
 
+pub use details::{Details, details};
+pub use drives::{DRIVES_TITLE, DrivesFS, drives, is_drives};
 pub use listing::{
     SF_DATALESS, UF_HIDDEN, WINDOWS_CLOUD_ATTRIBUTES, WINDOWS_HIDDEN_ATTRIBUTES, list_dir, parent_of, read_entries,
     stat_entry,
@@ -132,6 +136,11 @@ impl FileSystem for LocalFS {
         Some(PathBuf::from(path))
     }
 
+    /// Windows: ".." from a drive's root lists the drives ([`DrivesFS`]).
+    fn exit_to(&self) -> Option<VPath> {
+        cfg!(windows).then(drives)
+    }
+
     fn fetch_online_only(&self, path: &str, timeout: Duration, is_cancelled: &dyn Fn() -> bool) -> Result<()> {
         CLOUD_FETCHES.fetch(Path::new(path), timeout, is_cancelled)
     }
@@ -235,7 +244,14 @@ pub fn basename(path: &str) -> &str {
         Some(i) => &trimmed[i + 1..],
         None => trimmed,
     };
-    if name.is_empty() { path } else { name }
+    if !name.is_empty() {
+        name
+    } else if cfg!(windows) && trimmed.len() == 2 && trimmed.ends_with(':') {
+        // A drive's root goes by its entry in the drives list: "C:\\" → "C:".
+        trimmed
+    } else {
+        path
+    }
 }
 
 /// Absolute and lexically normalized ("a/../b" → "b"), like `os.path.abspath`.

@@ -97,6 +97,9 @@ pub fn multi_rename(app: &mut App) {
     }
     // The real files: search hits are renamed where they are.
     let paths = p.selected_paths();
+    if crate::features::fileops::refuse_drive(app, &p.location.clone(), &paths, "rename") {
+        return;
+    }
     for path in &paths {
         let caps = path.fs.capabilities();
         if !caps.writable {
@@ -175,6 +178,9 @@ pub fn rename_in_place(app: &mut App) {
     // Search results: the real file (the row's name is its relative path).
     let location = p.target(&row);
     let item = item_for(&location, entry);
+    if crate::features::fileops::refuse_drive(app, &p.location.clone(), std::slice::from_ref(&location), "rename") {
+        return;
+    }
     if !oc_rename::rename_supported(&location) {
         app.warn(format!("Can't rename here: {}", location.fs.read_only_reason()));
         return;

@@ -52,7 +52,7 @@ fn names(app: &App, side: usize) -> Vec<String> {
 fn files_menu_keeps_the_1x_order() {
     // 1.x main_window.py: Multi-rename and Undo rename sit between Move / rename
     // and Make directory, in one group with the other file operations (F2's
-    // Rename, new in 2.0.1, next to Move / rename).
+    // Rename, new in 2.0.1, next to Move / rename; 2.1's Show info last).
     let e = env();
     let app = app(&e);
     let labels: Vec<&str> = oc_ui::menus::menu_items(&app, oc_ui::menus::Menu::Files)
@@ -63,7 +63,7 @@ fn files_menu_keeps_the_1x_order() {
         labels,
         [
             "Select all", "Clear selection", "-", "Copy", "Move / rename", "Rename", "Multi-rename", "Undo rename",
-            "Make directory", "Move to trash", "-", "Find files", "Last search results", "-", "Quit",
+            "Make directory", "Move to trash", "Show info", "-", "Find files", "Last search results", "-", "Quit",
         ]
     );
 }

@@ -491,6 +491,17 @@ fn local_fs_paths() {
         assert_eq!(lfs.display("/a/b"), "/a/b");
         assert_eq!(local("/a/./b/../c").path, "/a/c");
         assert_eq!(local("/").name(), "/");
+        assert!(local("/").parent().is_none());
+    }
+    // ".." from a drive's root lists the drives, with the cursor on it.
+    #[cfg(windows)]
+    {
+        assert_eq!(lfs.basename("C:\\"), "C:");
+        assert_eq!(lfs.basename("C:\\Users"), "Users");
+        let up = local("C:\\").parent().unwrap();
+        assert_eq!(up, oc_local::drives());
+        assert!(up.list_dir(Default::default()).unwrap().iter().any(|e| e.name == "C:"));
+        assert_eq!(up.child(&["C:"]).resolved(), local("C:\\"));
     }
     // Every LocalFS is the same file system.
     let other: Arc<dyn FileSystem> = Arc::new(LocalFS::new());

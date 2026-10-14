@@ -16,6 +16,9 @@ On Mac keyboards without Home and End keys, press **fn+←** and **fn+→**.
 - To open the folder under the cursor, press **Enter** or double-click it.
 - To go to the parent folder, press **Backspace**, or open the `..` entry at
   the top of the list. The cursor is placed on the folder you came from.
+- On Windows, going up from a drive's top folder (such as `C:\`) shows
+  **Drives**, a list of all your drives (`C:`, `D:`, …). Open one to go to
+  that drive. Drives can't be moved, deleted or renamed from this list.
 
 Archives open like folders; see [Archives](06-archives.md).
 

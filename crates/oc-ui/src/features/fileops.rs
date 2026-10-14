@@ -145,6 +145,15 @@ fn refuse(app: &mut App, location: &VPath, what: &str, ok: bool) -> bool {
     !ok
 }
 
+/// Tell the user (and return true) if `paths`, selected in `location`, are
+/// whole drives (the drives list's entries), which can't be moved, deleted
+/// or renamed.
+pub(crate) fn refuse_drive(app: &mut App, location: &VPath, paths: &[VPath], what: &str) -> bool {
+    let Some(drive) = paths.first().filter(|_| oc_local::is_drives(location)) else { return false };
+    app.warn(format!("Can't {what} {}: it's a whole drive", drive.display()));
+    true
+}
+
 /// F5 / F6: ask for the target (the other panel; for a single item when both
 /// panels show the same folder, its name — a rename), then run.
 pub fn transfer(app: &mut App, kind: Kind) {
@@ -159,6 +168,9 @@ pub fn transfer(app: &mut App, kind: Kind) {
     let sources = source.selected_paths();
     let source_loc = source.location.clone();
     let destination = app.main.sides[1 - side].panel.location.clone();
+    if kind == Kind::Move && refuse_drive(app, &source_loc, &sources, "move") {
+        return;
+    }
     if kind == Kind::Move
         && let Some(blocked) = sources.iter().find(|p| !p.fs.capabilities().writable).cloned()
         && refuse(app, &blocked, "move from here", false)
@@ -311,6 +323,9 @@ pub fn trash(app: &mut App) {
     let what = describe(&entries);
     let them = if entries.len() == 1 { "it" } else { "them" };
     let paths = p.selected_paths();
+    if refuse_drive(app, &p.location.clone(), &paths, "delete") {
+        return;
+    }
     if let Some(blocked) = paths.iter().find(|p| !(p.fs.capabilities().can_trash || p.fs.capabilities().writable)).cloned()
         && refuse(app, &blocked, "delete here", false)
     {

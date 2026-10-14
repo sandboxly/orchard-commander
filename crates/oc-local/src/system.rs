@@ -52,6 +52,14 @@ pub(crate) fn mounts_in(root: &Path) -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// The drive roots for [`crate::DrivesFS`]: Windows' drives, none elsewhere.
+pub(crate) fn drive_roots() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    return windows_drives().into_iter().map(PathBuf::from).collect();
+    #[cfg(not(windows))]
+    Vec::new()
+}
+
 /// "C:\\", "D:\\", … for every drive letter Windows reports, without touching
 /// the drives (a stat of an empty card reader or floppy can hang).
 #[cfg(windows)]

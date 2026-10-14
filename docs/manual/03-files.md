@@ -102,6 +102,24 @@ Servers have no trash. On a server, the confirmation is titled
 **Delete permanently** and the files are deleted immediately. This cannot be
 undone.
 
+## Showing information about an item
+
+Press **⌥Enter** / **Alt+Enter** to open a window with information about the
+item under the cursor (on `..`, about the folder you are in):
+
+- its name, path and type,
+- its size; for a folder, the size of everything in it and how many files and
+  folders it contains, plus the free space on its disk,
+- when it was modified, created and last opened,
+- its permissions and owner (macOS and Linux) or attributes (Windows), and
+  where a link points.
+
+For a folder, **Space used** shows what takes up its space: a ring chart of
+its biggest items in your color scheme's colors, with a list of their sizes
+and shares. The folder is measured in the background, so the numbers fill in
+while you watch; big folders take a while. Close the window with **Esc**,
+**Enter** or **⌥Enter** / **Alt+Enter**.
+
 ## Opening files
 
 | Action | Result |

@@ -195,8 +195,9 @@ fn command_palette_lists_like_1x() {
     let text = app.top_modal_text().unwrap();
     let titles: Vec<&str> = text.lines().collect();
     assert_eq!(titles[..4], ["Toggle preview", "Next preview view", "Edit", "New file"]);
-    // 1.x's 40 plus About (1.x had only macOS's native About panel) and F2's Rename.
-    assert_eq!(titles.len(), 42, "{titles:?}");
+    // 1.x's 40 plus About (1.x had only macOS's native About panel), F2's
+    // Rename and 2.1's Show info.
+    assert_eq!(titles.len(), 43, "{titles:?}");
     for t in ["Menu", "Stop search", "Zoom in", "Right drive / location", "About Orchard Commander"] {
         assert!(titles.contains(&t), "{t}");
     }
@@ -238,6 +239,7 @@ fn menus_are_grouped_like_1x() {
             Some("files.undo_rename"),
             Some("files.mkdir"),
             Some("files.trash"),
+            Some("files.info"),
             None,
             Some("search.find"),
             Some("search.last"),
@@ -541,7 +543,8 @@ fn files_and_commands_menus_group_like_1x() {
             .collect::<Vec<_>>()
     };
     let files = labels(oc_ui::Menu::Files);
-    let ops = ["Copy", "Move / rename", "Rename", "Multi-rename", "Undo rename", "Make directory", "Move to trash"];
+    // 1.x's operations, then 2.1's Show info.
+    let ops = ["Copy", "Move / rename", "Rename", "Multi-rename", "Undo rename", "Make directory", "Move to trash", "Show info"];
     let start = files.iter().position(|l| l == "Copy").unwrap();
     assert_eq!(files[start - 1], "-");
     assert_eq!(files[start..start + ops.len()], ops, "{files:?}");
@@ -847,4 +850,83 @@ fn features_keep_their_own_state_without_app_fields() {
     c.0 += 1;
     app.put_state(c);
     assert_eq!(app.try_state::<Counter>().map(|c| c.0), Some(3));
+}
+
+/// Windows lists the drives above their roots; here two folders play them.
+#[test]
+fn drives_list_opens_drives_and_keeps_them_safe() {
+    let e = env();
+    let mut app = app(&e);
+    fs::write(e.left.join("a.txt"), "a").unwrap();
+    let fs: std::sync::Arc<dyn oc_vfs::FileSystem> =
+        std::sync::Arc::new(oc_local::DrivesFS::with_roots(vec![e.left.clone(), e.right.clone()]));
+    let drives = oc_vfs::VPath::new(fs, "");
+    oc_ui::panel::load(&mut app, 0, drives.clone(), Default::default());
+    settle(&mut app);
+    let left = e.left.display().to_string();
+    assert_eq!(app.main.sides[0].panel.location, drives);
+    assert!(!app.main.sides[0].panel.has_parent);
+    assert!(names(&app, 0).contains(&left));
+    assert_eq!(app.main.sides[0].panel.subtitle(), "2 dirs, 0 files");
+    for (key, mods, refused) in [(Key::F(8), Mods::NONE, "delete"), (Key::F(6), Mods::NONE, "move")] {
+        put_cursor_on(&mut app, 0, &left);
+        press_with(&mut app, key, mods);
+        settle(&mut app);
+        assert!(app.modal_titles().is_empty(), "{refused} asked to go ahead");
+        let toast = app.toast.take().map(|t| t.text);
+        assert_eq!(toast, Some(format!("Can't {refused} {left}: it's a whole drive")));
+    }
+    put_cursor_on(&mut app, 0, &left);
+    press(&mut app, Key::Enter);
+    settle(&mut app);
+    assert_eq!(app.main.sides[0].panel.location, oc_local::local(&e.left));
+    assert_eq!(names(&app, 0), ["a.txt"]);
+}
+
+/// ⌥Enter: a window about the item under the cursor; for a folder, its
+/// space measured in the background.
+#[test]
+fn info_window_measures_a_folder_and_closes_with_escape() {
+    use oc_ui::features::info::InfoWindow;
+    let e = env();
+    let mut app = app(&e);
+    fs::create_dir_all(e.left.join("docs/deeper")).unwrap();
+    fs::write(e.left.join("docs/a.txt"), vec![b'a'; 3000]).unwrap();
+    fs::write(e.left.join("docs/deeper/b.txt"), vec![b'b'; 1000]).unwrap();
+    oc_ui::panel::reload(&mut app, 0);
+    settle(&mut app);
+    put_cursor_on(&mut app, 0, "docs");
+    press_with(&mut app, Key::Enter, Mods::ALT);
+    let id = *app.window_ids().last().unwrap();
+    wait_until(&mut app, "the measurement", Duration::from_secs(10), |app| {
+        app.window::<InfoWindow>(id).and_then(|w| w.usage.as_ref()).is_some_and(|u| u.done)
+    });
+    let w = app.window::<InfoWindow>(id).unwrap();
+    assert_eq!(w.location, oc_local::local(e.left.join("docs")));
+    let u = w.usage.as_ref().unwrap();
+    assert_eq!((u.bytes, u.files, u.dirs), (4000, 2, 1));
+    assert_eq!(u.parts.iter().map(|p| (p.name.as_str(), p.bytes)).collect::<Vec<_>>(), [("a.txt", 3000), ("deeper", 1000)]);
+    let facts = oc_ui::features::info::facts(w);
+    let fact = |name: &str| facts.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone());
+    assert_eq!(fact("Type").as_deref(), Some("Folder"));
+    assert_eq!(fact("Size").as_deref(), Some("3.9 K (4,000 bytes)"));
+    assert_eq!(fact("Contains").as_deref(), Some("2 files, 1 folder"));
+    assert!(fact("Modified").is_some());
+    // The same item again brings its window back instead of a second one.
+    press_with(&mut app, Key::Enter, Mods::ALT);
+    assert_eq!(app.window_ids().len(), 2);
+    app.handle_event(id, Event::Key(KeyEvent::plain(Key::Escape)));
+    settle(&mut app);
+    assert!(!app.window_ids().contains(&id));
+    // A file: its own size, no measuring.
+    put_cursor_on(&mut app, 0, "docs");
+    press(&mut app, Key::Enter);
+    settle(&mut app);
+    put_cursor_on(&mut app, 0, "a.txt");
+    press_with(&mut app, Key::Enter, Mods::ALT);
+    let id = *app.window_ids().last().unwrap();
+    settle(&mut app);
+    let w = app.window::<InfoWindow>(id).unwrap();
+    assert!(w.usage.is_none());
+    assert!(oc_ui::features::info::facts(w).contains(&("Size", "2.9 K (3,000 bytes)".to_string())));
 }
