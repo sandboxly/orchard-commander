@@ -5,7 +5,7 @@
 use std::any::Any;
 use std::time::Instant;
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::views::{ContentView, Handle};
 use crate::app::{App, Outcome};

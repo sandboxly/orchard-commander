@@ -1,4 +1,4 @@
-//! The widget kit, drawn into an `oc_grid::Frame`.
+//! The widget kit, drawn into an `orchard_grid::Frame`.
 //!
 //! Every widget is plain state plus two functions:
 //! `draw(&state, &mut Frame, Rect, &DrawCtx)` paints it into a rectangle,
@@ -22,7 +22,7 @@ pub use menu::{DropdownMenu, MenuEntry, MenuOutcome};
 pub use scrollbar::Scrollbar;
 pub use text_input::TextInput;
 
-use oc_grid::{Area, FillRect, Flags, Frame, ImagePlacement, PxRect, Rgba, Style};
+use orchard_grid::{Area, FillRect, Flags, Frame, ImagePlacement, PxRect, Rgba, Style};
 use unicode_width::UnicodeWidthStr;
 
 use crate::geom::Rect;
@@ -111,7 +111,7 @@ pub fn put(f: &mut Frame, x: u16, y: u16, text: &str, style: Style, max: u16) ->
 
 /// `text` shortened with "…" at the end to fit `max` cells, then written.
 pub fn put_elided(f: &mut Frame, x: u16, y: u16, text: &str, style: Style, max: u16) -> u16 {
-    let t = oc_grid::elide_right(text, max as usize);
+    let t = orchard_grid::elide_right(text, max as usize);
     put(f, x, y, &t, style, max)
 }
 
@@ -119,7 +119,7 @@ pub fn put_elided(f: &mut Frame, x: u16, y: u16, text: &str, style: Style, max: 
 /// the left at `min_x`.
 pub fn put_right(f: &mut Frame, right: u16, y: u16, text: &str, style: Style, min_x: u16) -> u16 {
     let avail = right.saturating_sub(min_x);
-    let t = oc_grid::elide_left(text, avail as usize);
+    let t = orchard_grid::elide_left(text, avail as usize);
     let w = width(&t);
     put(f, right.saturating_sub(w), y, &t, style, w)
 }
@@ -220,10 +220,10 @@ mod tests {
     }
 
     /// An `ImageId` for tests (only renderers make real ones; its field is private).
-    fn image_id(n: u64) -> oc_grid::ImageId {
-        assert_eq!(std::mem::size_of::<oc_grid::ImageId>(), std::mem::size_of::<u64>());
+    fn image_id(n: u64) -> orchard_grid::ImageId {
+        assert_eq!(std::mem::size_of::<orchard_grid::ImageId>(), std::mem::size_of::<u64>());
         // SAFETY: ImageId is a plain `u64` newtype; the id is only compared here.
-        unsafe { std::mem::transmute::<u64, oc_grid::ImageId>(n) }
+        unsafe { std::mem::transmute::<u64, orchard_grid::ImageId>(n) }
     }
 
     #[test]

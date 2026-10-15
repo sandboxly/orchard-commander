@@ -3,7 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 use oc_vfs::{Progress, human_size};
 
 use super::{dialog_rects, draw_box};
@@ -106,15 +106,15 @@ impl Modal for ProgressBox {
 /// Shorten `text` to at most `max` cells by cutting out its middle ("/Users/…/file.txt"),
 /// like 1.x's `Qt.ElideMiddle`.
 fn elide_middle(text: &str, max: usize) -> String {
-    if oc_grid::str_width(text) <= max {
+    if orchard_grid::str_width(text) <= max {
         return text.to_owned();
     }
     if max == 0 {
         return String::new();
     }
     let budget = max - 1; // the ellipsis
-    let head = oc_grid::elide_right(text, budget - budget / 2 + 1); // "head…"
-    let tail = oc_grid::elide_left(text, budget / 2 + 1); // "…tail"
+    let head = orchard_grid::elide_right(text, budget - budget / 2 + 1); // "head…"
+    let tail = orchard_grid::elide_left(text, budget / 2 + 1); // "…tail"
     format!("{head}{}", tail.strip_prefix('…').unwrap_or(&tail))
 }
 

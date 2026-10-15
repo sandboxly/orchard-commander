@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use oc_config::{ConfigPaths, Settings};
-use oc_grid::Frame;
+use orchard_grid::Frame;
 
 use crate::clipboard::Clipboard;
 use crate::commands::{CommandId, Registry};

@@ -4,7 +4,7 @@
 //! Pixels on the ring's edges and on slice borders are 4×4 supersampled, so
 //! the chart is smooth at any scale.
 
-use oc_grid::Rgba;
+use orchard_grid::Rgba;
 
 /// A horizontal run of pixels of one color: x, y (from the chart's top
 /// left), length.

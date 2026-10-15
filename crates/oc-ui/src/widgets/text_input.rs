@@ -1,6 +1,6 @@
 //! A single-line text field: cursor, selection, clipboard, IME preedit.
 
-use oc_grid::{CursorShape, Frame, Style};
+use orchard_grid::{CursorShape, Frame, Style};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -255,7 +255,7 @@ impl TextInput {
             if i == self.cursor {
                 cursor_col = Some(col);
                 for pg in self.preedit.graphemes(true) {
-                    emit(f, pg, normal.with(oc_grid::Flags::UNDERLINE), &mut x, &mut col);
+                    emit(f, pg, normal.with(orchard_grid::Flags::UNDERLINE), &mut x, &mut col);
                 }
             }
             let selected = sel.is_some_and(|(a, b)| i >= a && i < b);
@@ -265,11 +265,11 @@ impl TextInput {
         if self.cursor >= self.text.len() {
             cursor_col = Some(col);
             for pg in self.preedit.graphemes(true) {
-                emit(f, pg, normal.with(oc_grid::Flags::UNDERLINE), &mut x, &mut col);
+                emit(f, pg, normal.with(orchard_grid::Flags::UNDERLINE), &mut x, &mut col);
             }
         }
         if focused && let Some(cc) = cursor_col.filter(|&cc| cc < r.right()) {
-            f.cursor = Some(oc_grid::Cursor { col: cc, row: r.y, shape: CursorShape::Beam, color: c.foreground, text: None });
+            f.cursor = Some(orchard_grid::Cursor { col: cc, row: r.y, shape: CursorShape::Beam, color: c.foreground, text: None });
         }
     }
 }

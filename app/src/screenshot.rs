@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oc_grid::{Frame, HeadlessRenderer};
+use orchard_grid::{Frame, HeadlessRenderer};
 use oc_ui::{App, AppConfig, MAIN_WINDOW, PlatformRequest};
 
 use crate::Args;

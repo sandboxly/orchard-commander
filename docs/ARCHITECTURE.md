@@ -29,7 +29,14 @@ app/ (binary "orchard-commander")        crates/oc-ui (all UI state and logic)
 ```
 
 Lower crates (`oc-vfs`, `oc-local`, `oc-archive`, `oc-config`, `oc-preview`,
-`oc-search`, `oc-rename`, `oc-term`, `oc-grid`) never depend on `oc-ui`.
+`oc-search`, `oc-rename`, `oc-term`) never depend on `oc-ui`. Neither do the
+crates shared with the other Orchard apps, which live in their own repository
+(orchard-commons) and come in as git dependencies: `orchard-grid` (the
+character-grid renderer), `orchard-theme` (color schemes, `Colors`, where the
+config directory is) and `orchard-metadata` (file metadata for multi-rename).
+`oc-config` re-exports `orchard_theme::schemes` as `themes`, `oc-rename`
+re-exports `orchard_metadata` in its `metadata` module (plus reading a
+`VPath`), and `oc_ui::theme::Colors` is `orchard_theme::Colors`.
 
 ### Ownership and flow
 
@@ -49,7 +56,7 @@ afterwards  ─► App::take_requests()  (open/close windows, quit, theme change
   (any consumed event, any task result, any timer, `app.redraw()`); the loop
   then sleeps (`ControlFlow::Wait` / `WaitUntil(next timer)`).
 * **Drawing is a pure function** `draw(&state, &mut Frame, Rect, &DrawCtx)`
-  into an `oc_grid::Frame` per window. Never mutate state while drawing; if
+  into an `orchard_grid::Frame` per window. Never mutate state while drawing; if
   drawing needs something computed (scroll offsets for the current size),
   compute it locally (see `panel::draw::first_row`).
 * **Layout is recomputed, never stored**: `main_window::layout(app)` and each
@@ -296,7 +303,7 @@ images::store(app).set(key, w, h, next_frame);                 // animation / vi
 images::store(app).remove(key);                                // when the view goes away
 ```
 
-`key.id()` is an `oc_grid::ImageId::external(..)`; `GridRenderer::set_image`
+`key.id()` is an `orchard_grid::ImageId::external(..)`; `GridRenderer::set_image`
 stores pixels under such caller-chosen ids. `ctx.cell_px` / `app.cell_px`
 are physical pixels, so `cells × cell_px` already includes the display
 scale: render PDF pages and fit images to that.
@@ -470,7 +477,7 @@ State structs with `draw(&self, f, rect, ctx[, focused])` and
 | `features::settings::form` | combo box field + `Popup` list (separators, type-to-jump, ≤ 20 rows), spin box, heading/label/muted text — for settings-like forms |
 
 A focused `BoxFrame` (panels, dialogs, popups) draws its border with
-`Flags::STRONG`: oc-grid draws box-drawing lines one step thicker (1.x's
+`Flags::STRONG`: orchard-grid draws box-drawing lines one step thicker (1.x's
 2 px pen). The check marks `✓`/`✔` are drawn geometrically when no
 installed font has them.
 
@@ -653,7 +660,7 @@ Also public: `connections::connect_in_panel(app, side, conn, secret)`,
   file), RPATH `$ORIGIN/lib:$ORIGIN` for the bundled FFmpeg libraries,
   keychain = Secret Service over zbus (no libdbus), clipboard via Wayland
   data-control or X11.
-* No GPU (CI, VMs): `oc_grid` falls back to a software adapter (WARP on
+* No GPU (CI, VMs): `orchard_grid` falls back to a software adapter (WARP on
   Windows, llvmpipe via Vulkan/GL on Linux; CI installs
   `mesa-vulkan-drivers`); `--self-test` prints which adapter it got.
 

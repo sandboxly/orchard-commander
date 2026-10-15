@@ -10,6 +10,10 @@
 //! (`$XDG_CONFIG_HOME/Orchard Commander`), and `WIN_PD_OVERRIDE_LOCAL_APPDATA`
 //! on Windows; so does this module.
 //!
+//! The platform directory is worked out in [`orchard_theme::dirs`], which
+//! the other Orchard apps use to find the shared `color-schemes/` folder, so
+//! they always agree with this one.
+//!
 //! Nothing here is a global: every store takes a [`ConfigPaths`], so tests
 //! (and a portable install) can point everything at another directory.
 
@@ -17,15 +21,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// The app's name: the config directory on macOS and Windows, and the keychain service.
-pub const APP_NAME: &str = "Orchard Commander";
-/// The command name: the config directory on Linux.
-pub const COMMAND: &str = "orchard-commander";
-/// The name before the rename; its config directory is migrated once.
-pub const LEGACY_NAME: &str = "fcmd";
-
-/// Overrides the config directory (tests, portable installs). Not in the Python version.
-pub const CONFIG_DIR_ENV: &str = "ORCHARD_COMMANDER_CONFIG_DIR";
+pub use orchard_theme::dirs::{APP_NAME, COMMAND, CONFIG_DIR_ENV, LEGACY_NAME};
 
 /// The config directory and the files in it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,21 +34,9 @@ impl ConfigPaths {
     /// The platform's config directory, or `$ORCHARD_COMMANDER_CONFIG_DIR` if
     /// set (then there is no legacy directory to migrate from).
     pub fn platform() -> Self {
-        if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|d| !d.is_empty()) {
-            return ConfigPaths {
-                dir: PathBuf::from(dir),
-                legacy_dir: None,
-            };
-        }
-        let base = user_config_base();
-        let name = if cfg!(target_os = "linux") {
-            COMMAND
-        } else {
-            APP_NAME
-        };
         ConfigPaths {
-            dir: base.join(name),
-            legacy_dir: Some(base.join(LEGACY_NAME)),
+            dir: orchard_theme::dirs::commander_config_dir(),
+            legacy_dir: orchard_theme::dirs::commander_legacy_dir(),
         }
     }
 
@@ -211,62 +195,6 @@ pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// platformdirs' (>= 4.12, as the Python version requires) `user_config_dir()`
-/// without the app name.
-fn user_config_base() -> PathBuf {
-    if cfg!(windows) {
-        // The local (not roaming) AppData, unless platformdirs' override is set.
-        let override_dir = env_trimmed("WIN_PD_OVERRIDE_LOCAL_APPDATA")
-            .filter(|p| is_fully_qualified_nt(p))
-            .map(PathBuf::from);
-        return override_dir
-            .or_else(dirs::data_local_dir)
-            .unwrap_or_default();
-    }
-    unix_config_base(
-        env_trimmed("XDG_CONFIG_HOME"),
-        dirs::home_dir,
-        cfg!(target_os = "macos"),
-    )
-}
-
-/// On every Unix, macOS included, an absolute `$XDG_CONFIG_HOME` wins; a
-/// relative or blank one is ignored (the XDG spec says so).
-fn unix_config_base(
-    xdg: Option<String>,
-    home: impl FnOnce() -> Option<PathBuf>,
-    macos: bool,
-) -> PathBuf {
-    if let Some(xdg) = xdg.filter(|p| p.starts_with('/')) {
-        return PathBuf::from(xdg);
-    }
-    let home = home().unwrap_or_default();
-    if macos {
-        home.join("Library/Application Support")
-    } else {
-        home.join(".config")
-    }
-}
-
-/// An environment variable with surrounding whitespace removed (Python's `.strip()`).
-fn env_trimmed(name: &str) -> Option<String> {
-    let value = std::env::var_os(name)?;
-    Some(value.to_string_lossy().trim().to_owned())
-}
-
-/// platformdirs' `_is_fully_qualified` for Windows paths: a UNC path or a
-/// drive with a root ("C:\x"), not "C:x" or "\x".
-#[cfg_attr(not(windows), allow(dead_code))]
-fn is_fully_qualified_nt(path: &str) -> bool {
-    let is_sep = |c: char| c == '\\' || c == '/';
-    let mut chars = path.chars();
-    match (chars.next(), chars.next(), chars.next()) {
-        (Some(a), Some(b), _) if is_sep(a) && is_sep(b) => true,
-        (Some(_), Some(':'), Some(c)) => is_sep(c),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,32 +210,15 @@ mod tests {
     }
 
     #[test]
-    fn xdg_config_home_like_platformdirs() {
-        let home = || Some(PathBuf::from("/home/me"));
-        let base = |xdg: Option<&str>, macos| unix_config_base(xdg.map(String::from), home, macos);
-        assert_eq!(base(None, false), Path::new("/home/me/.config"));
+    fn platform_dirs_agree_with_the_other_orchard_apps() {
+        // The other apps find the shared color schemes through orchard_theme.
+        let p = ConfigPaths::platform();
+        assert_eq!(p.dir(), orchard_theme::dirs::commander_config_dir());
+        assert_eq!(p.color_schemes_dir(), orchard_theme::dirs::schemes_dir());
         assert_eq!(
-            base(None, true),
-            Path::new("/home/me/Library/Application Support")
+            p.legacy_dir().map(Path::to_path_buf),
+            orchard_theme::dirs::commander_legacy_dir()
         );
-        assert_eq!(base(Some("/xdg"), false), Path::new("/xdg"));
-        assert_eq!(base(Some("/xdg"), true), Path::new("/xdg")); // macOS too
-        assert_eq!(base(Some("rel/dir"), false), Path::new("/home/me/.config"));
-        assert_eq!(
-            base(Some(""), true),
-            Path::new("/home/me/Library/Application Support")
-        );
-    }
-
-    #[test]
-    fn windows_override_must_be_fully_qualified() {
-        assert!(is_fully_qualified_nt("C:\\Data"));
-        assert!(is_fully_qualified_nt("d:/data"));
-        assert!(is_fully_qualified_nt("\\\\server\\share"));
-        assert!(!is_fully_qualified_nt("C:data"));
-        assert!(!is_fully_qualified_nt("\\data"));
-        assert!(!is_fully_qualified_nt("data"));
-        assert!(!is_fully_qualified_nt(""));
     }
 
     #[cfg(target_os = "macos")]

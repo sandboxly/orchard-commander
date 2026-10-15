@@ -6,7 +6,7 @@
 //! native macOS menu bar (built by the app binary with muda) and the
 //! in-window strip that F9 opens ([`MenuBar`]).
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use crate::app::App;
 use crate::commands::{Command, CommandId};

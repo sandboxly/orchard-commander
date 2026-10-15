@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 use oc_term::{Button, MouseAction, MouseInput, PointerEvent, SessionEvent};
 
 use crate::app::{App, Outcome};
@@ -326,7 +326,7 @@ fn clamp_rows(app: &App, rows: u16) -> u16 {
 /// height in pixels; the exact row count is kept in `terminal_rows`).
 fn row_px(app: &App) -> f64 {
     let font = &app.theme.font;
-    (font.size * oc_grid::px_per_pt() * 1.2 * font.line_spacing.max(0.5)) as f64
+    (font.size * orchard_grid::px_per_pt() * 1.2 * font.line_spacing.max(0.5)) as f64
 }
 
 /// Save `terminal_visible` / the height when they changed.

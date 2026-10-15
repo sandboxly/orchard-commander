@@ -20,7 +20,7 @@ oc-vfs.workspace = true
 oc-local.workspace = true
 oc-archive = { path = "../crates/oc-archive", default-features = false }
 oc-config.workspace = true
-oc-grid.workspace = true
+orchard-grid.workspace = true
 oc-preview = { workspace = true, features = ["pdf", "media"] }
 oc-pdf = { path = "../crates/oc-pdf" }
 oc-media = { path = "../crates/oc-media" }

@@ -4,7 +4,7 @@
 //! (`#rrggbb`) field, OK and Cancel. The scheme editor owns it while it is
 //! open (like its syntax list) and takes the color on OK.
 
-use oc_grid::{Frame, Rgba, Style};
+use orchard_grid::{Frame, Rgba, Style};
 
 use crate::clipboard::Clipboard;
 use crate::dialogs::{dialog_rects, draw_box};

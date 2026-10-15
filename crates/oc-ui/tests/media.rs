@@ -148,7 +148,7 @@ fn audio_shows_title_waveform_and_a_moving_spectrum() {
     // Drawing works at any size.
     for (w, h) in [(120, 40), (40, 10), (12, 5)] {
         app.resize(MAIN_WINDOW, w, h);
-        let mut f = oc_grid::Frame::new(w, h, app.theme.colors.background);
+        let mut f = orchard_grid::Frame::new(w, h, app.theme.colors.background);
         app.draw(MAIN_WINDOW, &mut f, app.cell_px);
     }
 }
@@ -170,7 +170,7 @@ fn clicking_the_waveform_seeks() {
     // Hovering shows the time under the mouse above the waveform.
     let (col, row) = (l.waveform.x + l.waveform.w / 4, l.waveform.y + 2);
     app.handle_event(MAIN_WINDOW, Event::Mouse(MouseEvent { kind: MouseKind::Move, col, row, mods: Mods::NONE }));
-    let mut f = oc_grid::Frame::new(120, 40, app.theme.colors.background);
+    let mut f = orchard_grid::Frame::new(120, 40, app.theme.colors.background);
     app.draw(MAIN_WINDOW, &mut f, app.cell_px);
     assert!(f.row_text(l.waveform.y).contains(" 00:00 "), "{:?}", f.row_text(l.waveform.y));
     // ←/→ move by 5 s, within the file.
@@ -191,7 +191,7 @@ fn video_frames_reach_the_image_store() {
     assert_eq!(view(&app).frame_size(), Some((160, 90)), "never enlarged by the decoder");
     assert_eq!(app.main.active, 0, "the file list keeps the focus");
     assert!(app.try_state::<Images>().is_some_and(|s| s.len() == 1));
-    let mut f = oc_grid::Frame::new(120, 40, app.theme.colors.background);
+    let mut f = orchard_grid::Frame::new(120, 40, app.theme.colors.background);
     app.draw(MAIN_WINDOW, &mut f, app.cell_px);
     assert_eq!(f.images.len(), 1, "the frame is drawn");
     // Leaving the preview stops playback and frees the frame.

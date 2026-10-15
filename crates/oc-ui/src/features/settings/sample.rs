@@ -1,7 +1,7 @@
 //! The Sample on the Appearance page: a small fake file panel and key bar in
 //! the current appearance (port of `SamplePanel` in `settings_dialog.py`).
 
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 
 use crate::geom::Rect;
 use crate::widgets::{BoxFrame, DrawCtx, fill, put, put_right, width};

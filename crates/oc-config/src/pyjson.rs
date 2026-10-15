@@ -28,12 +28,6 @@ pub(crate) fn dumps<T: Serialize + ?Sized>(value: &T, ensure_ascii: bool) -> Str
     String::from_utf8(out).expect("JSON output is UTF-8")
 }
 
-/// A JSON string literal as Python's `json.dumps(s, ensure_ascii=False)` writes it
-/// (also a valid TOML basic string, which is why color scheme files use it).
-pub(crate) fn string_literal(s: &str) -> String {
-    serde_json::to_string(s).expect("string serialization")
-}
-
 struct PyFormatter {
     pretty: PrettyFormatter<'static>,
     ensure_ascii: bool,
@@ -180,7 +174,6 @@ mod tests {
             "\"\\u00e9\\u007f\\ud83d\\ude00\\n\\\"\""
         );
         assert_eq!(dumps(&json!("é\u{7f}\u{1}"), false), "\"é\u{7f}\\u0001\"");
-        assert_eq!(string_literal("a\"b\\"), r#""a\"b\\""#);
     }
 
     #[test]

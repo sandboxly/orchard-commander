@@ -10,7 +10,7 @@
 //! ```
 //!
 //! The UI never touches the GPU: drawing only names images
-//! ([`ImageKey::id`] is an [`oc_grid::ImageId::external`]). [`ImageSync`]
+//! ([`ImageKey::id`] is an [`orchard_grid::ImageId::external`]). [`ImageSync`]
 //! uploads an image when a frame shows it and its pixels changed since the
 //! last upload (each change bumps a generation), and frees textures whose
 //! images were removed from the store. Pixels are shared (`Arc`), never
@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use oc_grid::{Frame, GridRenderer, ImageId};
+use orchard_grid::{Frame, GridRenderer, ImageId};
 
 use crate::app::App;
 
@@ -62,7 +62,7 @@ pub struct Image {
 pub struct ImageKey(u64);
 
 impl ImageKey {
-    /// What a frame's [`oc_grid::ImagePlacement`] refers to.
+    /// What a frame's [`orchard_grid::ImagePlacement`] refers to.
     pub fn id(self) -> ImageId {
         ImageId::external(self.0)
     }

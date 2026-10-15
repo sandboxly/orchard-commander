@@ -2,7 +2,7 @@
 //! subtitle, a column header, the rows (only the visible ones).
 
 use chrono::TimeZone;
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 use oc_vfs::{Entry, SortKey};
 
 use super::{FilePanel, PARENT};

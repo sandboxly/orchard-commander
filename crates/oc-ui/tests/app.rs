@@ -719,7 +719,7 @@ fn mouse_on_tabs_header_rows_and_footer() {
     assert_eq!(app.main.sides[1].mode_id(), "preview");
     assert_eq!(app.main.active, 0, "the preview follows the other panel, which gets the focus");
     // The F-key bar runs commands: F9 Menu sits after F3..F8.
-    let mut f = oc_grid::Frame::new(120, 40, oc_grid::Rgba::BLACK);
+    let mut f = orchard_grid::Frame::new(120, 40, orchard_grid::Rgba::BLACK);
     app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
     let footer = f.row_text(39);
     let x = footer.find("F9").unwrap() as u16; // ASCII up to there
@@ -740,8 +740,8 @@ impl oc_ui::UiWindow for Dummy {
     fn title(&self) -> String {
         "dummy".into()
     }
-    fn draw(&self, _app: &App, f: &mut oc_grid::Frame, ctx: &oc_ui::DrawCtx) {
-        f.put_str(0, 0, &format!("keys {}", self.keys), oc_grid::Style::fg(ctx.theme.colors.foreground));
+    fn draw(&self, _app: &App, f: &mut orchard_grid::Frame, ctx: &oc_ui::DrawCtx) {
+        f.put_str(0, 0, &format!("keys {}", self.keys), orchard_grid::Style::fg(ctx.theme.colors.foreground));
     }
     fn handle_event(&mut self, _app: &mut App, _id: oc_ui::WinId, ev: &Event) -> oc_ui::Outcome {
         if matches!(ev, Event::Key(_)) {
@@ -770,7 +770,7 @@ fn other_windows_get_their_events_and_may_refuse_to_close() {
     assert!(matches!(app.take_requests()[..], [oc_ui::PlatformRequest::OpenWindow { cols: 80, rows: 24, .. }]));
     app.handle_event(id, Event::Key(KeyEvent::plain(Key::Char('x'))));
     assert_eq!(app.window_mut::<Dummy>(id).unwrap().keys, 1);
-    let mut f = oc_grid::Frame::new(20, 2, oc_grid::Rgba::BLACK);
+    let mut f = orchard_grid::Frame::new(20, 2, orchard_grid::Rgba::BLACK);
     app.draw(id, &mut f, (8.0, 16.0));
     assert!(f.row_text(0).starts_with("keys 1"));
     // Dialogs belong to their window.

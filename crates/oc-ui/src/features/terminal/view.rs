@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 
-use oc_grid::{Cursor, CursorShape, Flags, Frame, Rgba, Style};
+use orchard_grid::{Cursor, CursorShape, Flags, Frame, Rgba, Style};
 use oc_term::{CellFlags, KeyOptions, Modifiers, Palette, Rgb, Snapshot};
 
 use super::Terminal;

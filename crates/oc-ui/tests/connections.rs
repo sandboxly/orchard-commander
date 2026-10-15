@@ -365,7 +365,7 @@ fn connection_manager_new_edit_delete() {
     assert_eq!(store.entries().len(), 1, "the stored password is kept");
 
     // 1.x's buttons: Connect, New…, Edit…, Delete, Close (no Duplicate).
-    let mut f = oc_grid::Frame::new(120, 40, oc_grid::Rgba::BLACK);
+    let mut f = orchard_grid::Frame::new(120, 40, orchard_grid::Rgba::BLACK);
     app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
     let row = (0..40).map(|r| f.row_text(r)).find(|t| t.contains("New…")).unwrap();
     let words: Vec<&str> = row.split(|c: char| !c.is_alphanumeric() && c != '…').filter(|w| !w.is_empty()).collect();
@@ -601,11 +601,11 @@ fn s3_asks_for_the_secret_key() {
 // ---------------------------------------------------------------------------
 
 fn snap(app: &mut App, dir: &Path, name: &str) {
-    let mut r = oc_grid::HeadlessRenderer::new(app.theme.font.clone(), 1.0).expect("renderer");
+    let mut r = orchard_grid::HeadlessRenderer::new(app.theme.font.clone(), 1.0).expect("renderer");
     let m = r.renderer().metrics();
     app.cell_px = (m.width as f32, m.height as f32);
     let (cols, rows) = app.size_of(MAIN_WINDOW);
-    let mut frame = oc_grid::Frame::new(cols, rows, app.theme.colors.background);
+    let mut frame = orchard_grid::Frame::new(cols, rows, app.theme.colors.background);
     app.draw(MAIN_WINDOW, &mut frame, app.cell_px);
     r.render(&frame).expect("render").save_png(dir.join(name)).expect("png");
 }

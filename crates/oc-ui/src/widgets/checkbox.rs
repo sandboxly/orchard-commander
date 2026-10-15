@@ -1,6 +1,6 @@
 //! A checkbox: "[x] Label".
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::{DrawCtx, parse_hotkey, put, put_hotkey_label};
 use crate::geom::Rect;

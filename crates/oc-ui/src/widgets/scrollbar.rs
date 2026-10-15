@@ -1,7 +1,7 @@
 //! A thin vertical scrollbar (1ex wide, like the Python style sheet), drawn
 //! as a pixel-exact thumb over the right edge of a view.
 
-use oc_grid::{Frame, Layer, PxRect};
+use orchard_grid::{Frame, Layer, PxRect};
 
 use super::DrawCtx;
 use crate::geom::Rect;

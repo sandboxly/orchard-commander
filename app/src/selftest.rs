@@ -5,7 +5,7 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use oc_grid::{FontConfig, FontLibrary, Frame, HeadlessRenderer, Rgba, Style};
+use orchard_grid::{FontConfig, FontLibrary, Frame, HeadlessRenderer, Rgba, Style};
 
 pub fn run() -> ExitCode {
     let mut failed = 0;

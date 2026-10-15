@@ -1,7 +1,7 @@
 //! A filterable list: type to filter (every word), ↑/↓ to move, Enter to choose
 //! (command palette, location chooser, color schemes).
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::{dialog_rects, draw_box};
 use crate::app::App;

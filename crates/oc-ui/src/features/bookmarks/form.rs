@@ -1,7 +1,7 @@
 //! Small pieces for the bookmark dialogs' forms: a drop-down choice field
 //! (Qt's QComboBox) and the focus ring.
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use crate::geom::Rect;
 use crate::input::{Key, KeyEvent, MouseEvent, MouseKind};

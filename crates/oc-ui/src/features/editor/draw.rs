@@ -3,7 +3,7 @@
 //! the cursor, the scrollbar and the find bar. Only visible lines are
 //! touched, and of those only the visible columns.
 
-use oc_grid::{Cursor, CursorShape, Flags, Frame, Layer, PxRect, Rgba, Style};
+use orchard_grid::{Cursor, CursorShape, Flags, Frame, Layer, PxRect, Rgba, Style};
 use oc_preview::data::SyntaxRole;
 use oc_preview::highlight::palette;
 

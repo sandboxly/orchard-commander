@@ -3,7 +3,7 @@
 //! are asked from the system: they choose the panel (or the folder row) and
 //! copy or move, like the system file manager does.
 
-use oc_grid::winit;
+use orchard_grid::winit;
 use oc_ui::DropAction;
 use winit::dpi::PhysicalPosition;
 use winit::window::Window;

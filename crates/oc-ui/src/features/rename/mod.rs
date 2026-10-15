@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 use oc_rename::{Done, ExistingNames, Item, Plan, Rule, existing_names, item_for, renamed_locations};
 use oc_vfs::{Entry, VPath};
 

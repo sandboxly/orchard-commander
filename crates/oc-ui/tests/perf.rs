@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 use oc_ui::features::editor::{EditorState, EditorWindow, open_editor};
 use oc_ui::features::preview::PreviewView;
 use oc_ui::features::preview::image::ImageView;

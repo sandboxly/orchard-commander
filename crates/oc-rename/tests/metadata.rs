@@ -444,7 +444,7 @@ fn add_on_providers() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("x.doc"), "a\x0cb\x0cc").unwrap();
     let location = local(&tmp.path().join("x.doc"));
-    let meta = registry.read(&location, false, false).unwrap();
+    let meta = metadata::read_with(&registry, &location, false, false).unwrap();
     assert_eq!(meta, Metadata::from([("pages".into(), "3".into())]));
     let item = item_for(&location, &location.stat().unwrap()).with_meta(meta);
     let renamer = Renamer::with_registry(&named("[N] ([=pages]p)"), registry.clone());

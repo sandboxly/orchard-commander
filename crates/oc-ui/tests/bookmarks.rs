@@ -440,7 +440,7 @@ fn mouse(app: &mut App, kind: MouseKind, col: u16, row: u16) {
 /// Where the top dialog's text `needle` is drawn (col, row).
 fn find_on_screen(app: &App, needle: &str) -> (u16, u16) {
     let (w, h) = (120u16, 40u16);
-    let mut f = oc_grid::Frame::new(w, h, app.theme.colors.background);
+    let mut f = orchard_grid::Frame::new(w, h, app.theme.colors.background);
     app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
     for row in 0..h {
         let line: String = (0..w).map(|c| f.cell(c, row).map_or(' ', |cell| cell.ch)).collect();

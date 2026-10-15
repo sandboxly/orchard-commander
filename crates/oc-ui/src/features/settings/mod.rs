@@ -24,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 
 use oc_config::Settings;
 use oc_config::themes::{self, Appearance, FONT_SIZE_RANGE, FRAME_STYLES, LINE_SPACING_RANGE};
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use self::form::{Choice, Popup, PopupOutcome};
 use crate::app::App;
@@ -96,7 +96,7 @@ fn load_fonts(app: &mut App) {
     }
     app.tasks.run_in_background(
         |_| {
-            let lib = oc_grid::FontLibrary::system();
+            let lib = orchard_grid::FontLibrary::system();
             let shell = oc_term::default_shell().join(" ");
             (lib.families(true), lib.families(false), lib.resolve_family(""), shell)
         },
@@ -131,7 +131,7 @@ fn request_styles(app: &mut App) {
     app.tasks.run_in_background(
         {
             let family = family.clone();
-            move |_| oc_grid::FontLibrary::system().styles(&family)
+            move |_| orchard_grid::FontLibrary::system().styles(&family)
         },
         move |app, styles| {
             app.state::<FontInfo>().styles.insert(family, styles);

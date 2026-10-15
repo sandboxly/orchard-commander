@@ -5,7 +5,7 @@
 //! (it gets `&mut App` in `handle_event`), so it can start work, push
 //! another dialog or answer a worker waiting in `Tasks::ask_ui`.
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 
 use crate::app::{App, WinId};
 use crate::geom::Rect;

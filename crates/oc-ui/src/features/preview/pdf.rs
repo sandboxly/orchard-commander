@@ -11,7 +11,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oc_grid::{Flags, Frame, ImagePlacement, Style};
+use orchard_grid::{Flags, Frame, ImagePlacement, Style};
 use oc_preview::{PdfData, PdfPages, PreviewError, RenderedPage};
 
 use super::image::{area_px, fit};

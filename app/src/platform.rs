@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use oc_grid::winit;
-use oc_grid::{FontConfig, Frame, Rendered, WindowRenderer};
+use orchard_grid::winit;
+use orchard_grid::{FontConfig, Frame, Rendered, WindowRenderer};
 use oc_ui::input::{from_winit, mods_from_winit};
 use oc_ui::{App, AppConfig, Event, MAIN_WINDOW, MouseButton, MouseEvent, MouseKind, PlatformRequest, Pointer, WinId};
 use winit::application::ApplicationHandler;
@@ -105,7 +105,7 @@ type PendingDrop = (Vec<std::path::PathBuf>, Option<(u16, u16)>, oc_ui::DropActi
 pub fn run(args: Args, started: Instant) -> ExitCode {
     // Scanning the system fonts takes ~100 ms: start it now, in parallel
     // with creating the event loop, the app state and the window.
-    std::thread::spawn(oc_grid::FontLibrary::system);
+    std::thread::spawn(orchard_grid::FontLibrary::system);
     let mut builder = EventLoop::<AppEvent>::with_user_event();
     #[cfg(target_os = "macos")]
     {

@@ -1,5 +1,5 @@
 //! The Orchard Commander UI: state, widgets, the main window and its
-//! features, drawn into `oc_grid` frames. No window system code lives here
+//! features, drawn into `orchard_grid` frames. No window system code lives here
 //! except the winit key conversion; the app binary owns the event loop.
 //!
 //! See `docs/ARCHITECTURE.md` for how the pieces fit and how a feature
@@ -8,7 +8,7 @@
 //! * [`App`] owns all UI state. The platform layer calls
 //!   [`App::handle_event`], [`App::process_tasks`], [`App::tick`] and
 //!   [`App::draw`], and acts on [`App::take_requests`].
-//! * Drawing is a pure function of the state into a [`oc_grid::Frame`];
+//! * Drawing is a pure function of the state into a [`orchard_grid::Frame`];
 //!   redraws happen only when [`App::take_redraw`] says something changed.
 //! * Blocking work runs through [`Tasks`] ([`tasks`]); results come back on
 //!   the UI thread as closures over `&mut App`.

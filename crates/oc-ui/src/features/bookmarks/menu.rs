@@ -8,7 +8,7 @@
 
 use oc_config::Spec;
 use oc_config::bookmarks::{self as store, Bookmark, Item};
-use oc_grid::Frame;
+use orchard_grid::Frame;
 
 use crate::app::App;
 use crate::geom::Rect;
@@ -56,7 +56,7 @@ impl Level {
             // The dropdown reads "&" as a hotkey marker; ours are drawn as a column.
             label: label.replace('&', "&&"),
             // Long paths are shortened at the front so the menu stays a menu.
-            shortcut: oc_grid::elide_left(&detail, DETAIL_MAX).into_owned(),
+            shortcut: orchard_grid::elide_left(&detail, DETAIL_MAX).into_owned(),
             checked: None,
             enabled,
         });
@@ -85,8 +85,8 @@ impl Level {
                     let detail = match &b.target {
                         Some(t) => {
                             let half = (DETAIL_MAX - 5) / 2;
-                            let loc = oc_grid::elide_left(&b.location.describe(), half).into_owned();
-                            format!("{loc}  ⇄  {}", oc_grid::elide_left(&t.describe(), half))
+                            let loc = orchard_grid::elide_left(&b.location.describe(), half).into_owned();
+                            format!("{loc}  ⇄  {}", orchard_grid::elide_left(&t.describe(), half))
                         }
                         None => b.location.describe(),
                     };

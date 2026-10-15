@@ -586,7 +586,7 @@ fn drawing_the_window() {
     key(&mut app, id, Key::Down, Mods::NONE);
     key(&mut app, id, Key::Down, Mods::NONE);
     key(&mut app, id, Key::Right, Mods::NONE);
-    let mut f = oc_grid::Frame::new(60, 12, app.theme.colors.background);
+    let mut f = orchard_grid::Frame::new(60, 12, app.theme.colors.background);
     app.draw(id, &mut f, (8.0, 16.0));
     assert!(f.row_text(0).contains("app.py"), "{}", f.row_text(0));
     assert!(f.row_text(1).contains("  1 import os"), "{:?}", f.row_text(1));
@@ -602,7 +602,7 @@ fn drawing_the_window() {
     key(&mut app, id, Key::Escape, Mods::NONE);
     type_in(&mut app, id, "x");
     app.resize(id, 20, 12);
-    let mut f = oc_grid::Frame::new(20, 12, app.theme.colors.background);
+    let mut f = orchard_grid::Frame::new(20, 12, app.theme.colors.background);
     app.draw(id, &mut f, (8.0, 16.0));
     assert!(f.row_text(0).contains(" ● …"), "{:?}", f.row_text(0));
     assert!(f.row_text(0).contains("app.py"), "{:?}", f.row_text(0));

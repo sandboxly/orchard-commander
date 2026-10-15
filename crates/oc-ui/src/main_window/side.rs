@@ -7,7 +7,7 @@
 
 use std::any::Any;
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 use oc_vfs::VPath;
 
 use crate::app::{App, Outcome};

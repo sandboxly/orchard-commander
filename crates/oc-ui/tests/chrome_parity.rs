@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use oc_config::themes;
-use oc_grid::{Frame, Rgba};
+use orchard_grid::{Frame, Rgba};
 #[cfg(unix)]
 use oc_ui::features::terminal::{self, session};
 #[cfg(unix)]

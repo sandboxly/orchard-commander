@@ -3,7 +3,7 @@
 //! heading. Their values always come from the caller (the settings), so the
 //! state here is only what is open and where its cursor is.
 
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 
 use crate::geom::Rect;
 use crate::input::{Key, KeyEvent, MouseButton, MouseEvent, MouseKind};

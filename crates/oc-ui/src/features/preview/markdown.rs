@@ -10,7 +10,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use oc_grid::{Flags, Frame};
+use orchard_grid::{Flags, Frame};
 use oc_preview::{Align, Color, MarkdownData, MdBlock, MdBlockKind, StyledLine, TextStyle, ThemeRole};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;

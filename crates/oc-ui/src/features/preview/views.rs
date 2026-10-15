@@ -18,7 +18,7 @@
 
 use std::any::Any;
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 use oc_preview::{MarkdownData, MediaData, PdfData, PreviewData};
 use oc_vfs::VPath;
 

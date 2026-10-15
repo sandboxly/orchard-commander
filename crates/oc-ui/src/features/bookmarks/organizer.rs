@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use oc_config::Spec;
 use oc_config::bookmarks::{Bookmark, Folder, Item};
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 
 use super::form::cycle_focus;
 use super::locations::parse_location;
@@ -559,10 +559,10 @@ impl Modal for Organizer {
             put_elided(f, line.x + 1, line.y, &t, Style::new(fg, bg), tw.saturating_sub(1));
             // Paths are shortened at the front ("…/bm/tree/docs").
             let fmax = fw.saturating_sub(1);
-            put(f, line.x + 1 + tw, line.y, &oc_grid::elide_left(&fo, fmax as usize), Style::new(fg, bg), fmax);
+            put(f, line.x + 1 + tw, line.y, &orchard_grid::elide_left(&fo, fmax as usize), Style::new(fg, bg), fmax);
             let ox = line.x + 1 + tw + fw;
             let omax = line.right().saturating_sub(ox + 1);
-            put(f, ox, line.y, &oc_grid::elide_left(&o, omax as usize), Style::new(muted, bg), omax);
+            put(f, ox, line.y, &orchard_grid::elide_left(&o, omax as usize), Style::new(muted, bg), omax);
             if over == Some(row) {
                 f.put_char(line.x, line.y, '▶', Style::new(c.border_active, bg));
             }

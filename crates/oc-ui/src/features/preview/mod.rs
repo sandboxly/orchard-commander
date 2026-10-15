@@ -32,7 +32,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 use oc_preview::{AUTO_DOWNLOAD_LIMIT, FileInfo, LoadContext, PreviewError, Score, ext_for_name};
 use oc_vfs::{Entry, VPath, human_size};
 

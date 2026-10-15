@@ -3734,31 +3734,13 @@ dependencies = [
  "dirs",
  "keyring",
  "oc-vfs",
+ "orchard-theme",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "toml 0.8.23",
  "uuid",
-]
-
-[[package]]
-name = "oc-grid"
-version = "2.1.0"
-dependencies = [
- "bytemuck",
- "fontdb",
- "memmap2",
- "png",
- "pollster",
- "rustc-hash 2.1.3",
- "swash",
- "thiserror 2.0.21",
- "tiny-skia 0.12.0",
- "unicode-segmentation",
- "unicode-width",
- "wgpu",
- "winit",
 ]
 
 [[package]]
@@ -3863,11 +3845,10 @@ dependencies = [
  "caseless",
  "chrono",
  "fancy-regex",
- "imagesize",
  "jpeg-encoder",
- "kamadak-exif",
  "lofty",
  "oc-vfs",
+ "orchard-metadata",
  "regex",
  "serde_json",
  "tempfile",
@@ -3950,7 +3931,6 @@ dependencies = [
  "notify",
  "oc-archive",
  "oc-config",
- "oc-grid",
  "oc-local",
  "oc-media",
  "oc-pdf",
@@ -3963,6 +3943,8 @@ dependencies = [
  "oc-smb",
  "oc-term",
  "oc-vfs",
+ "orchard-grid",
+ "orchard-theme",
  "regex",
  "ropey",
  "serde_json",
@@ -4063,7 +4045,6 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "oc-archive",
  "oc-config",
- "oc-grid",
  "oc-local",
  "oc-media",
  "oc-pdf",
@@ -4074,10 +4055,51 @@ dependencies = [
  "oc-smb",
  "oc-ui",
  "oc-vfs",
+ "orchard-grid",
  "png",
  "serde_json",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "orchard-grid"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "fontdb",
+ "memmap2",
+ "png",
+ "pollster",
+ "rustc-hash 2.1.3",
+ "swash",
+ "thiserror 2.0.21",
+ "tiny-skia 0.12.0",
+ "unicode-segmentation",
+ "unicode-width",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "orchard-metadata"
+version = "0.1.0"
+dependencies = [
+ "imagesize",
+ "kamadak-exif",
+ "lofty",
+ "regex",
+]
+
+[[package]]
+name = "orchard-theme"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "orchard-grid",
+ "serde_json",
+ "thiserror 2.0.21",
+ "toml 0.8.23",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 use oc_rename::metadata::{self, Metadata};
 use oc_rename::{CASES, Case, ExistingNames, Item, Plan, Renamer, Rule, needs_metadata, plan_with};
 
@@ -766,7 +766,7 @@ impl RenameDialog {
         }
 
         self.draw_table(f, &l, ctx);
-        put(f, l.summary.x, l.summary.y, &oc_grid::elide_right(&self.summary, l.summary.w as usize), Style::new(c.muted, c.surface), l.summary.w);
+        put(f, l.summary.x, l.summary.y, &orchard_grid::elide_right(&self.summary, l.summary.w as usize), Style::new(c.muted, c.surface), l.summary.w);
         self.buttons.draw(f, l.buttons, ctx, self.focus == Field::Buttons);
 
         if let Some(m) = &self.menu {
@@ -789,7 +789,7 @@ impl RenameDialog {
         self.table.draw(f, l.table, ctx, |f, row, i, _| {
             let surface = |fg| Style::new(fg, c.surface);
             let Some(item) = self.items.get(i) else { return };
-            put(f, old.x + 1, row.y, &oc_grid::elide_right(&item.name, old.w.saturating_sub(2) as usize), surface(c.foreground), old.w.saturating_sub(1));
+            put(f, old.x + 1, row.y, &orchard_grid::elide_right(&item.name, old.w.saturating_sub(2) as usize), surface(c.foreground), old.w.saturating_sub(1));
             let Some(change) = self.plan.changes.get(i).filter(|_| !mask_error) else { return };
             let (new_text, status_text) = self.row(i);
             let (new_fg, status_fg) = if !change.error.is_empty() {
@@ -801,9 +801,9 @@ impl RenameDialog {
             } else {
                 (c.muted, c.muted)
             };
-            put(f, new.x + 1, row.y, &oc_grid::elide_right(&new_text, new.w.saturating_sub(2) as usize), surface(new_fg), new.w.saturating_sub(1));
+            put(f, new.x + 1, row.y, &orchard_grid::elide_right(&new_text, new.w.saturating_sub(2) as usize), surface(new_fg), new.w.saturating_sub(1));
             if status.w > 0 {
-                put(f, status.x + 1, row.y, &oc_grid::elide_right(&status_text, status.w.saturating_sub(1) as usize), surface(status_fg), status.w);
+                put(f, status.x + 1, row.y, &orchard_grid::elide_right(&status_text, status.w.saturating_sub(1) as usize), surface(status_fg), status.w);
             }
         });
     }

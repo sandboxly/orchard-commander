@@ -103,12 +103,24 @@ Samba, OpenSSH and MinIO in Docker. Tests whose server isn't available skip.
 | `oc-archive` | zip, tar (plain/gz/bz2/xz), gz/bz2/xz, 7z and RAR (vendored UnRAR), read-only |
 | `oc-provider` | Connection types: `FileSystemProvider`, registry, addresses |
 | `oc-sftp`, `oc-smb`, `oc-remote-http` | SFTP, SMB, WebDAV and S3 file systems |
-| `oc-config` | Settings, bookmarks, saved connections, keychain, color schemes (same files as 1.x) |
+| `oc-config` | Settings, bookmarks, saved connections, keychain (same files as 1.x); color schemes from `orchard-theme` |
 | `oc-preview`, `oc-pdf`, `oc-media` | Previewer interface, registry and built-in previewers; PDFium; FFmpeg playback |
 | `oc-search`, `oc-rename`, `oc-term` | Find files, multi-rename, terminal sessions |
-| `oc-grid` | GPU character-grid renderer (wgpu) |
 | `oc-ui` | All UI state and logic: commands, menus, panels, dialogs, features |
 | `app` | The `orchard-commander` binary: event loop, windows, native menu |
+
+Shared with the other Orchard apps, from the
+[orchard-commons](https://github.com/sandboxly/orchard-commons) repository
+(git dependencies pinned to a tag in the workspace `Cargo.toml`):
+
+| Crate | Role |
+| --- | --- |
+| `orchard-grid` | GPU character-grid renderer (wgpu) |
+| `orchard-theme` | Color schemes (built-ins and the `color-schemes/` folder), grid colors, the config directory's location |
+| `orchard-metadata` | File metadata providers for multi-rename (audio tags, video and image properties, EXIF) |
+
+To change them alongside this repository, point Cargo at a local checkout
+with an uncommitted `[patch]` (see `CLAUDE.md`).
 
 Where a UI feature goes and how it fits in:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

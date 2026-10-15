@@ -1,7 +1,7 @@
 //! A dropdown menu: a box of items with shortcuts, check marks and
 //! separators, opened below a point (menu strip, panel title, …).
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::{DrawCtx, fill, parse_hotkey, put, put_hotkey_label, put_right, width};
 use crate::geom::Rect;
@@ -90,7 +90,7 @@ impl DropdownMenu {
         let r = self.rect(screen);
         super::cover(f, r, ctx);
         fill(f, r, c.surface);
-        f.draw_box(r.cell_rect(), oc_grid::BoxStyle::Single, Style::new(c.border_active, c.surface));
+        f.draw_box(r.cell_rect(), orchard_grid::BoxStyle::Single, Style::new(c.border_active, c.surface));
         let inner = r.inset(1, 1);
         for (i, e) in self.entries.iter().enumerate() {
             let row = inner.row(i as u16);

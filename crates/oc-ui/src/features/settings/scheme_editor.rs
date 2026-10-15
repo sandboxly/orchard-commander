@@ -8,7 +8,7 @@
 
 use oc_config::ColorScheme;
 use oc_config::themes::{self, COLOR_ROLES};
-use oc_grid::{Frame, Rgba, Style};
+use orchard_grid::{Frame, Rgba, Style};
 
 use super::Slot;
 use super::color_picker::{self, ColorPicker, PickerOutcome};

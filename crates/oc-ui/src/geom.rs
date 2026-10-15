@@ -1,6 +1,6 @@
 //! Cell rectangles for layout and hit testing.
 
-use oc_grid::CellRect;
+use orchard_grid::CellRect;
 
 /// A rectangle of character cells. Unlike [`CellRect`] it may be empty and
 /// offers the splitting helpers layouts need.

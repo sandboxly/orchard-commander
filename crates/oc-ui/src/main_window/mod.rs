@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use oc_config::Settings;
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 use oc_vfs::VPath;
 
 use crate::app::{App, MAIN_WINDOW, Outcome, Severity};

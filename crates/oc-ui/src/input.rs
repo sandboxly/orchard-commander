@@ -1,7 +1,7 @@
 //! Input events in the UI's own terms, independent of winit, so state
 //! machines can be driven by tests. [`from_winit`] converts.
 
-use oc_grid::winit;
+use orchard_grid::winit;
 
 /// A key, as it is without modifiers: Shift+. is `Char('.')` with `shift`
 /// set (the produced text, ">", is in [`KeyEvent::text`]). Letters are lower case.

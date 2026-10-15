@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use oc_grid::{Flags, Frame, ImagePlacement, Style};
+use orchard_grid::{Flags, Frame, ImagePlacement, Style};
 use oc_media::prefs::{AUTOPLAY, MUTED, extra_key};
 use oc_media::waveform::REMOTE_NOTE;
 use oc_media::{

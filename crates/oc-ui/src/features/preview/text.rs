@@ -11,7 +11,7 @@
 
 use std::any::Any;
 
-use oc_grid::{Flags, Frame, Layer, PxRect, Rgba, Style};
+use orchard_grid::{Flags, Frame, Layer, PxRect, Rgba, Style};
 use oc_preview::highlight::SyntaxPalette;
 use oc_preview::{Color, StyledLine, StyledText, TextStyle, ThemeRole};
 use unicode_segmentation::UnicodeSegmentation;

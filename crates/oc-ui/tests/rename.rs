@@ -478,7 +478,7 @@ fn the_dialog_draws_in_any_window_size() {
             for &(k, m) in keys {
                 press_with(&mut app, k, m);
             }
-            let mut f = oc_grid::Frame::new(cols, rows, oc_grid::Rgba::BLACK);
+            let mut f = orchard_grid::Frame::new(cols, rows, orchard_grid::Rgba::BLACK);
             app.draw(MAIN_WINDOW, &mut f, (8.0, 16.0));
         }
         press(&mut app, Key::Escape);

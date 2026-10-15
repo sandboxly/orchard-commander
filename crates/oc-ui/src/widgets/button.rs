@@ -1,6 +1,6 @@
 //! Push buttons with hotkey letters, laid out in a centered row.
 
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 
 use super::{DrawCtx, fill, parse_hotkey, put_hotkey_label, width};
 use crate::geom::Rect;

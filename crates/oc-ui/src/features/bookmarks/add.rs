@@ -2,7 +2,7 @@
 //! it, and optionally the other panel's folder (port of `AddBookmarkDialog`).
 
 use oc_config::Spec;
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::form::{Choice, cycle_focus};
 use crate::app::App;
@@ -63,7 +63,7 @@ impl AddBookmark {
     ) -> Self {
         let label = match &target {
             // Fits the dialog: a long path is shortened at the front.
-            Some(t) => format!("Also open the other panel at {}", oc_grid::elide_left(&t.describe(), 33)),
+            Some(t) => format!("Also open the other panel at {}", orchard_grid::elide_left(&t.describe(), 33)),
             None => "Also open the other panel".to_owned(),
         };
         let (labels, ids): (Vec<String>, Vec<Option<String>>) = choices.into_iter().unzip();
@@ -140,7 +140,7 @@ impl Modal for AddBookmark {
             put(f, content.x, row.y, text, label, LABEL_W);
         }
         self.title.draw(f, r.title, ctx, self.focus == Focus::Title);
-        put(f, r.folder.x, r.folder.y, &oc_grid::elide_left(&self.folder_text, r.folder.w as usize), label, r.folder.w);
+        put(f, r.folder.x, r.folder.y, &orchard_grid::elide_left(&self.folder_text, r.folder.w as usize), label, r.folder.w);
         self.folder.draw(f, r.put_in, ctx, self.focus == Focus::PutIn);
         if self.has_target {
             self.with_target.draw(f, r.target, ctx, self.focus == Focus::Target);

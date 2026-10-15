@@ -1,6 +1,6 @@
 //! Ask for one line of text (Copy to, Make directory, Go to…).
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::{dialog_rects, draw_box, wrap};
 use crate::app::App;

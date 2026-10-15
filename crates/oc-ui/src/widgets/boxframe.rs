@@ -2,7 +2,7 @@
 //! the top edge and a subtitle into the bottom edge (port of `boxframe.py`),
 //! plus the mode tabs drawn above a panel.
 
-use oc_grid::{Flags, Frame, Layer, PxRect, Style};
+use orchard_grid::{Flags, Frame, Layer, PxRect, Style};
 
 use super::{DrawCtx, fill, put, width};
 use crate::geom::Rect;
@@ -32,7 +32,7 @@ impl<'a> BoxFrame<'a> {
         if self.title.is_empty() || room < 2 {
             return None;
         }
-        Some(format!(" {} ", oc_grid::elide_left(self.title, room.saturating_sub(2) as usize)))
+        Some(format!(" {} ", orchard_grid::elide_left(self.title, room.saturating_sub(2) as usize)))
     }
 
     fn subtitle_text(&self, r: Rect) -> Option<String> {
@@ -40,7 +40,7 @@ impl<'a> BoxFrame<'a> {
         if self.subtitle.is_empty() || room < 2 {
             return None;
         }
-        Some(format!(" {} ", oc_grid::elide_left(self.subtitle, room.saturating_sub(2) as usize)))
+        Some(format!(" {} ", orchard_grid::elide_left(self.subtitle, room.saturating_sub(2) as usize)))
     }
 
     /// Paint the box into `r` and return the inside (one cell in from each edge).

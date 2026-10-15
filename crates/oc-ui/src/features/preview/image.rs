@@ -13,7 +13,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
-use oc_grid::{Frame, ImagePlacement, PxRect};
+use orchard_grid::{Frame, ImagePlacement, PxRect};
 use oc_preview::ImageData;
 use oc_vfs::VPath;
 

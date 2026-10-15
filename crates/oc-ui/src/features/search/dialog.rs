@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use oc_grid::{Flags, Frame, Style};
+use orchard_grid::{Flags, Frame, Style};
 use oc_search::{Kinds, NameMatcher, Query, TextMatcher};
 use oc_vfs::VPath;
 

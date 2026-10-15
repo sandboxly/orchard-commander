@@ -6,7 +6,7 @@
 //! metrics (`cell_px` is in physical pixels) the way 1.x sized from the
 //! font's "M" advance and line height.
 
-use oc_grid::{Frame, Layer, PxRect, Rgba, Style};
+use orchard_grid::{Frame, Layer, PxRect, Rgba, Style};
 use oc_media::waveform::{played_x, x_to_ms};
 use oc_media::{WaveformLevels, format_time};
 

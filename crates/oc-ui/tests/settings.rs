@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use oc_config::themes::{self, Appearance};
 use oc_config::{ConfigPaths, Settings};
-use oc_grid::{Frame, Rgba};
+use orchard_grid::{Frame, Rgba};
 use oc_ui::testing::{headless_app, press, press_with, settle, type_text, wait_until};
 use oc_ui::{App, AppConfig, Key, MAIN_WINDOW, Mods};
 
@@ -100,7 +100,7 @@ fn settings_apply_live_and_persist_only_what_changed() {
     press(&mut app, Key::Down);
     press(&mut app, Key::Down);
     press(&mut app, Key::Enter); // …Double line
-    assert_eq!(app.theme.frame, oc_grid::BoxStyle::Double);
+    assert_eq!(app.theme.frame, orchard_grid::BoxStyle::Double);
     tab_to(&mut app, "Ctl(Spacing)");
     press(&mut app, Key::Right);
     assert_eq!(app.settings.line_spacing, Some(1.05));

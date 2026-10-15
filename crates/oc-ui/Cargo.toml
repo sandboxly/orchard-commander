@@ -8,7 +8,8 @@ license.workspace = true
 oc-vfs.workspace = true
 oc-local.workspace = true
 oc-config.workspace = true
-oc-grid.workspace = true
+orchard-grid.workspace = true
+orchard-theme.workspace = true
 oc-preview = { workspace = true, features = ["media"] }
 oc-media = { path = "../oc-media" }
 serde_json = "1.0"

@@ -1,7 +1,7 @@
 //! A context menu: a [`DropdownMenu`] at a point (right-click on a preview
 //! image…) that reports the chosen entry and closes.
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 
 use crate::app::App;
 use crate::geom::Rect;

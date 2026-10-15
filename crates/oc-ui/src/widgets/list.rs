@@ -1,7 +1,7 @@
 //! Cursor and scrolling for lists and tables of any length. Only the visible
 //! rows are ever touched, so 100 000 entries cost the same as 100.
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 
 use super::scrollbar::Scrollbar;
 use super::{DrawCtx, fill};

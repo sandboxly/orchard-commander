@@ -1,7 +1,7 @@
 //! Drawing the info window: facts as label / value rows, then for folders
 //! the space chart with its legend.
 
-use oc_grid::{Flags, Frame, Layer, PxRect, Rgba, Style};
+use orchard_grid::{Flags, Frame, Layer, PxRect, Rgba, Style};
 use oc_preview::content::thousands;
 use oc_vfs::human_size;
 

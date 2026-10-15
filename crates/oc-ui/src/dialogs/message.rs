@@ -1,6 +1,6 @@
 //! A message with buttons: confirmations, errors, the File exists question.
 
-use oc_grid::{Frame, Style};
+use orchard_grid::{Frame, Style};
 
 use super::{dialog_rects, draw_box, wrap};
 use crate::app::{App, Severity};

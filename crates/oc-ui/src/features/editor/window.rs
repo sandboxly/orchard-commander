@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
-use oc_grid::Frame;
+use orchard_grid::Frame;
 use oc_preview::highlight::{self as syn, LineHighlighter};
 use oc_preview::textfile::{Encoding, TextFile};
 use oc_vfs::VPath;
@@ -387,7 +387,7 @@ impl EditorWindow {
     pub fn frame_title_within(&self, max: usize) -> String {
         let mark = if self.modified() { "● " } else { "" };
         let path = short_display(&self.location);
-        format!("{mark}{}", oc_grid::elide_left(&path, max.saturating_sub(oc_grid::str_width(mark))))
+        format!("{mark}{}", orchard_grid::elide_left(&path, max.saturating_sub(orchard_grid::str_width(mark))))
     }
 
     /// The status line: "Ln 14, Col 15 · UTF-8 · LF · Python · read-only".
