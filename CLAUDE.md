@@ -25,12 +25,12 @@ packaging/macos/package.sh --notarize                  # signed, notarized dist/
 - `ORCHARD_COMMANDER_CONFIG_DIR=<empty dir>` runs the app (or `--screenshot`) with default settings and without touching the real config.
 - `OC_TIMING=1` prints startup phases; `OC_TIMING=exit` quits after the first frame.
 - Server tests: SFTP runs an in-process russh server; WebDAV/S3/SMB use WsgiDAV, moto and impacket from a Python environment (`OC_TEST_PYTHON`, default `.venv` at the repository root: `uv venv .venv && uv pip install --python .venv/bin/python -r tests/servers-requirements.txt`) and Samba/OpenSSH/MinIO in Docker. Each skips with a note when its server is unavailable. The SFTP interop test against 1.x runs only with `OC_PYTHON1_CHECKOUT=<dir>` (e.g. `git worktree add <dir> python-1.x`).
-- The orchard-* crates come from `https://github.com/sandboxly/orchard-commons` at a tag. To work on them together with this repo, add an uncommitted override to `.cargo/config.toml` (one line per crate; don't commit it), then bump the tag in `Cargo.toml` once the commons change is tagged:
+- The orchard-* crates come from `https://github.com/sandboxly/orchard-commons` at a tag. To work on them together with this repo, add an override to `.cargo/config.toml` (one line per crate) and hide it from git with `git update-index --skip-worktree .cargo/config.toml` (the file is tracked for the Windows linker flags, so `.git/info/exclude` doesn't help; undo with `--no-skip-worktree` before changing the tracked part), then bump the tag in `Cargo.toml` once the commons change is tagged:
   ```toml
   [patch."https://github.com/sandboxly/orchard-commons"]
   orchard-grid = { path = "../orchard-commons/crates/orchard-grid" }
   ```
-  Cargo still fetches the git source to resolve the tag, so the tag must exist upstream; `cargo test` in orchard-commons covers the moved code (renderer, schemes, metadata providers).
+  Cargo still fetches the git source to resolve the tag, so the tag must exist upstream, and `Cargo.lock` must be refreshed without the override (`cargo update -p orchard-grid -p orchard-theme -p orchard-metadata`) before committing it, or the `--locked` builds in CI and packaging fail; `cargo test` in orchard-commons covers the moved code (renderer, schemes, metadata providers).
 - Windows/Linux packages come from CI (`.github/workflows/ci.yml`, `packaging/stage.sh`, Inno Setup, nfpm, appimagetool). Release steps and the native-library table: `docs/RELEASING.md`; fixed asset names and identities: `docs/RELEASE-2.0-REQUIREMENTS.md`.
 
 ## Architecture

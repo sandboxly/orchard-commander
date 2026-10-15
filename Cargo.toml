@@ -7,7 +7,7 @@ version = "2.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["Stephan Lengl <lengl.stephan@gmail.com>"]
-rust-version = "1.85"
+rust-version = "1.90"
 
 [workspace.dependencies]
 oc-vfs = { path = "crates/oc-vfs" }

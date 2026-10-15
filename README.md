@@ -120,7 +120,7 @@ Shared with the other Orchard apps, from the
 | `orchard-metadata` | File metadata providers for multi-rename (audio tags, video and image properties, EXIF) |
 
 To change them alongside this repository, point Cargo at a local checkout
-with an uncommitted `[patch]` (see `CLAUDE.md`).
+with a local `[patch]` that stays out of commits (see `CLAUDE.md`).
 
 Where a UI feature goes and how it fits in:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
