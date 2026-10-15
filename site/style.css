@@ -280,3 +280,19 @@ kbd { display: inline-block; font-size: 0.8em; line-height: 1.5; padding: 0 6px;
   .toc a { padding: 10px; }
 }
 @media (min-width: 861px) { .toc details > ol { display: block; } }
+
+/* family */
+.family { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px 28px; align-items: center; padding: 30px 28px 28px; background: transparent; }
+.family img { width: 64px; height: 64px; }
+.family h2 { font-size: clamp(20px, 2.4vw, 24px); margin: 0 0 8px; }
+.family p { font-size: 16px; max-width: 60ch; }
+.family-links { display: flex; flex-wrap: wrap; gap: 12px; }
+@media (max-width: 680px) {
+  .family { grid-template-columns: auto minmax(0, 1fr); }
+  .family .btn { grid-column: 1 / -1; justify-self: start; }
+  .family .family-links { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .family { grid-template-columns: minmax(0, 1fr); }
+  .family img { width: 48px; height: 48px; }
+}
