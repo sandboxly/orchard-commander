@@ -137,7 +137,7 @@ pub fn load_saved(path: &Path) -> Vec<Connection> {
 
 /// Replace all saved connections.
 pub fn save_all(path: &Path, items: &[Connection]) -> io::Result<()> {
-    crate::paths::write_atomic(path, pyjson::dumps(items, true).as_bytes())
+    crate::write_atomic(path, pyjson::dumps(items, true).as_bytes())
 }
 
 /// Add or update (by id); an updated connection moves to the end, as in the Python version.

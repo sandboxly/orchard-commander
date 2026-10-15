@@ -7,12 +7,14 @@
 //! data when switching. Files are re-read on every load rather than cached:
 //! several app instances may share them.
 
-pub mod bookmarks;
 pub mod connections;
 pub mod locations;
 pub mod paths;
-mod pyjson;
 pub mod settings;
+/// Bookmarks, JSON written like the Python version and atomic writes: shared
+/// with the other Orchard apps, which add bookmarks from their file pickers,
+/// so they live in `orchard_places`.
+pub use orchard_places::{bookmarks, pyjson, write_atomic};
 /// Color schemes: built-ins and the files in `color-schemes/` (shared with
 /// the other Orchard apps, so it lives in `orchard_theme`).
 pub use orchard_theme::schemes as themes;

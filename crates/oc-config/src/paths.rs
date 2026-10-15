@@ -169,32 +169,6 @@ fn copy_permissions(from: &Path, to: &Path) {
     }
 }
 
-/// Replace `path`'s contents without a reader ever seeing a half-written
-/// file: other app instances re-read settings and connections before each
-/// save, and a torn file would read as "nothing saved" and be written back
-/// that way. Writes go through a symlinked file (dotfile setups) to its
-/// target. If staging is refused (a read-only directory; on Windows, a file
-/// another process has open), the file is written in place as the Python
-/// version does.
-pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let target = match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_symlink() => fs::canonicalize(path)?,
-        _ => path.to_path_buf(),
-    };
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut tmp = target.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    let staged = fs::write(&tmp, contents).and_then(|()| fs::rename(&tmp, &target));
-    if staged.is_err() {
-        let _ = fs::remove_file(&tmp);
-        fs::write(&target, contents)?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,36 +270,6 @@ mod tests {
         assert!(paths.migrate_legacy_config().unwrap());
         assert!(paths.settings_file().exists());
         assert!(!paths.dir().join("half").exists() && !staging.exists());
-    }
-
-    #[test]
-    fn atomic_writes_replace_and_leave_nothing_behind() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("a/b/settings.json");
-        write_atomic(&path, b"one").unwrap();
-        write_atomic(&path, b"two").unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "two");
-        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn atomic_writes_go_through_symlinks() {
-        let tmp = tempfile::tempdir().unwrap();
-        let real = tmp.path().join("dotfiles/settings.json");
-        fs::create_dir_all(real.parent().unwrap()).unwrap();
-        fs::write(&real, "old").unwrap();
-        let link = tmp.path().join("cfg/settings.json");
-        fs::create_dir_all(link.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-        write_atomic(&link, b"new").unwrap();
-        assert!(
-            fs::symlink_metadata(&link)
-                .unwrap()
-                .file_type()
-                .is_symlink()
-        );
-        assert_eq!(fs::read_to_string(&real).unwrap(), "new");
     }
 
     #[test]

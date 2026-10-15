@@ -164,7 +164,7 @@ impl Settings {
     /// Write all settings to `path`. Settings are a convenience: callers
     /// usually log and otherwise ignore an error.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        crate::paths::write_atomic(path, self.to_json().as_bytes())
+        crate::write_atomic(path, self.to_json().as_bytes())
     }
 
     /// Apply `change` and persist only what it changes.

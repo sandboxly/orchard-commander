@@ -24,6 +24,7 @@ oc-ui = { path = "crates/oc-ui" }
 orchard-grid = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
 orchard-theme = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
 orchard-metadata = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
+orchard-places = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
 thiserror = "2"
 tempfile = "3"
 
