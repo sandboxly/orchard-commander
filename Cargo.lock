@@ -4065,6 +4065,7 @@ dependencies = [
 [[package]]
 name = "orchard-grid"
 version = "0.1.0"
+source = "git+https://github.com/sandboxly/orchard-commons?tag=v0.1.0#78223f7a774852a5607283890151d5cccf96d309"
 dependencies = [
  "bytemuck",
  "fontdb",
@@ -4084,6 +4085,7 @@ dependencies = [
 [[package]]
 name = "orchard-metadata"
 version = "0.1.0"
+source = "git+https://github.com/sandboxly/orchard-commons?tag=v0.1.0#78223f7a774852a5607283890151d5cccf96d309"
 dependencies = [
  "imagesize",
  "kamadak-exif",
@@ -4094,6 +4096,7 @@ dependencies = [
 [[package]]
 name = "orchard-theme"
 version = "0.1.0"
+source = "git+https://github.com/sandboxly/orchard-commons?tag=v0.1.0#78223f7a774852a5607283890151d5cccf96d309"
 dependencies = [
  "dirs",
  "orchard-grid",
