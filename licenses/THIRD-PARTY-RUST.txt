@@ -10047,9 +10047,9 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - orchard-grid 0.1.0 <https://github.com/sandboxly/orchard-commons>
-  - orchard-metadata 0.1.0 <https://github.com/sandboxly/orchard-commons>
-  - orchard-theme 0.1.0 <https://github.com/sandboxly/orchard-commons>
+  - orchard-grid 0.2.0 <https://github.com/sandboxly/orchard-commons>
+  - orchard-metadata 0.2.0 <https://github.com/sandboxly/orchard-commons>
+  - orchard-theme 0.2.0 <https://github.com/sandboxly/orchard-commons>
   - orchard-commander 2.1.0
   - oc-archive 2.1.0
   - oc-config 2.1.0

@@ -21,9 +21,9 @@ oc-preview = { path = "crates/oc-preview" }
 oc-ui = { path = "crates/oc-ui" }
 # Shared with the other Orchard apps (github.com/sandboxly/orchard-commons).
 # To work on them locally, see "orchard-* crates" in CLAUDE.md (Commands).
-orchard-grid = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.1.0" }
-orchard-theme = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.1.0" }
-orchard-metadata = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.1.0" }
+orchard-grid = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
+orchard-theme = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
+orchard-metadata = { git = "https://github.com/sandboxly/orchard-commons", tag = "v0.2.0" }
 thiserror = "2"
 tempfile = "3"
 
