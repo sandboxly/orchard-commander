@@ -33,8 +33,12 @@ Lower crates (`oc-vfs`, `oc-local`, `oc-archive`, `oc-config`, `oc-preview`,
 crates shared with the other Orchard apps, which live in their own repository
 (orchard-commons) and come in as git dependencies: `orchard-grid` (the
 character-grid renderer), `orchard-theme` (color schemes, `Colors`, where the
-config directory is) and `orchard-metadata` (file metadata for multi-rename).
-`oc-config` re-exports `orchard_theme::schemes` as `themes`, `oc-rename`
+config directory is), `orchard-metadata` (file metadata for multi-rename) and
+`orchard-places` (the bookmarks file and its location specs, shared because
+the other apps' file pickers show bookmarks and add new ones).
+`oc-config` re-exports `orchard_theme::schemes` as `themes` and
+`orchard_places`' `bookmarks`, `pyjson`, `write_atomic` and the vfs-free part of
+`locations` (keeping `spec_of` / `SpecContext`, which need `oc-vfs`), `oc-rename`
 re-exports `orchard_metadata` in its `metadata` module (plus reading a
 `VPath`), and `oc_ui::theme::Colors` is `orchard_theme::Colors`.
 
@@ -200,7 +204,9 @@ Other registry hooks:
 * `reg.add_location_source(fn(&App, side) -> Vec<LocationChoice>)`: extra
   entries after the drives in the drive / location list (⌥F1 / ⌥F2); each
   has a label, a dimmed hint and an `open(app, side)` closure. Bookmarks add
-  "★ Title"; connections add "⇄ Name".
+  "★ Title"; connections add "⇄ Name". Sources only read memory;
+  `reg.before_location_list(fn(&mut App, then))` brings that up to date
+  first, in the background (bookmarks re-read a changed `bookmarks.json`).
 * `App::persists()`: false in `--screenshot` mode; features writing their
   own files (bookmarks.json…) skip writing then.
 * `reg.on_shutdown(fn(&mut App))`: runs in `App::shutdown` (quitting),
@@ -209,10 +215,15 @@ Other registry hooks:
 
 ### Bookmarks and location specs (`features/bookmarks/`)
 
-* State: `app.try_state::<bookmarks::Bookmarks>()` (`bookmarks::items(app)`);
-  `bookmarks.json` is read in the background at start (commands that come
-  earlier wait for it) and written in the background after each change
-  (and once more on quit if a write is still pending).
+* State: `app.try_state::<bookmarks::Bookmarks>()` (`bookmarks::items(app)`),
+  a copy of `bookmarks.json`. The other Orchard apps share the file (their
+  file pickers add bookmarks), so the menu, ⌥⌘D, the drive list and the
+  organizer first check the file's `Stamp` in the background and re-read it
+  if it changed. Changes go to the copy at once and to the file in the
+  background through `bookmarks::update` (read, change, write: what other
+  apps saved stays; still unwritten ones are written on quit); the
+  organizer's OK merges with `bookmarks::merge_external`, keeping what other
+  apps added while it was open. Never save the whole copy over the file.
 * `bookmarks::locations::spec_of(app, &vpath)` describes a folder as an
   `oc_config::Spec` (archives nest; servers by connection account);
   `bookmarks::locations::resolve(app, &spec, Box::new(|app, Result<VPath,

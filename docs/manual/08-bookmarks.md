@@ -64,4 +64,6 @@ and **Other panel** is an optional folder for the other panel. Click
 shown in that panel.
 
 Bookmarks are stored in the file `bookmarks.json` in the settings folder
-(see [Settings](12-settings.md#where-settings-are-stored)).
+(see [Settings](12-settings.md#where-settings-are-stored)). The other Orchard
+apps show your bookmarked local folders in their file pickers and can add new
+ones, which appear here the next time you open the bookmark menu.

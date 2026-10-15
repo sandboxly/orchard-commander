@@ -119,6 +119,7 @@ Shared with the other Orchard apps, from the
 | `orchard-grid` | GPU character-grid renderer (wgpu) |
 | `orchard-theme` | Color schemes (built-ins and the `color-schemes/` folder), grid colors, the config directory's location |
 | `orchard-metadata` | File metadata providers for multi-rename (audio tags, video and image properties, EXIF) |
+| `orchard-places` | Bookmarks (`bookmarks.json`, shared with the other apps' file pickers) and their saved locations |
 
 To change them alongside this repository, point Cargo at a local checkout
 with a local `[patch]` that stays out of commits (see `CLAUDE.md`).
