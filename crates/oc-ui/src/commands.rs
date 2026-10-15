@@ -255,6 +255,9 @@ pub fn files_removed(app: &mut App, removed: &HashSet<VPath>) {
 /// `side`, e.g. saved servers or bookmarks. Called on the UI thread when the
 /// chooser opens: no I/O, only what the feature already has in memory.
 pub type LocationSource = fn(&App, usize) -> Vec<crate::features::navigation::LocationItem>;
+/// Before the chooser opens: bring what a [`LocationSource`] lists up to
+/// date (in the background), then call the continuation on the UI thread.
+pub type LocationRefresh = fn(&mut App, Box<dyn FnOnce(&mut App)>);
 /// A panel's listing of `location` failed with `error`: return true if the
 /// hook takes care of it (e.g. reconnects to the server and lists again)
 /// instead of the usual error toast. Args: app, side, location, error.
@@ -279,6 +282,7 @@ pub struct Registry {
     pub(crate) on_files_moved: Vec<MovedHook>,
     pub(crate) on_files_removed: Vec<RemovedHook>,
     pub(crate) location_sources: Vec<LocationSource>,
+    pub(crate) location_refreshes: Vec<LocationRefresh>,
     pub(crate) on_load_error: Vec<LoadErrorHook>,
     pub(crate) on_shutdown: Vec<ShutdownHook>,
     pub(crate) on_title_click: Option<TitleClickHook>,
@@ -365,6 +369,13 @@ impl Registry {
     /// More entries for the ⌥F1 / ⌥F2 chooser (after the drives, in registration order).
     pub fn add_location_source(&mut self, source: LocationSource) -> &mut Self {
         self.location_sources.push(source);
+        self
+    }
+
+    /// Runs before the ⌥F1 / ⌥F2 chooser lists the features' entries (e.g.
+    /// to re-read a file another app may have changed).
+    pub fn before_location_list(&mut self, refresh: LocationRefresh) -> &mut Self {
+        self.location_refreshes.push(refresh);
         self
     }
 

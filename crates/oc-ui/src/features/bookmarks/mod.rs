@@ -8,11 +8,18 @@
 //! * The organizer ([`organizer::Organizer`]) edits a copy of the tree;
 //!   OK saves it.
 //!
-//! The list lives in `bookmarks.json` (`oc_config::bookmarks`, the 1.x
-//! format), read in the background at start and written in the background
-//! after each change. Locations are `oc_config::Spec`s; [`locations`] turns
-//! them back into live folders (archives opened, servers connected through
-//! the connections feature).
+//! The list lives in `bookmarks.json` (`oc_config::bookmarks`, i.e.
+//! `orchard_places::bookmarks`, the 1.x format), which the other Orchard
+//! apps share: their file pickers show the bookmarks and add new ones. So
+//! the list in memory is only a copy: before the menu, the search, the drive
+//! list or the organizer shows it, the file's [`Stamp`] is checked in the
+//! background and the file read again if another app changed it. Changes are
+//! applied to the copy at once and to the file in the background, each to
+//! the file as it is then ([`store::update`]); the organizer's OK keeps
+//! what other apps added while it was open ([`store::merge_external`]).
+//! Locations are `oc_config::Spec`s; [`locations`] turns them back into
+//! live folders (archives opened, servers connected through the connections
+//! feature).
 
 mod add;
 mod form;
@@ -20,10 +27,12 @@ pub mod locations;
 pub mod menu;
 pub mod organizer;
 
-use std::sync::{Arc, Mutex};
+use std::io;
+use std::path::Path;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use oc_config::Spec;
-use oc_config::bookmarks::{self as store, Bookmark, Item};
+use oc_config::bookmarks::{self as store, Bookmark, Item, Stamp};
 
 use crate::app::App;
 use crate::commands::{Command, Registry};
@@ -33,21 +42,33 @@ use crate::main_window::{self, SideMode};
 use crate::menus::Menu;
 use crate::panel::{self, LoadOptions};
 
-/// Work waiting for the file to be read.
+/// Work waiting for a fresh look at the file.
 type Deferred = Box<dyn FnOnce(&mut App)>;
+/// A change for the file, applied to the bookmarks as they are on disk.
+type Change = Box<dyn FnOnce(&mut Vec<Item>) + Send>;
 
-/// The bookmark list (app-wide state).
+/// The bookmark list (app-wide state): a copy of `bookmarks.json`.
 #[derive(Default)]
 pub struct Bookmarks {
     pub items: Vec<Item>,
     /// `bookmarks.json` has been read.
     pub loaded: bool,
-    /// Commands that came before the file was read.
-    waiting: Vec<Deferred>,
-    /// Saves in order: each save has a number; a slower older one never
-    /// overwrites a newer one.
-    generation: u64,
-    written: Arc<Mutex<u64>>,
+    /// The file's stamp when `items` were read from it; the default one
+    /// (as for no file) after a change of our own, so the next look reads
+    /// the file again.
+    stamp: Stamp,
+    /// Looks at the file are numbered; `waiting` holds the commands that
+    /// wait for one (by number) to finish.
+    looks: u64,
+    waiting: Vec<(u64, Deferred)>,
+    /// The newest look whose result was taken: an older one finishing later
+    /// is out of date.
+    applied: u64,
+    /// Counts our own changes: a look started before one is out of date.
+    changes: u64,
+    /// Our changes not on disk yet, in order. The next look writes them;
+    /// quitting writes what is left.
+    unwritten: Arc<Mutex<Vec<Change>>>,
     /// Per side: the latest bookmark being opened there. A slower earlier
     /// one (an archive, a server) arriving later is dropped.
     opening: [u64; 2],
@@ -80,6 +101,7 @@ pub fn register(reg: &mut Registry) {
     reg.on_shutdown(flush);
     reg.on_panel_title_click(|app, side, col, row| bookmark_menu(app, Some(side), Some((col, row + 1))));
     reg.add_location_source(drive_list_entries);
+    reg.before_location_list(|app, then| fresh(app, then));
 }
 
 // ---------------------------------------------------------------------------
@@ -87,29 +109,94 @@ pub fn register(reg: &mut Registry) {
 // ---------------------------------------------------------------------------
 
 fn load(app: &mut App) {
+    fresh(app, |_| {});
+}
+
+/// Run `f` once the list matches `bookmarks.json`: after a look at the
+/// file's stamp in the background, and reading it again if another app
+/// changed it. In `--screenshot` mode (nothing is saved) the file is read
+/// only once.
+fn fresh(app: &mut App, f: impl FnOnce(&mut App) + 'static) {
+    let persists = app.persists();
+    let st = app.state::<Bookmarks>();
+    if st.loaded && !persists {
+        f(app);
+        return;
+    }
+    st.looks += 1;
+    st.waiting.push((st.looks, Box::new(f)));
+    look(app);
+}
+
+/// Write our changes not on disk yet, then read the file if its stamp
+/// changed; then run the commands waiting for this look.
+fn look(app: &mut App) {
     let path = app.paths.bookmarks_file();
-    app.tasks.run_in_background(
-        move |_| store::load(&path),
-        |app, items| {
+    let persists = app.persists();
+    let st = app.state::<Bookmarks>();
+    let (number, changes) = (st.looks, st.changes);
+    let known = st.loaded.then_some(st.stamp);
+    let unwritten = st.unwritten.clone();
+    app.tasks.spawn(
+        move || {
+            let written = if persists { write_unwritten(&path, &unwritten) } else { Ok(()) };
+            let stamp = Stamp::of(&path); // before reading: a change in between shows next time
+            let read = (known != Some(stamp)).then(|| (stamp, store::load(&path)));
+            (written, read)
+        },
+        move |app, (written, read)| {
             let st = app.state::<Bookmarks>();
-            st.items = items;
+            if let Some((stamp, items)) = read
+                && st.changes == changes
+                && st.applied < number
+            {
+                st.items = items;
+                st.stamp = stamp;
+                st.applied = number;
+            }
             st.loaded = true;
-            let waiting = std::mem::take(&mut st.waiting);
-            for f in waiting {
+            let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut st.waiting).into_iter().partition(|(n, _)| *n == number);
+            st.waiting = later;
+            if let Err(e) = written {
+                app.error(format!("Can't save bookmarks: {e}"));
+            }
+            for (_, f) in now {
                 f(app);
             }
         },
     );
 }
 
-/// Run `f` once the bookmarks are read (right away, normally).
-fn when_loaded(app: &mut App, f: impl FnOnce(&mut App) + 'static) {
-    let st = app.state::<Bookmarks>();
-    if st.loaded {
-        f(app);
-    } else {
-        st.waiting.push(Box::new(f));
+/// Apply `unwritten` to the file as it is now. Holds the lock while
+/// writing, so quitting waits for a write under way.
+fn write_unwritten(path: &Path, unwritten: &Mutex<Vec<Change>>) -> io::Result<()> {
+    let mut pending = unwritten.lock().unwrap_or_else(PoisonError::into_inner);
+    if pending.is_empty() {
+        return Ok(());
     }
+    let changes = std::mem::take(&mut *pending);
+    store::update(path, move |items| {
+        for change in changes {
+            change(items);
+        }
+    })
+}
+
+/// Change the list: the copy at once, the file in the background (as it is
+/// then, so what other apps saved meanwhile stays).
+fn change(app: &mut App, change: impl FnOnce(&mut Vec<Item>) + Clone + Send + 'static) {
+    let persists = app.persists();
+    let st = app.state::<Bookmarks>();
+    change.clone()(&mut st.items);
+    st.loaded = true;
+    st.changes += 1;
+    st.stamp = Stamp::default();
+    if !persists {
+        return;
+    }
+    st.unwritten.lock().unwrap_or_else(PoisonError::into_inner).push(Box::new(change));
+    st.looks += 1;
+    look(app);
 }
 
 /// The bookmarks (empty until read).
@@ -117,56 +204,22 @@ pub fn items(app: &App) -> &[Item] {
     app.try_state::<Bookmarks>().map_or(&[], |s| &s.items)
 }
 
-/// Replace the list and save it.
+/// Replace the whole list (what other apps added meanwhile is lost; the
+/// organizer merges instead).
 pub fn set_items(app: &mut App, items: Vec<Item>) {
-    let st = app.state::<Bookmarks>();
-    st.items = items;
-    st.loaded = true;
-    save(app);
+    change(app, move |all| *all = items);
 }
 
-/// Write `bookmarks.json` in the background (not in `--screenshot` mode).
-fn save(app: &mut App) {
-    if !app.persists() {
-        return;
-    }
-    let st = app.state::<Bookmarks>();
-    st.generation += 1;
-    let generation = st.generation;
-    let items = st.items.clone();
-    let written = st.written.clone();
-    let path = app.paths.bookmarks_file();
-    app.tasks.spawn(
-        move || {
-            let mut last = written.lock().unwrap_or_else(|p| p.into_inner());
-            if *last > generation {
-                return Ok(()); // a newer list is on disk already
-            }
-            *last = generation;
-            store::save(&path, &items)
-        },
-        |app, result| {
-            if let Err(e) = result {
-                app.error(format!("Can't save bookmarks: {e}"));
-            }
-        },
-    );
-}
-
-/// Quitting: make sure the latest list is on disk (a background save may
-/// not have run yet). Waits for a save in progress; usually does nothing.
+/// Quitting: make sure our changes are on disk (a background write may not
+/// have run yet). Waits for a write in progress; usually does nothing.
 fn flush(app: &mut App) {
     if !app.persists() {
         return;
     }
     let path = app.paths.bookmarks_file();
     let Some(st) = app.try_state::<Bookmarks>() else { return };
-    let mut last = st.written.lock().unwrap_or_else(|p| p.into_inner());
-    if *last < st.generation {
-        if let Err(e) = store::save(&path, &st.items) {
-            log::warn!("cannot save bookmarks: {e}");
-        }
-        *last = st.generation;
+    if let Err(e) = write_unwritten(&path, &st.unwritten) {
+        log::warn!("cannot save bookmarks: {e}");
     }
 }
 
@@ -180,17 +233,6 @@ pub fn menu_text(title: &str, key: Option<&str>) -> String {
     let key = key.map(str::to_owned).or_else(|| store::hotkey(title));
     let key = key.map_or_else(|| " ".to_owned(), |k| k.to_uppercase());
     format!("{key}  {}", store::plain(title))
-}
-
-/// (label, folder id) for every place a bookmark can go; `None` is the top level.
-pub fn folder_choices(items: &[Item]) -> Vec<(String, Option<String>)> {
-    let mut out = vec![("Top level".to_owned(), None)];
-    for (trail, folder) in store::folders(items) {
-        let mut parts = trail.clone();
-        parts.push(store::plain(&folder.title));
-        out.push((parts.join(" › "), Some(folder.id.clone())));
-    }
-    out
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +251,7 @@ pub fn location_spec(app: &App, side: usize) -> Option<Spec> {
 
 /// ⌘D, or a click on a panel's path (`at`: just below the click).
 pub fn bookmark_menu(app: &mut App, side: Option<usize>, at: Option<(u16, u16)>) {
-    when_loaded(app, move |app| {
+    fresh(app, move |app| {
         let side = side.unwrap_or_else(|| side_of_location(app));
         let (x, y) = at.unwrap_or_else(|| {
             let frame = main_window::layout(app).frames[side];
@@ -223,24 +265,20 @@ pub fn bookmark_menu(app: &mut App, side: Option<usize>, at: Option<(u16, u16)>)
 
 /// "Add current folder…": ask for title and place, then save.
 pub fn add_bookmark(app: &mut App, side: Option<usize>) {
-    when_loaded(app, move |app| {
+    fresh(app, move |app| {
         let side = side.unwrap_or_else(|| side_of_location(app));
         let Some(location) = location_spec(app, side) else {
             app.warn("Can't bookmark this location: only folders can be bookmarked");
             return;
         };
         let target = location_spec(app, 1 - side);
-        let choices = folder_choices(items(app));
+        let choices = store::folder_choices(items(app));
         let dialog = add::AddBookmark::new(location.clone(), target.clone(), choices, move |app, answer| {
             let Some((title, folder_id, with_target)) = answer else { return };
             let described = location.describe();
-            let st = app.state::<Bookmarks>();
-            store::container_of(&mut st.items, folder_id.as_deref()).push(Item::Bookmark(Bookmark::new(
-                title,
-                location,
-                if with_target { target } else { None },
-            )));
-            save(app);
+            let bookmark = Bookmark::new(title, location, if with_target { target } else { None });
+            // Like `store::add_bookmark`, on the copy and on the file.
+            change(app, move |items| store::container_of(items, folder_id.as_deref()).push(bookmark.into()));
             app.info(format!("Bookmarked {described}"));
         });
         app.show(dialog);
@@ -249,26 +287,29 @@ pub fn add_bookmark(app: &mut App, side: Option<usize>) {
 
 /// "Remove current folder (…)".
 pub fn remove_bookmark(app: &mut App, id: &str) {
-    let st = app.state::<Bookmarks>();
-    if let Some(removed) = store::remove(&mut st.items, id) {
-        save(app);
-        let title = match removed {
-            Item::Bookmark(b) => b.title,
-            Item::Folder(f) => f.title,
-            Item::Separator { .. } => String::new(),
-        };
-        app.info(format!("Removed bookmark {}", store::plain(&title)));
-    }
+    let Some(removed) = store::find(items(app), id).cloned() else { return };
+    let id = id.to_owned();
+    change(app, move |items| {
+        store::remove(items, &id);
+    });
+    let title = match removed {
+        Item::Bookmark(b) => b.title,
+        Item::Folder(f) => f.title,
+        Item::Separator { .. } => String::new(),
+    };
+    app.info(format!("Removed bookmark {}", store::plain(&title)));
 }
 
-/// The organizer; OK replaces the list.
+/// The organizer edits a copy; OK saves it, keeping what other apps
+/// added while it was open.
 pub fn organize(app: &mut App) {
-    when_loaded(app, |app| {
+    fresh(app, |app| {
         let side = side_of_location(app);
         let (active, other) = (location_spec(app, side), location_spec(app, 1 - side));
-        let o = organizer::Organizer::new(items(app).to_vec(), active, other, |app, result| {
-            if let Some(items) = result {
-                set_items(app, items);
+        let base = items(app).to_vec();
+        let o = organizer::Organizer::new(base.clone(), active, other, move |app, result| {
+            if let Some(edited) = result {
+                change(app, move |items| *items = store::merge_external(&base, edited, items));
             }
         });
         app.show(o);
@@ -277,7 +318,7 @@ pub fn organize(app: &mut App) {
 
 /// ⌥⌘D: search all bookmarks as you type.
 pub fn go_to_bookmark(app: &mut App) {
-    when_loaded(app, |app| {
+    fresh(app, |app| {
         let entries: Vec<(Vec<String>, Bookmark)> =
             store::bookmarks(items(app)).into_iter().map(|(trail, b)| (trail, b.clone())).collect();
         if entries.is_empty() {

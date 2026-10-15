@@ -57,8 +57,11 @@ fn location(app: &App, side: usize) -> PathBuf {
     PathBuf::from(&app.main.sides[side].panel.location.path)
 }
 
+/// ⌘ / Ctrl + `key`, then wait: bookmark commands look at the file in the
+/// background before they show anything.
 fn primary(app: &mut App, key: char) {
     press_with(app, Key::Char(key), Mods::primary());
+    settle(app);
 }
 
 fn top(app: &App) -> String {
@@ -179,6 +182,7 @@ fn add_bookmark_with_other_panel_then_open_both() {
     primary(&mut app, 'd');
     assert_eq!(menu_lines(&app), ["+  Add current folder…", "*  Organize bookmarks…"]);
     type_text(&mut app, "+");
+    settle(&mut app);
     assert_eq!(top(&app), "Add bookmark");
     let text = app.top_modal_text().unwrap();
     assert!(text.starts_with("src\n"), "the folder's name is the default title: {text}");
@@ -213,11 +217,13 @@ fn add_into_a_folder_and_cancel() {
     with_bookmarks(&e, &[Folder::new("&Work", vec![]).into()]);
     let mut app = app(&e);
     app.run_command("bookmarks.add");
+    settle(&mut app);
     assert_eq!(top(&app), "Add bookmark");
     press(&mut app, Key::Escape);
     settle(&mut app);
     assert_eq!(saved(&e).len(), 1, "Cancel adds nothing");
     app.run_command("bookmarks.add");
+    settle(&mut app);
     press(&mut app, Key::Tab);
     press(&mut app, Key::Down); // Put in: Work
     press(&mut app, Key::Enter);
@@ -247,6 +253,7 @@ fn go_to_bookmark_searches_titles_and_paths() {
     let e = env();
     let mut app = app(&e);
     press_with(&mut app, Key::Char('d'), Mods { alt: true, ..Mods::primary() });
+    settle(&mut app);
     assert!(app.modal_titles().is_empty());
     assert!(toast(&app).starts_with("No bookmarks yet"));
 
@@ -260,6 +267,7 @@ fn go_to_bookmark_searches_titles_and_paths() {
     );
     let mut app = self::app(&e);
     press_with(&mut app, Key::Char('d'), Mods { alt: true, ..Mods::primary() });
+    settle(&mut app);
     assert_eq!(top(&app), "Go to bookmark");
     assert_eq!(menu_lines(&app), ["Top", "Work › Sub"]);
     type_text(&mut app, "sub");
@@ -326,6 +334,7 @@ fn organizer_edits_apply_only_with_ok() {
     let mut app = app(&e);
     primary(&mut app, 'd');
     type_text(&mut app, "*");
+    settle(&mut app);
     assert_eq!(top(&app), "Organize bookmarks");
     let rows = menu_lines(&app);
     assert_eq!(rows.len(), 6, "{rows:?}");
@@ -342,6 +351,7 @@ fn organizer_edits_apply_only_with_ok() {
 
     // Again: move, a new folder (F7), rename it (F2), delete Sub, OK.
     app.run_command("bookmarks.organize");
+    settle(&mut app);
     press(&mut app, Key::Down);
     press_with(&mut app, Key::Up, Mods::ALT);
     press(&mut app, Key::F(7));
@@ -380,6 +390,7 @@ fn organizer_edit_bookmark_dialog() {
     with_bookmarks(&e, &[Bookmark::new("&Src", local(&e.src), None).into()]);
     let mut app = app(&e);
     app.run_command("bookmarks.organize");
+    settle(&mut app);
     press(&mut app, Key::F(2));
     assert_eq!(top(&app), "Edit bookmark");
     type_text(&mut app, "x"); // appended to the title
@@ -411,6 +422,7 @@ fn click_on_panel_path_opens_that_sides_menu() {
     let frame = oc_ui::main_window::layout(&app).frames[1];
     let ev = MouseEvent { kind: MouseKind::Down(MouseButton::Left), col: frame.x + 3, row: frame.y, mods: Mods::NONE };
     app.handle_event(MAIN_WINDOW, Event::Mouse(ev));
+    settle(&mut app);
     assert_eq!(top(&app), "Bookmarks");
     assert!(menu_lines(&app).contains(&"-  Remove current folder (Dst)".to_owned()));
     // Clicking outside closes it.
@@ -431,6 +443,112 @@ fn drive_list_offers_bookmarks() {
     press(&mut app, Key::Enter);
     settle(&mut app);
     assert_eq!(location(&app, 1), e.src.join("sub"));
+}
+
+// -- Other apps share bookmarks.json -----------------------------------------
+
+/// Another app (another Orchard app's file picker, another instance) adds a
+/// bookmark to the file, the way they do.
+fn added_elsewhere(e: &Env, title: &str) -> Bookmark {
+    let b = Bookmark::new(title, local(&e.base), None);
+    store::add_bookmark(&e.config.join("bookmarks.json"), b.clone(), None).unwrap();
+    b
+}
+
+fn titles(items: &[Item]) -> Vec<String> {
+    items
+        .iter()
+        .map(|i| match i {
+            Item::Bookmark(b) => b.title.clone(),
+            Item::Folder(f) => f.title.clone(),
+            Item::Separator { .. } => "-".into(),
+        })
+        .collect()
+}
+
+#[test]
+fn bookmarks_another_app_added_show_up() {
+    let e = env();
+    with_bookmarks(&e, &sample(&e));
+    let mut app = app(&e);
+    primary(&mut app, 'd');
+    press(&mut app, Key::Escape);
+    added_elsewhere(&e, "&Elsewhere");
+
+    primary(&mut app, 'd');
+    assert!(menu_lines(&app).contains(&"E  Elsewhere".to_owned()), "{:?}", menu_lines(&app));
+    press(&mut app, Key::Escape);
+
+    added_elsewhere(&e, "&Later");
+    press_with(&mut app, Key::Char('d'), Mods { alt: true, ..Mods::primary() });
+    settle(&mut app);
+    assert_eq!(top(&app), "Go to bookmark");
+    assert!(menu_lines(&app).contains(&"Later".to_owned()), "{:?}", menu_lines(&app));
+    press(&mut app, Key::Escape);
+
+    added_elsewhere(&e, "&Drive list");
+    press_with(&mut app, Key::F(1), Mods::ALT);
+    wait_until(&mut app, "the drive list", Duration::from_secs(10), |app| app.modal_titles().last().is_some_and(|t| t == "Go to"));
+    assert!(menu_lines(&app).contains(&"★ Drive list".to_owned()), "{:?}", menu_lines(&app));
+    press(&mut app, Key::Escape);
+
+    added_elsewhere(&e, "&Organized");
+    app.run_command("bookmarks.organize");
+    settle(&mut app);
+    assert!(menu_lines(&app).iter().any(|l| l.starts_with("O  Organized")), "{:?}", menu_lines(&app));
+}
+
+#[test]
+fn adding_keeps_a_bookmark_another_app_added_meanwhile() {
+    let e = env();
+    with_bookmarks(&e, &[Bookmark::new("&Dst", local(&e.dst), None).into()]);
+    let mut app = app(&e);
+    app.run_command("bookmarks.add");
+    settle(&mut app);
+    assert_eq!(top(&app), "Add bookmark");
+    // While the dialog is open.
+    added_elsewhere(&e, "&Elsewhere");
+    type_text(&mut app, "&Mine");
+    press(&mut app, Key::Enter);
+    settle(&mut app);
+    assert_eq!(titles(&saved(&e)), ["&Dst", "&Elsewhere", "&Mine"]);
+    primary(&mut app, 'd');
+    assert_eq!(menu_lines(&app)[..3], ["D  Dst", "E  Elsewhere", "M  Mine"]);
+
+    // Removing one keeps the others, also one added after the menu opened.
+    added_elsewhere(&e, "&Another");
+    let removed = titles(&saved(&e));
+    assert_eq!(removed.len(), 4);
+    press(&mut app, Key::Escape);
+    oc_ui::panel::load(&mut app, 0, oc_local::local(&e.dst), Default::default());
+    settle(&mut app);
+    primary(&mut app, 'd');
+    type_text(&mut app, "-");
+    settle(&mut app);
+    assert_eq!(toast(&app), "Removed bookmark Dst");
+    assert_eq!(titles(&saved(&e)), ["&Elsewhere", "&Mine", "&Another"]);
+}
+
+#[test]
+fn organizer_ok_keeps_a_bookmark_another_app_added_meanwhile() {
+    let e = env();
+    with_bookmarks(&e, &sample(&e));
+    let mut app = app(&e);
+    app.run_command("bookmarks.organize");
+    settle(&mut app);
+    assert_eq!(top(&app), "Organize bookmarks");
+    press(&mut app, Key::Down); // Dst
+    press(&mut app, Key::Delete);
+    // While the organizer is open.
+    let elsewhere = added_elsewhere(&e, "&Elsewhere");
+    press(&mut app, Key::Enter); // OK
+    settle(&mut app);
+    assert!(app.modal_titles().is_empty());
+    let now = saved(&e);
+    assert_eq!(titles(&now), ["&Src", "&Sub", "-", "&Work", "&Elsewhere"]);
+    assert_eq!(now.last(), Some(&Item::Bookmark(elsewhere)), "kept as it was saved");
+    primary(&mut app, 'd');
+    assert!(menu_lines(&app).contains(&"E  Elsewhere".to_owned()), "{:?}", menu_lines(&app));
 }
 
 fn mouse(app: &mut App, kind: MouseKind, col: u16, row: u16) {
@@ -473,6 +591,7 @@ fn organizer_click_on_folder_mark_closes_and_opens_it() {
     with_bookmarks(&e, &sample(&e));
     let mut app = app(&e);
     app.run_command("bookmarks.organize");
+    settle(&mut app);
     assert_eq!(menu_lines(&app).len(), 6, "{:?} {:?}", app.modal_titles(), menu_lines(&app));
     let (col, row) = find_on_screen(&app, "▾ W  Work");
     mouse(&mut app, MouseKind::Down(MouseButton::Left), col, row);

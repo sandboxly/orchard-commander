@@ -208,8 +208,22 @@ pub struct LocationItem {
 }
 
 /// ⌥F1 / ⌥F2: drives and volumes (`oc_local::locations`, listed in the
-/// background), then the features' entries (servers ⇄, bookmarks ★).
+/// background), then the features' entries (servers ⇄, bookmarks ★), each
+/// brought up to date first.
 pub fn choose_location(app: &mut App, side: usize) {
+    let refreshes = app.registry.location_refreshes.clone();
+    refresh_then(app, refreshes, Box::new(move |app| show_locations(app, side)));
+}
+
+/// Run the features' location refreshes one after the other, then `then`.
+fn refresh_then(app: &mut App, mut refreshes: Vec<crate::commands::LocationRefresh>, then: Box<dyn FnOnce(&mut App)>) {
+    match refreshes.pop() {
+        Some(refresh) => refresh(app, Box::new(move |app| refresh_then(app, refreshes, then))),
+        None => then(app),
+    }
+}
+
+fn show_locations(app: &mut App, side: usize) {
     app.tasks.run_in_background(
         |_| oc_local::locations(),
         move |app, places| {
