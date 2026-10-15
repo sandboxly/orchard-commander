@@ -3712,7 +3712,7 @@ dependencies = [
 
 [[package]]
 name = "oc-archive"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "bzip2",
  "chrono",
@@ -3729,7 +3729,7 @@ dependencies = [
 
 [[package]]
 name = "oc-config"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "dirs",
  "keyring",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "oc-local"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "filetime",
  "libc",
@@ -3759,7 +3759,7 @@ dependencies = [
 
 [[package]]
 name = "oc-media"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "cpal",
  "ffmpeg-next",
@@ -3775,7 +3775,7 @@ dependencies = [
 
 [[package]]
 name = "oc-pdf"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "log",
  "md-5 0.10.6",
@@ -3787,7 +3787,7 @@ dependencies = [
 
 [[package]]
 name = "oc-preview"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "chrono",
  "encoding_rs",
@@ -3806,7 +3806,7 @@ dependencies = [
 
 [[package]]
 name = "oc-provider"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "oc-vfs",
  "percent-encoding",
@@ -3817,7 +3817,7 @@ dependencies = [
 
 [[package]]
 name = "oc-remote-http"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "base64 0.22.1",
  "hmac 0.12.1",
@@ -3840,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "oc-rename"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "caseless",
  "chrono",
@@ -3856,7 +3856,7 @@ dependencies = [
 
 [[package]]
 name = "oc-search"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "fancy-regex",
  "indexmap",
@@ -3870,7 +3870,7 @@ dependencies = [
 
 [[package]]
 name = "oc-sftp"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "bytes",
  "data-encoding",
@@ -3895,7 +3895,7 @@ dependencies = [
 
 [[package]]
 name = "oc-smb"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "oc-local",
  "oc-provider",
@@ -3909,7 +3909,7 @@ dependencies = [
 
 [[package]]
 name = "oc-term"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "alacritty_terminal",
  "bitflags 2.13.2",
@@ -3922,7 +3922,7 @@ dependencies = [
 
 [[package]]
 name = "oc-ui"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "arboard",
  "chrono",
@@ -3956,7 +3956,7 @@ dependencies = [
 
 [[package]]
 name = "oc-vfs"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "sha1_smol",
  "tempfile",
@@ -4034,7 +4034,7 @@ dependencies = [
 
 [[package]]
 name = "orchard-commander"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "base64 0.22.1",
  "embed-resource",
