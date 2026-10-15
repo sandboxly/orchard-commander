@@ -62,8 +62,9 @@ Windows, `LD_LIBRARY_PATH` on Linux). bindgen needs libclang
 
 ## Building the app
 
-Windows and Linux packages (installer, zip, AppImage, .deb, .rpm, tar.gz) are
-built by CI; the macOS app is built, signed and notarized locally:
+All packages (Windows installer and zip, AppImage, .deb, .rpm, tar.gz, and
+the signed, notarized macOS dmg) are built by CI. On a Mac the dmg can also be
+built locally:
 
 ```sh
 packaging/macos/package.sh --notarize

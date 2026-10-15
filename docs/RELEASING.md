@@ -2,8 +2,8 @@
 
 The release assets and identities (names, bundle id, Inno AppId, install
 paths) are fixed by [RELEASE-2.0-REQUIREMENTS.md](RELEASE-2.0-REQUIREMENTS.md).
-Windows and Linux packages come from CI; the macOS app is built, signed and
-notarized locally.
+All packages come from CI, the macOS dmg included (signed with the
+Developer ID and notarized there).
 
 ## Version
 
@@ -53,7 +53,7 @@ AppImage), and — through `packaging/stage.sh licenses - <dir>` from the macOS
 script — `Contents/Resources/licenses` in the app. Options > About Orchard
 Commander shows the version and opens that folder.
 
-## Windows and Linux: CI
+## CI
 
 `.github/workflows/ci.yml` runs on every push to `main` (and
 by hand, workflow_dispatch):
@@ -78,24 +78,41 @@ by hand, workflow_dispatch):
     AppImage and the tarball are self-tested.
   - The files are uploaded as the workflow artifacts `packages-Windows` and
     `packages-Linux`.
+- **Package** (macos-latest): `packaging/macos/package.sh --notarize` (see
+  below), then `packaging/macos/verify-dmg.sh` on the result; the dmg is the
+  workflow artifact `packages-macOS`. The FFmpeg build is cached
+  (`vendor/ffmpeg/mac-arm64`, keyed on `build-ffmpeg.sh` and `env.sh`).
 
 No step uploads to a GitHub release or publishes anywhere, and the workflow
 has no tag trigger: release wiring (tag trigger, `gh release upload`, the
 package-manager manifests of 1.x's `packages.yml`) is added when 2.0 replaces
 1.x on `main`.
 
-## macOS: local
+## macOS
 
-The macOS agent's script in `packaging/macos/` builds
-`Orchard-Commander-macOS.dmg`: release build, app bundle with PDFium and
-FFmpeg in `Contents/Frameworks`, licenses in `Contents/Resources/licenses`,
-Developer ID signing, notarization and stapling. See that folder's README.
+`packaging/macos/package.sh` builds `Orchard-Commander-macOS.dmg`: release
+build, app bundle with PDFium and FFmpeg in `Contents/Frameworks`, licenses in
+`Contents/Resources/licenses`, Developer ID signing, notarization and
+stapling. See that folder's README. CI runs it with these repository secrets,
+imported into a temporary keychain that is the job's default, under the
+notary profile name `orchard-commander` (so the script runs as on a Mac):
+
+| Secret | Contents |
+|---|---|
+| `MACOS_CERTIFICATE_P12_BASE64` | the "Developer ID Application" certificate and its private key, exported as `.p12`, base64 |
+| `MACOS_CERTIFICATE_PASSWORD` | the `.p12`'s password |
+| `APPLE_API_KEY_P8` | the App Store Connect API key (`AuthKey_….p8`, the whole text) |
+| `APPLE_API_KEY_ID` | that key's ID |
+| `APPLE_API_ISSUER_ID` | the issuer ID (App Store Connect → Users and Access → Integrations) |
+
+Without them the dmg is signed ad-hoc and not notarized. On a Mac the script
+still works on its own (`--notarize` with a local keychain profile).
 
 ## Making a release (once 2.0 is on main)
 
 1. Bump the version, regenerate the licenses file, commit, push; wait for a
    green CI run.
-2. Download `packages-Windows` and `packages-Linux` from that run and build the
-   macOS dmg locally from the same commit.
+2. Download `packages-Windows`, `packages-Linux` and `packages-macOS` from
+   that run.
 3. Create the release and attach all assets (names in
    RELEASE-2.0-REQUIREMENTS.md); then update brew/winget/Chocolatey/AUR.
