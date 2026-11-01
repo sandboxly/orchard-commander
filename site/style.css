@@ -287,6 +287,8 @@ kbd { display: inline-block; font-size: 0.8em; line-height: 1.5; padding: 0 6px;
 .family h2 { font-size: clamp(20px, 2.4vw, 24px); margin: 0 0 8px; }
 .family p { font-size: 16px; max-width: 60ch; }
 .family-links { display: flex; flex-wrap: wrap; gap: 12px; }
+/* three family links: a row of their own under the text, wrapping when narrow */
+@media (min-width: 481px) { .family { grid-template-columns: auto minmax(0, 1fr); } .family .family-links { grid-column: 2; } }
 @media (max-width: 680px) {
   .family { grid-template-columns: auto minmax(0, 1fr); }
   .family .btn { grid-column: 1 / -1; justify-self: start; }
